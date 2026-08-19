@@ -1,12 +1,25 @@
+import { registerCustomTheme } from "@pierre/diffs";
 import { parsePatchFiles } from "@pierre/diffs/utils/parsePatchFiles";
-import type { FileDiffMetadata } from "@pierre/diffs/types";
+import type { FileDiffMetadata, ThemeRegistration } from "@pierre/diffs/types";
 
 export const DIFF_THEME_NAMES = {
-  light: "pierre-light",
-  dark: "pierre-dark",
+  light: "xcode-hc-light",
+  dark: "xcode-hc-dark",
 } as const;
 
 export type DiffThemeName = (typeof DIFF_THEME_NAMES)[keyof typeof DIFF_THEME_NAMES];
+
+// Register the bundled Xcode High Contrast syntax themes with Pierre's shared
+// theme resolver. Idempotent (registerCustomTheme swallows duplicates), and the
+// worker pool forwards a resolved custom theme to its workers when the theme is
+// set, so this one registration covers both the chat highlighter and the diff
+// worker. JSON theme modules load lazily and may arrive under `default`.
+registerCustomTheme(DIFF_THEME_NAMES.dark, () =>
+  import("../themes/xcode-hc-dark.json").then((m) => (m.default ?? m) as ThemeRegistration),
+);
+registerCustomTheme(DIFF_THEME_NAMES.light, () =>
+  import("../themes/xcode-hc-light.json").then((m) => (m.default ?? m) as ThemeRegistration),
+);
 
 export function resolveDiffThemeName(theme: "light" | "dark"): DiffThemeName {
   return theme === "dark" ? DIFF_THEME_NAMES.dark : DIFF_THEME_NAMES.light;
@@ -192,6 +205,7 @@ export function getDiffCollapseIconClassName(fileDiff: FileDiffMetadata): string
  * panel and the file preview.
  */
 export const DIFF_SURFACE_THEME_UNSAFE_CSS = `
+:host,
 [data-diffs-header],
 [data-diff],
 [data-file],
@@ -217,6 +231,15 @@ export const DIFF_SURFACE_THEME_UNSAFE_CSS = `
   );
   --diffs-bg-buffer-override: color-mix(in srgb, var(--code-background) 90%, var(--code-foreground));
 
+  /* Line + gutter tints keep T3's original diff colours (mixed from the theme's
+     --success/--destructive over the code surface). Only the changed WORD is
+     restyled: a solid GitHub-High-Contrast "inverted" chip whose lightness flips
+     per mode so the token text (recoloured to the editor background) always
+     clears WCAG AAA — light mode -> dark chip + near-white text; dark mode ->
+     light chip + near-black text. The emphasis overrides must resolve on :host
+     (Pierre reads var(--*-emphasis-override, <default>) there); the line/gutter
+     overrides apply on the [data-diff] subtree as shipped.
+     light-dark(<light-mode>, <dark-mode>). */
   --diffs-bg-addition-override: light-dark(
     color-mix(in srgb, var(--code-background) 50%, var(--success)),
     color-mix(in srgb, var(--code-background) 70%, var(--success))
@@ -226,11 +249,7 @@ export const DIFF_SURFACE_THEME_UNSAFE_CSS = `
     color-mix(in srgb, var(--code-background) 60%, var(--success))
   );
   --diffs-bg-addition-hover-override: color-mix(in srgb, var(--code-background) 85%, var(--success));
-  --diffs-bg-addition-emphasis-override: color-mix(
-    in srgb,
-    var(--code-background) 80%,
-    var(--success)
-  );
+  --diffs-bg-addition-emphasis-override: light-dark(#1d652a, #52c062);
 
   --diffs-bg-deletion-override: light-dark(
     color-mix(in srgb, var(--code-background) 50%, var(--destructive)),
@@ -240,18 +259,20 @@ export const DIFF_SURFACE_THEME_UNSAFE_CSS = `
     color-mix(in srgb, var(--code-background) 35%, var(--destructive)),
     color-mix(in srgb, var(--code-background) 60%, var(--destructive))
   );
-  --diffs-bg-deletion-hover-override: color-mix(
-    in srgb,
-    var(--code-background) 85%,
-    var(--destructive)
-  );
-  --diffs-bg-deletion-emphasis-override: color-mix(
-    in srgb,
-    var(--code-background) 80%,
-    var(--destructive)
-  );
+  --diffs-bg-deletion-hover-override: color-mix(in srgb, var(--code-background) 85%, var(--destructive));
+  --diffs-bg-deletion-emphasis-override: light-dark(#9e3235, #ff8787);
 
   background-color: var(--diffs-bg) !important;
   color: var(--code-foreground) !important;
+}
+
+/* Invert the changed word's text to the editor background color. Shiki paints
+   the token color as an inline style on a child element, so the child (\`*\`)
+   must be targeted too, with !important, to win over that inline color. */
+[data-line-type="change-addition"] [data-diff-span],
+[data-line-type="change-addition"] [data-diff-span] *,
+[data-line-type="change-deletion"] [data-diff-span],
+[data-line-type="change-deletion"] [data-diff-span] * {
+  color: var(--code-background) !important;
 }
 `;
