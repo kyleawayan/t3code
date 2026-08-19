@@ -1154,7 +1154,7 @@ export default function DiffPanel({
                   }}
                   options={{
                     diffStyle: diffRenderMode === "split" ? "split" : "unified",
-                    lineDiffType: "none",
+                    lineDiffType: "word",
                     overflow: wordWrap ? "wrap" : "scroll",
                     theme: resolveDiffThemeName(resolvedTheme),
                     themeType: resolvedTheme as DiffThemeType,
