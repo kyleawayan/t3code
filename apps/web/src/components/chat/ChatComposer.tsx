@@ -2577,6 +2577,24 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     terminalOpen,
   ]);
 
+  // Escape interrupts a running turn — the keyboard equivalent of the stop
+  // button. The listener only exists while a turn is running. Bubble phase plus
+  // the `defaultPrevented` guard means any open menu or dialog that already
+  // claimed Escape (to dismiss itself) is skipped: dismissable layers run their
+  // document-level Escape handler first and preventDefault, so Escape only stops
+  // the turn when nothing else is using it.
+  useEffect(() => {
+    if (phase !== "running") return;
+    const handler = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      event.preventDefault();
+      onInterrupt();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [phase, onInterrupt]);
+
   // ------------------------------------------------------------------
   // Callbacks: images
   // ------------------------------------------------------------------
