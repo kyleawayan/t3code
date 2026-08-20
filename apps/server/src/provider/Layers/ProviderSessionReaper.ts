@@ -14,6 +14,7 @@ import {
 import { forkParked } from "../../serverActivation.ts";
 import { ProviderService } from "../Services/ProviderService.ts";
 import {
+  computeThreadStalled,
   STALL_THRESHOLD_MS,
   ThreadStreamActivityService,
 } from "../../orchestration/ThreadStreamActivity.ts";
@@ -73,10 +74,15 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
             // infinite silence — seed it so the thread gets a full window.
             threadStreamActivity.recordActivity(binding.threadId, now);
           } else if (
-            now - lastActivityMs >= stallThresholdMs &&
-            stallThread?.hasPendingApprovals !== true &&
-            stallThread?.hasPendingUserInput !== true &&
-            stallThread?.backgroundLiveness == null
+            computeThreadStalled({
+              activeTurnId: stallActiveTurnId,
+              lastActivityMs,
+              nowMs: now,
+              thresholdMs: stallThresholdMs,
+              hasPendingApprovals: stallThread?.hasPendingApprovals === true,
+              hasPendingUserInput: stallThread?.hasPendingUserInput === true,
+              backgroundLiveness: stallThread?.backgroundLiveness ?? null,
+            })
           ) {
             yield* Effect.logWarning("provider.session.stall-detected", {
               threadId: binding.threadId,
