@@ -8,7 +8,9 @@ import { GhosttyRuntime, loadGhosttyRuntime } from "./runtime";
 
 const GHOSTTY_SUCCESS = 0;
 const GHOSTTY_OUT_OF_SPACE = -3;
-const MAX_SCROLLBACK_ROWS = 10_000;
+// Ghostty allocates scrollback rows lazily, so an idle terminal pays little;
+// a fully-filled 120-col terminal at this cap costs ~150 MB of wasm memory.
+const MAX_SCROLLBACK_ROWS = 50_000;
 // wasm32 C ABI layout for GhosttyTerminalSelectionFormatOptions at the
 // libghostty-vt revision pinned alongside this module.
 const SELECTION_FORMAT_OPTIONS_SIZE = 16;
