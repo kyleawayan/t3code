@@ -3626,12 +3626,13 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
     yield* Queue.shutdown(context.promptQueue);
 
-    const streamFiber = context.streamFiber;
-    context.streamFiber = undefined;
-    if (streamFiber && streamFiber.pollUnsafe() === undefined) {
-      yield* Fiber.interrupt(streamFiber);
-    }
-
+    // Close the query BEFORE interrupting the stream fiber. close() is
+    // synchronous, ends the SDK input stream, and escalates the child to
+    // SIGTERM→SIGKILL. Interrupting the fiber first (the previous order)
+    // deadlocked on a wedged child: the stream's async-generator finalizer
+    // (`return()`) queues behind a pending `next()` that never settles while
+    // the child is hung, so close() was never reached and the child was never
+    // killed — the thread stayed "Working" forever with a zombie process.
     yield* Effect.try({
       try: () => context.query.close(),
       catch: (cause) =>
@@ -3651,6 +3652,16 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         }),
       ),
     );
+
+    // Interrupt the stream fiber AFTER close(). close() ends the input stream
+    // and kills the child, which un-wedges the async generator, so this
+    // interrupt now completes instead of deadlocking (the previous order ran
+    // this first and hung here on a stuck child).
+    const streamFiber = context.streamFiber;
+    context.streamFiber = undefined;
+    if (streamFiber && streamFiber.pollUnsafe() === undefined) {
+      yield* Fiber.interrupt(streamFiber);
+    }
 
     const updatedAt = yield* nowIso;
     context.session = {

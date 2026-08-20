@@ -34,8 +34,11 @@ import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionT
 import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
 import { isGitRepository } from "../../git/Utils.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
+import * as Clock from "effect/Clock";
+
 import { ThreadBackgroundLivenessService } from "../ThreadBackgroundLiveness.ts";
 import { ThreadPlanProgressService } from "../ThreadPlanProgress.ts";
+import { ThreadStreamActivityService } from "../ThreadStreamActivity.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import {
   ProviderRuntimeIngestionService,
@@ -868,6 +871,7 @@ export function runtimeEventToActivities(
 
 const make = Effect.gen(function* () {
   const threadBackgroundLiveness = yield* ThreadBackgroundLivenessService;
+  const threadStreamActivity = yield* ThreadStreamActivityService;
   const threadPlanProgress = yield* ThreadPlanProgressService;
   const crypto = yield* Crypto.Crypto;
   const orchestrationEngine = yield* OrchestrationEngineService;
@@ -1476,6 +1480,12 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const thread = yield* resolveThreadShell(event.threadId);
       if (!thread) return;
+
+      // Stall watchdog: every provider event (including thinking/text deltas)
+      // marks the thread as live, so a long "thinking" turn is never mistaken
+      // for a wedged one. Read by ProviderSessionReaper.
+      const activityAtMs = yield* Clock.currentTimeMillis;
+      threadStreamActivity.recordActivity(thread.id, activityAtMs);
 
       let loadedThreadDetail: OrchestrationThread | null | undefined;
       const getLoadedThreadDetail = () =>
