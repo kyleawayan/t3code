@@ -39,6 +39,7 @@ import {
   type GhosttyTerminalSurfaceOptions,
 } from "~/terminal/ghostty/surface";
 import { type GhosttyColor, type GhosttyTheme } from "~/terminal/ghostty/core";
+import { XCODE_ANSI_DARK, XCODE_ANSI_LIGHT } from "~/terminal/xcodeAnsiPalette";
 import { useOpenInPreferredEditor } from "../editorPreferences";
 import { isTerminalLinkActivation, resolvePathLinkTarget } from "../terminal-links";
 import {
@@ -194,6 +195,7 @@ export function terminalThemeFromApp(mountElement?: HTMLElement | null): Ghostty
       isDark ? { r: 180, g: 203, b: 255 } : { r: 38, g: 56, b: 78 },
     ),
     selectionBackground: terminalSelection,
+    palette: isDark ? XCODE_ANSI_DARK : XCODE_ANSI_LIGHT,
   };
 }
 
