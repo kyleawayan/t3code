@@ -700,6 +700,20 @@ describe("resolveSidebarThreadStatus", () => {
     ).toBe("working");
   });
 
+  it("reports stalled above working, below approval and input", () => {
+    // A wedged (stalled) running turn shows stalled, not a lying Working.
+    expect(resolveSidebarThreadStatus({ ...idle, session, stalled: true })).toBe("stalled");
+    // Attention states still outrank a stall.
+    expect(
+      resolveSidebarThreadStatus({ ...idle, hasPendingApprovals: true, session, stalled: true }),
+    ).toBe("approval");
+    expect(
+      resolveSidebarThreadStatus({ ...idle, hasPendingUserInput: true, session, stalled: true }),
+    ).toBe("input");
+    // Absent/false flag is unaffected.
+    expect(resolveSidebarThreadStatus({ ...idle, session, stalled: false })).toBe("working");
+  });
+
   it("reports failed only while the session status is error", () => {
     expect(
       resolveSidebarThreadStatus({

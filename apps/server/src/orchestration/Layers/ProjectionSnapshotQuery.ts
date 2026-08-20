@@ -28,6 +28,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import * as Arr from "effect/Array";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -46,6 +47,7 @@ import {
 import { ProjectionCheckpoint } from "../../persistence/Services/ProjectionCheckpoints.ts";
 import { ThreadBackgroundLivenessService } from "../ThreadBackgroundLiveness.ts";
 import { ThreadPlanProgressService } from "../ThreadPlanProgress.ts";
+import { STALL_THRESHOLD_MS, ThreadStreamActivityService } from "../ThreadStreamActivity.ts";
 import { ProjectionProject } from "../../persistence/Services/ProjectionProjects.ts";
 import { ProjectionState } from "../../persistence/Services/ProjectionState.ts";
 import { ProjectionThreadActivity } from "../../persistence/Services/ProjectionThreadActivities.ts";
@@ -351,8 +353,31 @@ function toPersistenceSqlOrDecodeError(sqlOperation: string, decodeOperation: st
       : toPersistenceSqlError(sqlOperation)(cause);
 }
 
+/**
+ * A turn is "stalled" (wedged) when it is active but has streamed nothing past
+ * the shared threshold, and is neither waiting on the human nor running
+ * background work. A missing activity entry (e.g. right after a restart) is
+ * treated as fresh, never as silence. Mirrors ProviderSessionReaper's detection
+ * so the sidebar pill and the watchdog agree.
+ */
+const computeThreadStalled = (input: {
+  readonly activeTurnId: string | null | undefined;
+  readonly lastActivityMs: number | undefined;
+  readonly nowMs: number;
+  readonly pendingApprovalCount: number;
+  readonly pendingUserInputCount: number;
+  readonly backgroundLiveness: "working" | "monitoring" | null | undefined;
+}): boolean => {
+  if (input.activeTurnId == null) return false;
+  if (input.lastActivityMs === undefined) return false;
+  if (input.pendingApprovalCount > 0 || input.pendingUserInputCount > 0) return false;
+  if (input.backgroundLiveness != null) return false;
+  return input.nowMs - input.lastActivityMs >= STALL_THRESHOLD_MS;
+};
+
 const makeProjectionSnapshotQuery = Effect.gen(function* () {
   const threadBackgroundLiveness = yield* ThreadBackgroundLivenessService;
+  const threadStreamActivity = yield* ThreadStreamActivityService;
   const threadPlanProgress = yield* ThreadPlanProgressService;
   const sql = yield* SqlClient.SqlClient;
   const repositoryIdentityResolver = yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
@@ -2034,6 +2059,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             const sessionByThread = new Map(
               sessionRows.map((row) => [row.threadId, mapSessionRow(row)] as const),
             );
+            const nowMs = yield* Clock.currentTimeMillis;
 
             const snapshot = {
               snapshotSequence: computeSnapshotSequence(stateRows),
@@ -2078,6 +2104,16 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                       backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
                         row.threadId,
                       ),
+                      stalled: computeThreadStalled({
+                        nowMs,
+                        activeTurnId: sessionByThread.get(row.threadId)?.activeTurnId ?? null,
+                        lastActivityMs: threadStreamActivity.getLastActivityMs(row.threadId),
+                        pendingApprovalCount: row.pendingApprovalCount,
+                        pendingUserInputCount: row.pendingUserInputCount,
+                        backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
+                          row.threadId,
+                        ),
+                      }),
                       planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
                     } satisfies OrchestrationThreadShell)
                   : Result.failVoid,
@@ -2184,6 +2220,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             const sessionByThread = new Map(
               sessionRows.map((row) => [row.threadId, mapSessionRow(row)] as const),
             );
+            const nowMs = yield* Clock.currentTimeMillis;
 
             const snapshot = {
               snapshotSequence: computeSnapshotSequence(stateRows),
@@ -2227,6 +2264,16 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                   backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
                     row.threadId,
                   ),
+                  stalled: computeThreadStalled({
+                    nowMs,
+                    activeTurnId: sessionByThread.get(row.threadId)?.activeTurnId ?? null,
+                    lastActivityMs: threadStreamActivity.getLastActivityMs(row.threadId),
+                    pendingApprovalCount: row.pendingApprovalCount,
+                    pendingUserInputCount: row.pendingUserInputCount,
+                    backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
+                      row.threadId,
+                    ),
+                  }),
                   planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
                 }),
               ),
@@ -2478,6 +2525,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         return Option.none<OrchestrationThreadShell>();
       }
 
+      const nowMs = yield* Clock.currentTimeMillis;
       return Option.some({
         id: threadRow.value.threadId,
         projectId: threadRow.value.projectId,
@@ -2510,6 +2558,18 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
           threadRow.value.threadId,
         ),
+        stalled: computeThreadStalled({
+          nowMs,
+          activeTurnId: Option.isSome(sessionRow)
+            ? (mapSessionRow(sessionRow.value).activeTurnId ?? null)
+            : null,
+          lastActivityMs: threadStreamActivity.getLastActivityMs(threadRow.value.threadId),
+          pendingApprovalCount: threadRow.value.pendingApprovalCount,
+          pendingUserInputCount: threadRow.value.pendingUserInputCount,
+          backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
+            threadRow.value.threadId,
+          ),
+        }),
         planProgress: threadPlanProgress.getThreadPlanProgress(threadRow.value.threadId),
       } satisfies OrchestrationThreadShell);
     });

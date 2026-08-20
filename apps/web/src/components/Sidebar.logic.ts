@@ -127,6 +127,7 @@ export function buildBulkTitleRegenerationContextMenuItem(input: {
 export interface ThreadStatusPill {
   label:
     | "Working"
+    | "Stalled"
     | "Monitoring"
     | "Connecting"
     | "Completed"
@@ -142,8 +143,9 @@ export interface ThreadStatusPill {
 // then active work, then the actionable plan prompt, then passive
 // monitoring. A Monitoring sibling must never hide a Plan Ready thread.
 const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
-  "Pending Approval": 6,
-  "Awaiting Input": 5,
+  "Pending Approval": 7,
+  "Awaiting Input": 6,
+  Stalled: 5,
   Working: 4,
   Connecting: 4,
   "Plan Ready": 3,
@@ -160,6 +162,7 @@ type ThreadStatusInput = Pick<
   | "latestTurn"
   | "session"
   | "backgroundLiveness"
+  | "stalled"
 > & {
   lastVisitedAt?: string | undefined;
 };
@@ -462,6 +465,7 @@ export function resolveThreadRowClassName(input: {
 export type SidebarThreadStatus =
   | "approval"
   | "input"
+  | "stalled"
   | "working"
   | "monitoring"
   | "failed"
@@ -469,7 +473,7 @@ export type SidebarThreadStatus =
 
 type SidebarThreadStatusInput = Pick<
   SidebarThreadSummary,
-  "hasPendingApprovals" | "hasPendingUserInput" | "session" | "backgroundLiveness"
+  "hasPendingApprovals" | "hasPendingUserInput" | "session" | "backgroundLiveness" | "stalled"
 >;
 
 export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): SidebarThreadStatus {
@@ -478,6 +482,11 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
   }
   if (thread.hasPendingUserInput) {
     return "input";
+  }
+  // A wedged turn outranks Working: the turn is still "running" but has gone
+  // silent, so surface the stall rather than a lying Working spinner.
+  if (thread.stalled) {
+    return "stalled";
   }
   if (thread.session?.status === "running" || thread.session?.status === "starting") {
     return "working";
@@ -699,6 +708,15 @@ export function resolveThreadStatusPill(input: {
       label: "Awaiting Input",
       colorClass: "text-indigo-600 dark:text-indigo-300/90",
       dotClass: "bg-indigo-500 dark:bg-indigo-300/90",
+      pulse: false,
+    };
+  }
+
+  if (thread.stalled) {
+    return {
+      label: "Stalled",
+      colorClass: "text-orange-600 dark:text-orange-300/90",
+      dotClass: "bg-orange-500 dark:bg-orange-300/90",
       pulse: false,
     };
   }
