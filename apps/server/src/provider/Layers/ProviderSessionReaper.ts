@@ -13,13 +13,19 @@ import {
 } from "../Services/ProviderSessionReaper.ts";
 import { forkParked } from "../../serverActivation.ts";
 import { ProviderService } from "../Services/ProviderService.ts";
+import { ThreadStreamActivityService } from "../../orchestration/ThreadStreamActivity.ts";
 
 const DEFAULT_INACTIVITY_THRESHOLD_MS = 30 * 60 * 1000;
-const DEFAULT_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+const DEFAULT_SWEEP_INTERVAL_MS = 2 * 60 * 1000;
+// Stall watchdog: an active turn with no provider stream events for this long
+// is treated as wedged. Currently detection-only (logs), so it errs toward
+// surfacing candidates; raise to ~15 min when the reap action is enabled.
+const DEFAULT_STALL_THRESHOLD_MS = 8 * 60 * 1000;
 
 export interface ProviderSessionReaperLiveOptions {
   readonly inactivityThresholdMs?: number;
   readonly sweepIntervalMs?: number;
+  readonly stallThresholdMs?: number;
 }
 
 const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =>
@@ -27,12 +33,14 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
     const providerService = yield* ProviderService;
     const directory = yield* ProviderSessionDirectory;
     const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+    const threadStreamActivity = yield* ThreadStreamActivityService;
 
     const inactivityThresholdMs = Math.max(
       1,
       options?.inactivityThresholdMs ?? DEFAULT_INACTIVITY_THRESHOLD_MS,
     );
     const sweepIntervalMs = Math.max(1, options?.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS);
+    const stallThresholdMs = Math.max(1, options?.stallThresholdMs ?? DEFAULT_STALL_THRESHOLD_MS);
 
     const sweep = Effect.gen(function* () {
       const bindings = yield* directory.listBindings();
@@ -42,6 +50,39 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
       for (const binding of bindings) {
         if (binding.status === "stopped") {
           continue;
+        }
+
+        // Stall watchdog (detection-only): an active turn that has emitted no
+        // provider stream events for stallThresholdMs is likely wedged. We only
+        // log a candidate here — the reap action stays gated off until the
+        // signal is validated against real logs. Exempt threads waiting on the
+        // human (approvals / user-input) or running background work, so a
+        // healthy-but-quiet turn is never flagged.
+        const stallThread = yield* projectionSnapshotQuery
+          .getThreadShellById(binding.threadId)
+          .pipe(Effect.map(Option.getOrUndefined));
+        const stallActiveTurnId = stallThread?.session?.activeTurnId ?? null;
+        if (stallActiveTurnId != null) {
+          const lastActivityMs = threadStreamActivity.getLastActivityMs(binding.threadId);
+          if (lastActivityMs === undefined) {
+            // Never treat a missing entry (e.g. right after a restart) as
+            // infinite silence — seed it so the thread gets a full window.
+            threadStreamActivity.recordActivity(binding.threadId, now);
+          } else if (
+            now - lastActivityMs >= stallThresholdMs &&
+            stallThread?.hasPendingApprovals !== true &&
+            stallThread?.hasPendingUserInput !== true &&
+            stallThread?.backgroundLiveness == null
+          ) {
+            yield* Effect.logWarning("provider.session.stall-detected", {
+              threadId: binding.threadId,
+              provider: binding.provider,
+              activeTurnId: stallActiveTurnId,
+              silenceMs: now - lastActivityMs,
+              stallThresholdMs,
+              mode: "watch-only",
+            });
+          }
         }
 
         const lastSeenMs = Date.parse(binding.lastSeenAt);
