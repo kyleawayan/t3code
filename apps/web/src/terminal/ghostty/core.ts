@@ -8,9 +8,12 @@ import { GhosttyRuntime, loadGhosttyRuntime } from "./runtime";
 
 const GHOSTTY_SUCCESS = 0;
 const GHOSTTY_OUT_OF_SPACE = -3;
-// Ghostty allocates scrollback rows lazily, so an idle terminal pays little;
-// a fully-filled 120-col terminal at this cap costs ~150 MB of wasm memory.
-const MAX_SCROLLBACK_ROWS = 50_000;
+// Ghostty's max_scrollback is a byte budget for the scrollback page pool, not a
+// row count (the ABI header's "number of lines" wording is misleading). Each row
+// costs roughly cols * ~16 bytes since the pool stores the full row width, so at
+// ~120 cols (~1970 B/line) this holds ~65k lines and caps scrollback memory at
+// this size (only paid once a terminal is actually full).
+const MAX_SCROLLBACK_BYTES = 128 * 1024 * 1024;
 // wasm32 C ABI layout for GhosttyTerminalSelectionFormatOptions at the
 // libghostty-vt revision pinned alongside this module.
 const SELECTION_FORMAT_OPTIONS_SIZE = 16;
@@ -235,7 +238,12 @@ export class GhosttyTerminalCore {
     const options = this.runtime.alloc(optionsSize);
     this.runtime.setField(options, "GhosttyTerminalOptions", "cols", cols);
     this.runtime.setField(options, "GhosttyTerminalOptions", "rows", rows);
-    this.runtime.setField(options, "GhosttyTerminalOptions", "max_scrollback", MAX_SCROLLBACK_ROWS);
+    this.runtime.setField(
+      options,
+      "GhosttyTerminalOptions",
+      "max_scrollback",
+      MAX_SCROLLBACK_BYTES,
+    );
     this.terminalSlot = this.runtime.allocOpaque();
     const terminalResult = this.runtime.call("ghostty_terminal_new", 0, this.terminalSlot, options);
     this.runtime.free(options, optionsSize);
