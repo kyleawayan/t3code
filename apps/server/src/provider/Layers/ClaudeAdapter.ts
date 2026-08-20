@@ -2073,7 +2073,14 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       } catch {
         return undefined;
       }
-    });
+    }).pipe(
+      // getContextUsage can hang indefinitely on a wedged child — the try/catch
+      // above covers rejection, not a promise that never settles. Unbounded,
+      // this freezes turn completion AND the stop path (completeTurn runs it
+      // before close()). Bound it; a timeout means "no usage", never a hang.
+      Effect.timeoutOption("5 seconds"),
+      Effect.map(Option.getOrElse(() => undefined)),
+    );
     if (!usage) {
       return undefined;
     }
@@ -4476,10 +4483,26 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           { concurrency: 8, discard: true },
         ).pipe(Effect.timeoutOption("10 seconds"), Effect.ignore);
       }
-      yield* Effect.tryPromise({
+      // A wedged child never acks interrupt(): the promise neither resolves nor
+      // rejects, and this call runs INLINE on the single reactor worker — so
+      // unbounded it parks the worker forever and freezes every thread (the
+      // Stop-button whole-server freeze). Bound it; on timeout OR failure,
+      // escalate to a full teardown, whose close() ends the input stream and
+      // SIGKILLs the child — the only thing that reliably stops a hung run.
+      const interruptAcked = yield* Effect.tryPromise({
         try: () => context.query.interrupt(),
         catch: (cause) => toRequestError(threadId, "turn/interrupt", cause),
-      });
+      }).pipe(
+        Effect.timeoutOption("10 seconds"),
+        Effect.catch(() => Effect.succeed(Option.none<void>())),
+      );
+      if (Option.isNone(interruptAcked)) {
+        yield* Effect.logWarning("claude.interrupt.escalating-to-stop", {
+          threadId,
+          detail: "interrupt() did not settle within 10s; tearing down the session",
+        });
+        yield* stopSessionInternal(context, { emitExitEvent: true });
+      }
     },
   );
 
