@@ -443,6 +443,107 @@ export function resolveTerminalMouseTrackingState(
   };
 }
 
+// tmux (with `set-clipboard on`) copies by emitting OSC 52, not by touching the
+// OS: ESC ] 52 ; <targets> ; <base64> terminated by BEL or ST. The Ghostty WASM
+// parses the sequence but exposes no way to read the payload back, so we scan
+// the pty byte stream ourselves and forward it unchanged.
+const OSC52_MAX_PAYLOAD = 1_048_576; // ~768 KiB of text; drop past this, never truncate.
+
+export function decodeOsc52Payload(payload: string): string | null {
+  // Some emitters omit the "=" padding, which atob rejects; normalize first.
+  const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
+  try {
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return null; // Invalid base64: ignore the sequence entirely.
+  }
+}
+
+/** Watches a pty stream for OSC 52 clipboard writes and reports the decoded text. */
+export class Osc52ClipboardWatcher {
+  private state: "ground" | "esc" | "osc" | "oscEsc" = "ground";
+  private buffer = "";
+  private dropped = false;
+
+  constructor(private readonly onClipboardText: (text: string) => void) {}
+
+  reset(): void {
+    this.state = "ground";
+    this.buffer = "";
+    this.dropped = false;
+  }
+
+  scan(data: string): void {
+    for (let index = 0; index < data.length; index += 1) {
+      const code = data.charCodeAt(index);
+      switch (this.state) {
+        case "ground":
+          if (code === 0x1b) this.state = "esc";
+          break;
+        case "esc":
+          if (code === 0x5d) {
+            this.state = "osc";
+            this.buffer = "";
+            this.dropped = false;
+          } else {
+            this.state = code === 0x1b ? "esc" : "ground";
+          }
+          break;
+        case "osc":
+          if (code === 0x07) this.finish();
+          else if (code === 0x1b) this.state = "oscEsc";
+          else this.collect(data[index]!);
+          break;
+        case "oscEsc":
+          // ESC \ is ST (terminates); any other ESC-prefixed byte aborts.
+          if (code === 0x5c) this.finish();
+          else this.state = code === 0x1b ? "esc" : "ground";
+          break;
+      }
+    }
+  }
+
+  private collect(char: string): void {
+    if (this.dropped) return;
+    // Only ever inspect the short prefix. Running startsWith on the growing
+    // buffer would flatten the whole rope each call (O(n²) over a large paste),
+    // which is exactly the kind of payload OSC 52 carries.
+    if (this.buffer.length < 3) {
+      this.buffer += char;
+      if (!"52;".startsWith(this.buffer)) {
+        this.buffer = "";
+        this.dropped = true;
+      }
+      return;
+    }
+    if (this.buffer.length >= OSC52_MAX_PAYLOAD) {
+      this.buffer = "";
+      this.dropped = true;
+      return;
+    }
+    this.buffer += char;
+  }
+
+  private finish(): void {
+    const buffer = this.buffer;
+    this.state = "ground";
+    this.buffer = "";
+    if (this.dropped || !buffer.startsWith("52;")) return;
+    // Format: 52;<targets>;<payload>. targets names the selection (c/p/s/0-7 or
+    // empty); the browser has one clipboard, so it is ignored.
+    const payloadStart = buffer.indexOf(";", 3);
+    if (payloadStart === -1) return;
+    const payload = buffer.slice(payloadStart + 1);
+    // "?" is a clipboard *read* request; answering it would leak clipboard
+    // contents to the running program, so it is deliberately unsupported.
+    if (payload === "?" || payload.length === 0) return;
+    const text = decodeOsc52Payload(payload);
+    if (text !== null && text.length > 0) this.onClipboardText(text);
+  }
+}
+
 export function terminalWheelDeltaRows(
   event: Pick<WheelEvent, "deltaY" | "deltaMode">,
   cellHeight: number,
@@ -619,6 +720,7 @@ export class GhosttyTerminalSurface {
   private readonly reducedMotionMedia = window.matchMedia?.("(prefers-reduced-motion: reduce)");
   private inputLeft = -1;
   private inputTop = -1;
+  private readonly osc52 = new Osc52ClipboardWatcher((text) => this.options.onCopy(text));
 
   private constructor(
     mount: HTMLElement,
@@ -730,6 +832,7 @@ export class GhosttyTerminalSurface {
 
   write(data: string): void {
     if (this.disposed) return;
+    this.osc52.scan(data);
     this.core.write(data);
     this.synchronizeMouseTrackingState();
     // Restart the blink cycle from the visible phase so the cursor never sits
@@ -742,6 +845,10 @@ export class GhosttyTerminalSurface {
   resetAndWrite(data: string): void {
     if (this.disposed) return;
     this.lastMouseMotionData = "";
+    // Do NOT scan replays: the drawer replays the whole persisted session buffer
+    // on every mount, so scanning would re-fire an old yank onto the clipboard
+    // just by reopening the terminal. Only live write() drives clipboard writes.
+    this.osc52.reset();
     this.core.resetAndWrite(data);
     this.synchronizeMouseTrackingState();
     // A replayed session starts from the visible phase like any other write:
