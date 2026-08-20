@@ -18,6 +18,7 @@ import * as Stream from "effect/Stream";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as ThreadStreamActivity from "../../orchestration/ThreadStreamActivity.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
 import * as ProviderSessionRuntime from "../../persistence/ProviderSessionRuntime.ts";
 import { ProviderValidationError } from "../Errors.ts";
@@ -226,6 +227,7 @@ describe("ProviderSessionReaper", () => {
           searchThreads: () => Effect.succeed({ matches: [] }),
         }),
       ),
+      Layer.provideMerge(ThreadStreamActivity.layer),
       Layer.provideMerge(NodeServices.layer),
     );
 
