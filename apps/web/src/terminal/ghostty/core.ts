@@ -72,6 +72,12 @@ export interface GhosttyTheme {
   readonly cursor: GhosttyColor;
   /** CSS color the renderer overlays on selected cells; not sent to Ghostty. */
   readonly selectionBackground?: string;
+  /**
+   * ANSI palette. 16 entries fill indices 0-15 and leave 16-255 on Ghostty's
+   * defaults; a full 256 replaces the whole palette. Omitted resets to the
+   * built-in palette.
+   */
+  readonly palette?: readonly GhosttyColor[];
 }
 
 export interface GhosttyCell {
@@ -387,6 +393,33 @@ export class GhosttyTerminalCore {
       this.runtime.call("ghostty_terminal_set", this.terminal, option, color);
     }
     this.runtime.free(color, 3);
+    this.applyPalette(theme.palette);
+  }
+
+  // GhosttyColorRgb is 3 packed uint8s, so the GhosttyColorRgb[256] that option
+  // 14 (COLOR_PALETTE) requires is a contiguous 768-byte buffer, stride 3.
+  private applyPalette(palette: GhosttyTheme["palette"]): void {
+    if (!palette || palette.length === 0) {
+      // NULL resets to the built-in palette, so switching from a palette-carrying
+      // theme back to a plain one leaves no residue.
+      this.runtime.call("ghostty_terminal_set", this.terminal, 14, 0);
+      return;
+    }
+    const size = 256 * 3;
+    const pointer = this.runtime.alloc(size);
+    if (palette.length < 256) {
+      // Seed 16-255 with Ghostty's own default palette (25 = COLOR_PALETTE_DEFAULT,
+      // ignores OSC overrides) so a 16-color theme leaves the 6x6x6 cube and grays
+      // untouched.
+      this.runtime.call("ghostty_terminal_get", this.terminal, 25, pointer);
+    }
+    const bytes = this.runtime.bytes(pointer, size);
+    palette.forEach((entry, index) => {
+      if (index >= 256) return;
+      bytes.set([entry.r, entry.g, entry.b], index * 3);
+    });
+    this.runtime.call("ghostty_terminal_set", this.terminal, 14, pointer);
+    this.runtime.free(pointer, size);
   }
 
   scroll(deltaRows: number): void {
