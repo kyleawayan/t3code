@@ -18,6 +18,13 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+/**
+ * Shared stall threshold: an active turn with no provider stream events for this
+ * long is treated as wedged. Used by both ProviderSessionReaper (detection) and
+ * ProjectionSnapshotQuery (the sidebar stall pill) so the two agree.
+ */
+export const STALL_THRESHOLD_MS = 8 * 60 * 1000;
+
 export class ThreadStreamActivityService extends Context.Service<
   ThreadStreamActivityService,
   {

@@ -467,6 +467,13 @@ export const OrchestrationThreadShell = Schema.Struct({
    */
   backgroundLiveness: Schema.optional(Schema.NullOr(Schema.Literals(["working", "monitoring"]))),
   /**
+   * The active turn has emitted no provider stream events past the stall
+   * threshold and is not waiting on the human or running background work — a
+   * likely wedged turn, surfaced as the sidebar stall pill. Optional so
+   * old servers/clients interop; absent = not stalled.
+   */
+  stalled: Schema.optional(Schema.Boolean),
+  /**
    * Current plan step while a turn runs, for the Working indicators
    * (sidebar row, in-chat working line). Cleared when the turn settles —
    * never persists as stale UI. Optional so old servers/clients interop.

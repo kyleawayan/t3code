@@ -13,14 +13,18 @@ import {
 } from "../Services/ProviderSessionReaper.ts";
 import { forkParked } from "../../serverActivation.ts";
 import { ProviderService } from "../Services/ProviderService.ts";
-import { ThreadStreamActivityService } from "../../orchestration/ThreadStreamActivity.ts";
+import {
+  STALL_THRESHOLD_MS,
+  ThreadStreamActivityService,
+} from "../../orchestration/ThreadStreamActivity.ts";
 
 const DEFAULT_INACTIVITY_THRESHOLD_MS = 30 * 60 * 1000;
 const DEFAULT_SWEEP_INTERVAL_MS = 2 * 60 * 1000;
-// Stall watchdog: an active turn with no provider stream events for this long
-// is treated as wedged. Currently detection-only (logs), so it errs toward
-// surfacing candidates; raise to ~15 min when the reap action is enabled.
-const DEFAULT_STALL_THRESHOLD_MS = 8 * 60 * 1000;
+// Stall watchdog: an active turn with no provider stream events for this long is
+// treated as wedged. Detection-only for now (logs + sidebar pill), so it errs
+// toward surfacing candidates; raise when the reap action is enabled. Shared
+// with the sidebar projection via STALL_THRESHOLD_MS so the two agree.
+const DEFAULT_STALL_THRESHOLD_MS = STALL_THRESHOLD_MS;
 
 export interface ProviderSessionReaperLiveOptions {
   readonly inactivityThresholdMs?: number;
