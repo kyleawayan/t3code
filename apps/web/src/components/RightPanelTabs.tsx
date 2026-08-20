@@ -782,6 +782,10 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
           // The sheet overlays from the viewport top, so its tab bar keeps
           // the titlebar's height: a compact row re-centers the layout
           // controls a few pixels higher and the cluster jumps on open.
+          // In overlay (sheet) mode also mark the tab bar no-drag, or the OS
+          // eats clicks on the tabs and the add-surface button as window
+          // drags; inline mode gets this via the .drag-region rule instead.
+          props.mode !== "inline" && "[-webkit-app-region:no-drag]",
           props.mode === "inline" && !props.layoutControls ? "pr-28" : "pr-3",
           ownsDesktopTitleBar && "wco:pr-[calc(var(--workspace-native-controls-inset)+6rem)]",
           props.mode === "inline" && props.maximized && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
