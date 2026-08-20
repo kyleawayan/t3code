@@ -184,4 +184,64 @@ describe("terminal session reducers", () => {
 
     expect(state.buffer).toBe("🙂");
   });
+
+  it("advances streamOffset by output length and keeps resetGeneration stable", () => {
+    const first = applyTerminalAttachStreamEvent(EMPTY_TERMINAL_BUFFER_STATE, {
+      type: "output",
+      threadId: TARGET.threadId,
+      terminalId: TARGET.terminalId,
+      data: "abc",
+    });
+    const second = applyTerminalAttachStreamEvent(first, {
+      type: "output",
+      threadId: TARGET.threadId,
+      terminalId: TARGET.terminalId,
+      data: "de",
+    });
+
+    expect(first.streamOffset).toBe(3);
+    expect(second.streamOffset).toBe(5);
+    expect(second.resetGeneration).toBe(0);
+    // The tail a consumer would write equals exactly the appended chunk.
+    const delta = second.streamOffset - first.streamOffset;
+    expect(second.buffer.slice(second.buffer.length - delta)).toBe("de");
+  });
+
+  it("bumps resetGeneration when the buffer is replaced or cleared", () => {
+    const snapshot = applyTerminalAttachStreamEvent(EMPTY_TERMINAL_BUFFER_STATE, {
+      type: "snapshot",
+      snapshot: BASE_SNAPSHOT,
+    });
+    expect(snapshot.resetGeneration).toBe(1);
+    expect(snapshot.streamOffset).toBe(snapshot.buffer.length);
+
+    const cleared = applyTerminalAttachStreamEvent(snapshot, {
+      type: "cleared",
+      threadId: TARGET.threadId,
+      terminalId: TARGET.terminalId,
+    });
+    expect(cleared.resetGeneration).toBe(2);
+    expect(cleared.streamOffset).toBe(0);
+    expect(cleared.buffer).toBe("");
+  });
+
+  it("keeps the tail-delta valid after the byte cap trims the front", () => {
+    const first = applyTerminalAttachStreamEvent(
+      EMPTY_TERMINAL_BUFFER_STATE,
+      { type: "output", threadId: TARGET.threadId, terminalId: TARGET.terminalId, data: "abc" },
+      4,
+    );
+    const second = applyTerminalAttachStreamEvent(
+      first,
+      { type: "output", threadId: TARGET.threadId, terminalId: TARGET.terminalId, data: "def" },
+      4,
+    );
+
+    // Buffer trimmed to the last 4 bytes, but streamOffset still counts all 6,
+    // and the tail slice (delta 3 <= length 4) is exactly the new chunk.
+    expect(second.buffer).toBe("cdef");
+    expect(second.streamOffset).toBe(6);
+    const delta = second.streamOffset - first.streamOffset;
+    expect(second.buffer.slice(second.buffer.length - delta)).toBe("def");
+  });
 });
