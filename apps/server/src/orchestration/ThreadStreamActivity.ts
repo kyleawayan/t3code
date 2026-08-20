@@ -25,6 +25,30 @@ import * as Layer from "effect/Layer";
  */
 export const STALL_THRESHOLD_MS = 8 * 60 * 1000;
 
+/**
+ * A turn is "stalled" (wedged) when it is active but has streamed nothing past
+ * `thresholdMs`, and is neither waiting on the human nor running background
+ * work. A missing activity entry (e.g. right after a restart) is treated as
+ * fresh, never as silence. Single source of truth shared by ProviderSessionReaper
+ * (detection/watchdog) and ProjectionSnapshotQuery (the sidebar stall pill) so
+ * the two can never drift.
+ */
+export const computeThreadStalled = (input: {
+  readonly activeTurnId: string | null | undefined;
+  readonly lastActivityMs: number | undefined;
+  readonly nowMs: number;
+  readonly thresholdMs: number;
+  readonly hasPendingApprovals: boolean;
+  readonly hasPendingUserInput: boolean;
+  readonly backgroundLiveness: "working" | "monitoring" | null | undefined;
+}): boolean => {
+  if (input.activeTurnId == null) return false;
+  if (input.lastActivityMs === undefined) return false;
+  if (input.hasPendingApprovals || input.hasPendingUserInput) return false;
+  if (input.backgroundLiveness != null) return false;
+  return input.nowMs - input.lastActivityMs >= input.thresholdMs;
+};
+
 export class ThreadStreamActivityService extends Context.Service<
   ThreadStreamActivityService,
   {

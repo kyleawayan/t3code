@@ -47,7 +47,11 @@ import {
 import { ProjectionCheckpoint } from "../../persistence/Services/ProjectionCheckpoints.ts";
 import { ThreadBackgroundLivenessService } from "../ThreadBackgroundLiveness.ts";
 import { ThreadPlanProgressService } from "../ThreadPlanProgress.ts";
-import { STALL_THRESHOLD_MS, ThreadStreamActivityService } from "../ThreadStreamActivity.ts";
+import {
+  computeThreadStalled,
+  STALL_THRESHOLD_MS,
+  ThreadStreamActivityService,
+} from "../ThreadStreamActivity.ts";
 import { ProjectionProject } from "../../persistence/Services/ProjectionProjects.ts";
 import { ProjectionState } from "../../persistence/Services/ProjectionState.ts";
 import { ProjectionThreadActivity } from "../../persistence/Services/ProjectionThreadActivities.ts";
@@ -352,28 +356,6 @@ function toPersistenceSqlOrDecodeError(sqlOperation: string, decodeOperation: st
       ? toPersistenceDecodeError(decodeOperation)(cause)
       : toPersistenceSqlError(sqlOperation)(cause);
 }
-
-/**
- * A turn is "stalled" (wedged) when it is active but has streamed nothing past
- * the shared threshold, and is neither waiting on the human nor running
- * background work. A missing activity entry (e.g. right after a restart) is
- * treated as fresh, never as silence. Mirrors ProviderSessionReaper's detection
- * so the sidebar pill and the watchdog agree.
- */
-const computeThreadStalled = (input: {
-  readonly activeTurnId: string | null | undefined;
-  readonly lastActivityMs: number | undefined;
-  readonly nowMs: number;
-  readonly pendingApprovalCount: number;
-  readonly pendingUserInputCount: number;
-  readonly backgroundLiveness: "working" | "monitoring" | null | undefined;
-}): boolean => {
-  if (input.activeTurnId == null) return false;
-  if (input.lastActivityMs === undefined) return false;
-  if (input.pendingApprovalCount > 0 || input.pendingUserInputCount > 0) return false;
-  if (input.backgroundLiveness != null) return false;
-  return input.nowMs - input.lastActivityMs >= STALL_THRESHOLD_MS;
-};
 
 const makeProjectionSnapshotQuery = Effect.gen(function* () {
   const threadBackgroundLiveness = yield* ThreadBackgroundLivenessService;
@@ -2108,8 +2090,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                         nowMs,
                         activeTurnId: sessionByThread.get(row.threadId)?.activeTurnId ?? null,
                         lastActivityMs: threadStreamActivity.getLastActivityMs(row.threadId),
-                        pendingApprovalCount: row.pendingApprovalCount,
-                        pendingUserInputCount: row.pendingUserInputCount,
+                        thresholdMs: STALL_THRESHOLD_MS,
+                        hasPendingApprovals: row.pendingApprovalCount > 0,
+                        hasPendingUserInput: row.pendingUserInputCount > 0,
                         backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
                           row.threadId,
                         ),
@@ -2268,8 +2251,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                     nowMs,
                     activeTurnId: sessionByThread.get(row.threadId)?.activeTurnId ?? null,
                     lastActivityMs: threadStreamActivity.getLastActivityMs(row.threadId),
-                    pendingApprovalCount: row.pendingApprovalCount,
-                    pendingUserInputCount: row.pendingUserInputCount,
+                    thresholdMs: STALL_THRESHOLD_MS,
+                    hasPendingApprovals: row.pendingApprovalCount > 0,
+                    hasPendingUserInput: row.pendingUserInputCount > 0,
                     backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
                       row.threadId,
                     ),
@@ -2564,8 +2548,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             ? (mapSessionRow(sessionRow.value).activeTurnId ?? null)
             : null,
           lastActivityMs: threadStreamActivity.getLastActivityMs(threadRow.value.threadId),
-          pendingApprovalCount: threadRow.value.pendingApprovalCount,
-          pendingUserInputCount: threadRow.value.pendingUserInputCount,
+          thresholdMs: STALL_THRESHOLD_MS,
+          hasPendingApprovals: threadRow.value.pendingApprovalCount > 0,
+          hasPendingUserInput: threadRow.value.pendingUserInputCount > 0,
           backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
             threadRow.value.threadId,
           ),
