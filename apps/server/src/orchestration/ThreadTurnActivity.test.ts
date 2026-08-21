@@ -59,6 +59,7 @@ describe("shouldEmitTurnActivity", () => {
   const previous: TurnActivitySnapshot = {
     state: "generating",
     tokenChunks: 5,
+    generatedTokens: 20,
     lastTokenAtMs: 1_000,
     emittedAtMs: 1_000,
   };
@@ -89,6 +90,7 @@ describe("ThreadTurnActivityService", () => {
       threadId: "t",
       event: { type: "turn.started" } as never,
       streamKind: undefined,
+      deltaLength: undefined,
       openToolCount: 0,
       nowMs: 0,
     });
@@ -97,6 +99,7 @@ describe("ThreadTurnActivityService", () => {
         threadId: "t",
         event: { type: "content.delta" } as never,
         streamKind: "assistant_text",
+        deltaLength: undefined,
         openToolCount: 0,
         nowMs: i * 10,
       });
@@ -105,6 +108,7 @@ describe("ThreadTurnActivityService", () => {
       threadId: "t",
       event: { type: "content.delta" } as never,
       streamKind: "assistant_text",
+      deltaLength: undefined,
       openToolCount: 0,
       nowMs: 200,
     });
@@ -119,6 +123,7 @@ describe("ThreadTurnActivityService", () => {
       threadId: "t",
       event: { type: "content.delta" } as never,
       streamKind: "assistant_text",
+      deltaLength: undefined,
       openToolCount: 0,
       nowMs: 0,
     });
@@ -126,6 +131,7 @@ describe("ThreadTurnActivityService", () => {
       threadId: "t",
       event: { type: "turn.started" } as never,
       streamKind: undefined,
+      deltaLength: undefined,
       openToolCount: 0,
       nowMs: 1,
     });
@@ -138,6 +144,7 @@ describe("ThreadTurnActivityService", () => {
       threadId: "t",
       event: { type: "content.delta" } as never,
       streamKind: "assistant_text",
+      deltaLength: undefined,
       openToolCount: 0,
       nowMs: 0,
     });
@@ -145,9 +152,60 @@ describe("ThreadTurnActivityService", () => {
       threadId: "t",
       event: { type: "turn.completed" } as never,
       streamKind: undefined,
+      deltaLength: undefined,
       openToolCount: 0,
       nowMs: 1,
     });
     expect(service.get("t")).toBeUndefined();
+  });
+
+  it("accumulates real output volume, not just frame count", () => {
+    // A burst and a trickle must not look the same: the bar moves by how much
+    // was actually generated, taken from the delta every provider streams.
+    const service = make({ generatingEmitIntervalMs: 0 });
+    service.observe({
+      threadId: "t",
+      event: { type: "turn.started" } as never,
+      streamKind: undefined,
+      deltaLength: undefined,
+      openToolCount: 0,
+      nowMs: 0,
+    });
+    const small = service.observe({
+      threadId: "t",
+      event: { type: "content.delta" } as never,
+      streamKind: "assistant_text",
+      deltaLength: 8,
+      openToolCount: 0,
+      nowMs: 1,
+    });
+    const big = service.observe({
+      threadId: "t",
+      event: { type: "content.delta" } as never,
+      streamKind: "reasoning_text",
+      deltaLength: 400,
+      openToolCount: 0,
+      nowMs: 2,
+    });
+    expect(small?.generatedTokens).toBe(2);
+    // Reasoning counts the same as answer text — the thinking phase is exactly
+    // where the volume read matters.
+    expect(big?.generatedTokens).toBe(102);
+    // Frames still advance one at a time, so the two measures stay distinct.
+    expect(big?.tokenChunks).toBe(2);
+  });
+
+  it("omits volume entirely when a provider streams none", () => {
+    // Absent, not zero: the client reads absence as "fall back to frames".
+    const service = make({ generatingEmitIntervalMs: 0 });
+    const emitted = service.observe({
+      threadId: "t",
+      event: { type: "turn.started" } as never,
+      streamKind: undefined,
+      deltaLength: undefined,
+      openToolCount: 0,
+      nowMs: 0,
+    });
+    expect(emitted?.generatedTokens).toBeUndefined();
   });
 });

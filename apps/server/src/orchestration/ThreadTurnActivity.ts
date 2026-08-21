@@ -36,9 +36,14 @@ import * as Layer from "effect/Layer";
  */
 export const GENERATING_EMIT_INTERVAL_MS = 250;
 
+/** Characters per token, near enough for a progress read. */
+const CHARS_PER_TOKEN = 4;
+
 export interface TurnActivitySnapshot {
   readonly state: TurnActivityState;
   readonly tokenChunks: number;
+  /** Approximate tokens generated this turn, from streamed delta length. */
+  readonly generatedTokens: number;
   /** Epoch ms of the last token chunk, or undefined if none this turn. */
   readonly lastTokenAtMs: number | undefined;
   /** Epoch ms this snapshot was last published. */
@@ -122,6 +127,13 @@ export class ThreadTurnActivityService extends Context.Service<
       readonly threadId: string;
       readonly event: Pick<ProviderRuntimeEvent, "type">;
       readonly streamKind: string | undefined;
+      /**
+       * Characters in this delta, when the event carries one. Real output
+       * volume rather than a frame count, so a burst and a trickle no longer
+       * look the same — and it comes from the delta every provider already
+       * streams, so it stays provider-agnostic.
+       */
+      readonly deltaLength: number | undefined;
       readonly openToolCount: number;
       readonly nowMs: number;
     }) => ThreadTurnActivity | undefined;
@@ -164,6 +176,15 @@ export function make(options?: {
           ? 0
           : (previous?.tokenChunks ?? 0);
       const tokenChunks = carriedChunks + (resolved.tokenArrived ? 1 : 0);
+      const carriedTokens =
+        resolved.state === "idle" || input.event.type === "turn.started"
+          ? 0
+          : (previous?.generatedTokens ?? 0);
+      const generatedTokens =
+        carriedTokens +
+        (resolved.tokenArrived && input.deltaLength
+          ? Math.ceil(input.deltaLength / CHARS_PER_TOKEN)
+          : 0);
 
       if (
         !shouldEmitTurnActivity({
@@ -177,6 +198,7 @@ export function make(options?: {
         byThreadId.set(input.threadId, {
           ...previous!,
           tokenChunks,
+          generatedTokens,
           ...(resolved.tokenArrived ? { lastTokenAtMs: input.nowMs } : {}),
         });
         return undefined;
@@ -185,6 +207,7 @@ export function make(options?: {
       const snapshot: TurnActivitySnapshot = {
         state: resolved.state,
         tokenChunks,
+        generatedTokens,
         lastTokenAtMs: resolved.tokenArrived ? input.nowMs : previous?.lastTokenAtMs,
         emittedAtMs: input.nowMs,
       };
@@ -198,6 +221,10 @@ export function make(options?: {
         threadId: input.threadId,
         state: snapshot.state,
         tokenChunks: snapshot.tokenChunks,
+        // Omitted rather than zero when nothing has streamed: absent means
+        // "this provider gave us no volume", which the client reads as a cue
+        // to fall back to frame counting.
+        ...(snapshot.generatedTokens > 0 ? { generatedTokens: snapshot.generatedTokens } : {}),
         updatedAt: DateTime.formatIso(DateTime.makeUnsafe(input.nowMs)),
       } as ThreadTurnActivity;
     },

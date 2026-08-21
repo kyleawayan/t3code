@@ -1512,6 +1512,7 @@ const make = Effect.gen(function* () {
         threadId: thread.id,
         event,
         streamKind: event.type === "content.delta" ? event.payload.streamKind : undefined,
+        deltaLength: event.type === "content.delta" ? event.payload.delta.length : undefined,
         openToolCount: threadStreamActivity.hasOpenToolCall(thread.id) ? 1 : 0,
         nowMs: activityAtMs,
       });

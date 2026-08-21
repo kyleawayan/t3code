@@ -362,6 +362,16 @@ export const ThreadTurnActivity = Schema.Struct({
    * frame.
    */
   tokenChunks: NonNegativeInt,
+  /**
+   * Provider's own running count of tokens generated this turn, when it
+   * reports one.
+   *
+   * Optional by design rather than by lowest common denominator: Claude sends
+   * it, the others do not, and a client that has it can move the pulse by real
+   * output volume instead of by frame count. Absent means fall back to
+   * `tokenChunks`, so nothing here is provider-specific.
+   */
+  generatedTokens: Schema.optional(NonNegativeInt),
   updatedAt: IsoDateTime,
 });
 export type ThreadTurnActivity = typeof ThreadTurnActivity.Type;
