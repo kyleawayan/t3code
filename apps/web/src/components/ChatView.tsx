@@ -118,6 +118,8 @@ import {
 } from "../types";
 import { useTheme } from "../hooks/useTheme";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
+import { useTurnPulse } from "../hooks/useTurnPulse";
+import { formatQuietFor } from "./chat/turnPulse.logic";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -157,6 +159,7 @@ import {
   AlarmClockIcon,
   CheckCircle2Icon,
   ChevronDownIcon,
+  CircleAlertIcon,
   GitBranchIcon,
   WifiOffIcon,
 } from "lucide-react";
@@ -2208,6 +2211,10 @@ function ChatViewContent(props: ChatViewProps) {
   // not label fresh work). Falls back to the first pending step so an
   // all-pending freshly written plan labels the row, matching the chip and
   // the server's planProgress.
+  // Live liveness for the open thread: whether output is arriving right now,
+  // which is the one thing a spinner cannot tell you.
+  const turnPulse = useTurnPulse(activeThreadRef);
+  const interruptTurnRef = useRef<() => void>(() => {});
   const workingStepLabel = useMemo(() => {
     if (!activePlan || activePlan.turnId !== (activeLatestTurn?.turnId ?? null)) {
       return null;
@@ -4420,6 +4427,45 @@ function ChatViewContent(props: ChatViewProps) {
     }
     void handleSwitchCheckoutToThread();
   }, [gitStatusQuery.data?.hasWorkingTreeChanges, handleSwitchCheckoutToThread]);
+  /**
+   * The turn has produced nothing for long enough that no running tool,
+   * compaction, or pending question explains it.
+   *
+   * Sits above the composer because that is where your eyes are while you wait
+   * — the sidebar pill is for the threads you are not looking at. Stop is
+   * offered inline: by the time this appears, that is the decision.
+   */
+  const stalledTurnBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
+    if (turnPulse.kind !== "stalled") return null;
+    // Through a ref: onInterrupt is declared further down, and the banner has
+    // to be assembled up here with the rest of the composer stack.
+    return {
+      id: "turn-stalled",
+      variant: "warning",
+      urgent: true,
+      icon: <CircleAlertIcon />,
+      title: (
+        <span className="flex min-w-0 items-baseline gap-1.5">
+          <span className="shrink-0 font-medium text-foreground">
+            No output for {formatQuietFor(turnPulse.quietForMs)}
+          </span>
+          <span className="min-w-0 truncate text-muted-foreground">the agent may be stuck</span>
+        </span>
+      ),
+      actions: (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            interruptTurnRef.current();
+          }}
+        >
+          Stop
+        </Button>
+      ),
+    };
+  }, [turnPulse]);
+
   const composerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const isUrgentSystemItem = (item: ComposerBannerStackItem) =>
       item.urgent === true || item.variant === "error" || item.variant === "warning";
@@ -4429,8 +4475,10 @@ function ChatViewContent(props: ChatViewProps) {
       backgroundLivenessBannerItem === null ? [] : [backgroundLivenessBannerItem];
     const wokeThreadItems = wokeThreadBannerItem === null ? [] : [wokeThreadBannerItem];
     const parkedThreadItems = parkedThreadBannerItem === null ? [] : [parkedThreadBannerItem];
+    const stalledTurnItems = stalledTurnBannerItem === null ? [] : [stalledTurnBannerItem];
     if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
       return [
+        ...stalledTurnItems,
         ...urgentSystemItems,
         ...backgroundLivenessItems,
         ...calmSystemItems,
@@ -4439,6 +4487,7 @@ function ChatViewContent(props: ChatViewProps) {
       ];
     }
     return [
+      ...stalledTurnItems,
       ...urgentSystemItems,
       ...backgroundLivenessItems,
       ...calmSystemItems,
@@ -5257,6 +5306,9 @@ function ChatViewContent(props: ChatViewProps) {
         error instanceof Error ? error.message : "Failed to interrupt the current turn.",
       );
     }
+  };
+  interruptTurnRef.current = () => {
+    void onInterrupt();
   };
 
   const onRespondToApproval = useCallback(
@@ -6099,6 +6151,7 @@ function ChatViewContent(props: ChatViewProps) {
                 key={activeThread.id}
                 isWorking={isWorking}
                 workingStepLabel={workingStepLabel}
+                turnPulse={turnPulse}
                 activeTurnInProgress={isWorking || !latestTurnSettled}
                 activeTurnStartedAt={activeWorkStartedAt}
                 listRef={legendListRef}
