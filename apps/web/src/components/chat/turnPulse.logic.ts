@@ -1,4 +1,4 @@
-import type { ThreadTurnActivity } from "@t3tools/contracts";
+import type { ThreadTurnActivity, TurnPhase } from "@t3tools/contracts";
 
 /**
  * How long a turn may produce nothing, in a state where it should be producing,
@@ -80,6 +80,13 @@ export interface TurnPulseFill {
    * to empty) instead of tweening the width backward.
    */
   readonly fineCycle: number;
+  /**
+   * Which half of the turn is producing, when the provider separates thinking
+   * from the answer. Drives the mascot (dancing while thinking, typing while
+   * answering) and the coarse snap. Undefined for a turn that never reasons —
+   * the coarse fill then behaves as it always has.
+   */
+  readonly phase: TurnPhase | undefined;
 }
 
 /**
@@ -90,6 +97,12 @@ export interface TurnPulseFill {
  * but no measurable text. The coarse fill only ever moves forward; the fine
  * fill cycles so movement stays perceptible even when the coarse fill has
  * flattened near the top.
+ *
+ * When the turn separates thinking from the answer, the coarse fill is the
+ * *thinking* bar: it climbs on reasoning volume, then snaps to full the instant
+ * the answer starts (`phase === "answering"`) — the one moment thinking is
+ * provably done. That 100% is a real event, not a forecast. A turn that never
+ * reasons has no phase and keeps the plain asymptotic fill.
  */
 function resolveFill(activity: ThreadTurnActivity): TurnPulseFill {
   const usesTokens = activity.generatedTokens !== undefined;
@@ -98,9 +111,10 @@ function resolveFill(activity: ThreadTurnActivity): TurnPulseFill {
   const fineChunk = usesTokens ? FINE_CHUNK_TOKENS : FINE_CHUNK_FRAMES;
   const fineUnits = volume / fineChunk;
   return {
-    coarse: 1 - Math.exp(-volume / coarseScale),
+    coarse: activity.phase === "answering" ? 1 : 1 - Math.exp(-volume / coarseScale),
     fine: fineUnits - Math.floor(fineUnits),
     fineCycle: Math.floor(fineUnits),
+    phase: activity.phase,
   };
 }
 

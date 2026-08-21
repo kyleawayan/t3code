@@ -34,8 +34,21 @@ const fill = (over: Partial<TurnPulseFill> = {}): TurnPulseFill => ({
   coarse: 0.4,
   fine: 0.4,
   fineCycle: 0,
+  phase: undefined,
   ...over,
 });
+
+const mascotSrc = (over: Partial<TurnPulseFill> = {}) => {
+  const el = TurnPulse({
+    verdict: { kind: "moving", tokenChunks: 1, fill: fill(over) },
+    mascot: true,
+  }) as ReactElement<{ children: unknown[] }>;
+  const img = el.props.children.find(
+    (c): c is ReactElement<{ src: string }> =>
+      c != null && typeof c === "object" && (c as ReactElement).type === "img",
+  );
+  return img?.props.src;
+};
 
 describe("TurnPulse", () => {
   it("renders nothing when there is nothing to report", () => {
@@ -119,6 +132,16 @@ describe("TurnPulse", () => {
     };
     expect(hasImg(true)).toBe(true);
     expect(hasImg(false)).toBe(false);
+  });
+
+  it("swaps the mascot to the dancing gif while thinking, typing otherwise", () => {
+    const thinking = mascotSrc({ phase: "thinking" });
+    const answering = mascotSrc({ phase: "answering" });
+    const noPhase = mascotSrc({ phase: undefined });
+    // Thinking gets its own gif; answering and a phaseless turn share the typing
+    // gif. The exact URLs are Vite-hashed, so assert the relationship, not values.
+    expect(thinking).not.toBe(answering);
+    expect(answering).toBe(noPhase);
   });
 
   it("holds the coarse fill when a tool runs instead of resetting", () => {

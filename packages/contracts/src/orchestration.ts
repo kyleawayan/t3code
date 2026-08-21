@@ -352,6 +352,24 @@ export const TurnActivityState = Schema.Literals([
 ]);
 export type TurnActivityState = typeof TurnActivityState.Type;
 
+/**
+ * Which half of a turn is producing output, when the provider streams thinking
+ * separately from the answer.
+ *
+ * Orthogonal to `state`: `state` says whether tokens are arriving at all, this
+ * says whether those tokens are the model's reasoning or its answer. Lets a
+ * client render thinking and answering as distinct phases — a thinking bar that
+ * completes the instant the answer starts, rather than one undifferentiated
+ * crawl across both.
+ */
+export const TurnPhase = Schema.Literals([
+  /** Reasoning tokens are streaming and no answer token has arrived yet. */
+  "thinking",
+  /** The answer is streaming; set only once thinking has preceded it. */
+  "answering",
+]);
+export type TurnPhase = typeof TurnPhase.Type;
+
 export const ThreadTurnActivity = Schema.Struct({
   threadId: ThreadId,
   state: TurnActivityState,
@@ -372,6 +390,15 @@ export const ThreadTurnActivity = Schema.Struct({
    * `tokenChunks`, so nothing here is provider-specific.
    */
   generatedTokens: Schema.optional(NonNegativeInt),
+  /**
+   * Which half of the turn is producing, when the provider separates thinking
+   * from the answer. Sticky per turn: `"thinking"` while only reasoning has
+   * streamed, flips to `"answering"` on the first answer token *if* thinking
+   * preceded it, and stays absent for a turn that never streamed reasoning (so
+   * a non-thinking provider reads as one plain generating phase). Reset at turn
+   * start and cleared when the turn goes idle.
+   */
+  phase: Schema.optional(TurnPhase),
   updatedAt: IsoDateTime,
 });
 export type ThreadTurnActivity = typeof ThreadTurnActivity.Type;

@@ -1,5 +1,6 @@
 import { cn } from "~/lib/utils";
 
+import claudeThinkingGif from "../../assets/claude-thinking.gif";
 import claudeTypingGif from "../../assets/claude-typing.gif";
 import type { TurnPulseVerdict } from "./turnPulse.logic";
 
@@ -27,6 +28,9 @@ export function TurnPulse({
 }) {
   if (verdict.kind === "hidden") return null;
   const stalled = verdict.kind === "stalled";
+  // Dancing while the model reasons, typing once the answer streams. A turn
+  // that never separates thinking (no phase) keeps the typing mascot, as before.
+  const mascotSrc = verdict.fill.phase === "thinking" ? claudeThinkingGif : claudeTypingGif;
   // The whole turn is Claude's orange — including the pre-first-token wait and
   // tool pauses, which are still the turn working. The frozen fine bar already
   // signals a pause, so colour need not; only a stall changes it, to red.
@@ -59,7 +63,7 @@ export function TurnPulse({
         // its feet — the gif has transparent foot padding — and is the knob for
         // how much the feet overlap the bar. Pixelated keeps the art crisp.
         <img
-          src={claudeTypingGif}
+          src={mascotSrc}
           alt=""
           aria-hidden
           className="pointer-events-none -mb-[1px] h-6 w-auto self-start [image-rendering:pixelated]"

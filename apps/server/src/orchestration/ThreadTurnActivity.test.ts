@@ -60,6 +60,7 @@ describe("shouldEmitTurnActivity", () => {
     state: "generating",
     tokenChunks: 5,
     generatedTokens: 20,
+    phase: undefined,
     lastTokenAtMs: 1_000,
     emittedAtMs: 1_000,
   };
@@ -207,5 +208,70 @@ describe("ThreadTurnActivityService", () => {
       nowMs: 0,
     });
     expect(emitted?.generatedTokens).toBeUndefined();
+  });
+
+  it("tracks the thinking→answering phase across the turn", () => {
+    // The thinking bar's whole basis: reasoning marks the turn "thinking", and
+    // the first answer token flips it to "answering" — the honest boundary the
+    // client snaps the bar to full on.
+    const service = make({ generatingEmitIntervalMs: 0 });
+    const emit = (streamKind: string | undefined, nowMs: number, type = "content.delta") =>
+      service.observe({
+        threadId: "t",
+        event: { type } as never,
+        streamKind,
+        deltaLength: 8,
+        openToolCount: 0,
+        nowMs,
+      });
+
+    emit(undefined, 0, "turn.started");
+    expect(emit("reasoning_text", 1)?.phase).toBe("thinking");
+    expect(emit("reasoning_text", 2)?.phase).toBe("thinking");
+    expect(emit("assistant_text", 3)?.phase).toBe("answering");
+    // "answering" is terminal within a turn: a later reasoning delta must not
+    // drop the bar back down.
+    expect(emit("reasoning_text", 4)?.phase).toBe("answering");
+  });
+
+  it("leaves the phase absent for a turn that never reasons", () => {
+    // No reasoning ever → no phase, so a non-thinking provider reads as one
+    // plain generating phase rather than snapping to a dead full bar.
+    const service = make({ generatingEmitIntervalMs: 0 });
+    service.observe({
+      threadId: "t",
+      event: { type: "turn.started" } as never,
+      streamKind: undefined,
+      deltaLength: undefined,
+      openToolCount: 0,
+      nowMs: 0,
+    });
+    const answer = service.observe({
+      threadId: "t",
+      event: { type: "content.delta" } as never,
+      streamKind: "assistant_text",
+      deltaLength: 8,
+      openToolCount: 0,
+      nowMs: 1,
+    });
+    expect(answer?.phase).toBeUndefined();
+  });
+
+  it("resets the phase on a new turn", () => {
+    const service = make({ generatingEmitIntervalMs: 0 });
+    const seed = (type: string, streamKind: string | undefined, nowMs: number) =>
+      service.observe({
+        threadId: "t",
+        event: { type } as never,
+        streamKind,
+        deltaLength: 8,
+        openToolCount: 0,
+        nowMs,
+      });
+    seed("turn.started", undefined, 0);
+    seed("content.delta", "reasoning_text", 1);
+    seed("content.delta", "assistant_text", 2);
+    // A fresh turn drops the prior turn's "answering".
+    expect(seed("turn.started", undefined, 3)?.phase).toBeUndefined();
   });
 });

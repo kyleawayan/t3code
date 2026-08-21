@@ -797,11 +797,15 @@ describe("ProviderRuntimeIngestion", () => {
   // ThreadTurnActivity service — not the state machine in isolation.
   it("publishes turn liveness as real provider events flow through ingestion", async () => {
     const harness = await createHarness();
-    const published: Array<{ state: string; tokenChunks: number }> = [];
+    const published: Array<{ state: string; tokenChunks: number; phase: string | undefined }> = [];
     const unsubscribe = await Effect.runPromise(
       harness.turnActivity.subscribe((activity) =>
         Effect.sync(() => {
-          published.push({ state: activity.state, tokenChunks: activity.tokenChunks });
+          published.push({
+            state: activity.state,
+            tokenChunks: activity.tokenChunks,
+            phase: activity.phase,
+          });
         }),
       ),
     );
@@ -870,6 +874,14 @@ describe("ProviderRuntimeIngestion", () => {
     const chunks = generating.map((entry) => entry.tokenChunks);
     expect(chunks[0]).toBeGreaterThanOrEqual(1);
     expect(chunks).toEqual([...chunks].sort((a, b) => a - b));
+
+    // The reasoning delta marks the turn "thinking"; the answer delta flips it
+    // to "answering" — the boundary the client snaps the thinking bar to full
+    // on. Both must reach the wire in that order.
+    const phases = generating.map((entry) => entry.phase);
+    expect(phases).toContain("thinking");
+    expect(phases).toContain("answering");
+    expect(phases.indexOf("thinking")).toBeLessThan(phases.indexOf("answering"));
 
     // The turn is forgotten once it ends, so a reconnecting client re-derives
     // from the next event rather than inheriting a stale pulse.

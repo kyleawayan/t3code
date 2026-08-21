@@ -23,6 +23,7 @@ import type {
   ProviderRuntimeEvent,
   ThreadTurnActivity,
   TurnActivityState,
+  TurnPhase,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -44,6 +45,12 @@ export interface TurnActivitySnapshot {
   readonly tokenChunks: number;
   /** Approximate tokens generated this turn, from streamed delta length. */
   readonly generatedTokens: number;
+  /**
+   * Which half of the turn is producing. Sticky per turn: undefined until the
+   * first reasoning delta makes it `"thinking"`, then terminal `"answering"`
+   * once the answer starts. Stays undefined for a turn that never reasons.
+   */
+  readonly phase: TurnPhase | undefined;
   /** Epoch ms of the last token chunk, or undefined if none this turn. */
   readonly lastTokenAtMs: number | undefined;
   /** Epoch ms this snapshot was last published. */
@@ -185,8 +192,33 @@ export function make(options?: {
         (resolved.tokenArrived && input.deltaLength
           ? Math.ceil(input.deltaLength / CHARS_PER_TOKEN)
           : 0);
+      // Sticky per-turn phase. `streamKind` is set only on content deltas, so
+      // every other event carries the phase forward unchanged. "answering" is
+      // terminal within a turn: once the answer has begun the thinking bar has
+      // done its job, so a later reasoning delta (interleaved thinking) does not
+      // drop it back to "thinking". A turn that never reasons stays undefined,
+      // which the client reads as "one plain generating phase".
+      const carriedPhase =
+        resolved.state === "idle" || input.event.type === "turn.started"
+          ? undefined
+          : previous?.phase;
+      const phase: TurnPhase | undefined =
+        carriedPhase === "answering"
+          ? "answering"
+          : input.streamKind === "reasoning_text"
+            ? "thinking"
+            : input.streamKind === "assistant_text"
+              ? carriedPhase === "thinking"
+                ? "answering"
+                : carriedPhase
+              : carriedPhase;
 
+      // A phase flip (thinking→answering) is the boundary the client snaps the
+      // bar to full on, so it ships immediately even mid-"generating", where the
+      // rate throttle would otherwise hold it up to an interval.
+      const phaseChanged = previous?.phase !== phase;
       if (
+        !phaseChanged &&
         !shouldEmitTurnActivity({
           previous,
           nextState: resolved.state,
@@ -208,6 +240,7 @@ export function make(options?: {
         state: resolved.state,
         tokenChunks,
         generatedTokens,
+        phase,
         lastTokenAtMs: resolved.tokenArrived ? input.nowMs : previous?.lastTokenAtMs,
         emittedAtMs: input.nowMs,
       };
@@ -225,6 +258,7 @@ export function make(options?: {
         // "this provider gave us no volume", which the client reads as a cue
         // to fall back to frame counting.
         ...(snapshot.generatedTokens > 0 ? { generatedTokens: snapshot.generatedTokens } : {}),
+        ...(snapshot.phase !== undefined ? { phase: snapshot.phase } : {}),
         updatedAt: DateTime.formatIso(DateTime.makeUnsafe(input.nowMs)),
       } as ThreadTurnActivity;
     },

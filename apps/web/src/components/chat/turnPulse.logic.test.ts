@@ -138,6 +138,40 @@ describe("fill", () => {
   });
 });
 
+describe("phase", () => {
+  const fillAt = (over: Parameters<typeof activity>[0]) => {
+    const v = resolveTurnPulse({ activity: activity(over), nowMs: NOW });
+    return v.kind === "moving" ? v.fill : null;
+  };
+
+  it("snaps the coarse fill to full the instant the answer starts", () => {
+    // The one honest 100%: thinking is provably done once an answer token
+    // arrives, so the thinking bar completes — no forecast involved.
+    expect(fillAt({ phase: "answering", generatedTokens: 10 })?.coarse).toBe(1);
+  });
+
+  it("climbs the coarse fill on thinking volume but never reaches full while thinking", () => {
+    const low = fillAt({ phase: "thinking", generatedTokens: 1_000 })!;
+    const high = fillAt({ phase: "thinking", generatedTokens: 4_000 })!;
+    expect(high.coarse).toBeGreaterThan(low.coarse);
+    expect(high.coarse).toBeLessThan(1);
+  });
+
+  it("carries the phase onto the fill so the view can pick the mascot", () => {
+    expect(fillAt({ phase: "thinking" })?.phase).toBe("thinking");
+    expect(fillAt({ phase: "answering" })?.phase).toBe("answering");
+    expect(fillAt({})?.phase).toBeUndefined();
+  });
+
+  it("leaves the asymptotic fill untouched for a turn that never reasons", () => {
+    // No phase means a non-thinking provider — the coarse fill behaves exactly
+    // as it did before phases existed.
+    const fill = fillAt({ generatedTokens: 4_000 })!;
+    expect(fill.coarse).toBeGreaterThan(0);
+    expect(fill.coarse).toBeLessThan(1);
+  });
+});
+
 describe("formatQuietFor", () => {
   it("reads in the largest useful unit", () => {
     expect(formatQuietFor(9_000)).toBe("9s");
