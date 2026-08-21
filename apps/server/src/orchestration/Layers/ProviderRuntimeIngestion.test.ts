@@ -197,7 +197,10 @@ async function waitForThread(
 
 describe("ProviderRuntimeIngestion", () => {
   let runtime: ManagedRuntime.ManagedRuntime<
-    OrchestrationEngineService | ProviderRuntimeIngestionService | ProjectionSnapshotQuery,
+    | OrchestrationEngineService
+    | ProviderRuntimeIngestionService
+    | ProjectionSnapshotQuery
+    | ThreadTurnActivity.ThreadTurnActivityService,
     unknown
   > | null = null;
   let scope: Scope.Closeable | null = null;
@@ -316,12 +319,17 @@ describe("ProviderRuntimeIngestion", () => {
       updatedAt: createdAt,
     });
 
+    const turnActivity = await runtime.runPromise(
+      Effect.service(ThreadTurnActivity.ThreadTurnActivityService),
+    );
+
     return {
       engine,
       dispatch,
       readModel: () => Effect.runPromise(snapshotQuery.getSnapshot()),
       emit: provider.emit,
       setProviderSession: provider.setSession,
+      turnActivity,
       drain,
     };
   }
@@ -782,6 +790,90 @@ describe("ProviderRuntimeIngestion", () => {
       (thread) => thread.session?.status === "stopped" && thread.session?.activeTurnId === null,
       10_000,
     );
+  });
+
+  // The live liveness feed the sidebar pulse and the composer banner read. This
+  // is the whole chain — real provider events through ingestion into the
+  // ThreadTurnActivity service — not the state machine in isolation.
+  it("publishes turn liveness as real provider events flow through ingestion", async () => {
+    const harness = await createHarness();
+    const published: Array<{ state: string; tokenChunks: number }> = [];
+    const unsubscribe = await Effect.runPromise(
+      harness.turnActivity.subscribe((activity) =>
+        Effect.sync(() => {
+          published.push({ state: activity.state, tokenChunks: activity.tokenChunks });
+        }),
+      ),
+    );
+
+    const turnId = asTurnId("turn-liveness");
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-liveness-turn-started"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId: asThreadId("thread-1"),
+      turnId,
+    });
+    // Reasoning first, then assistant text: both are model output, so both must
+    // advance the pulse — the thinking phase is exactly where a wedge hides.
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-liveness-reasoning"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:01.000Z",
+      threadId: asThreadId("thread-1"),
+      turnId,
+      payload: { streamKind: "reasoning_text", delta: "thinking" },
+    });
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-liveness-assistant"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:02.000Z",
+      threadId: asThreadId("thread-1"),
+      turnId,
+      payload: { streamKind: "assistant_text", delta: "answer" },
+    });
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-liveness-turn-completed"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:03.000Z",
+      threadId: asThreadId("thread-1"),
+      turnId,
+      status: "completed",
+    });
+
+    // Provider events reach the worker over a PubSub, so wait for the read
+    // model to show the turn fully settled — same as every other test here —
+    // rather than draining, which returns before the events are enqueued.
+    await waitForThread(
+      harness.readModel,
+      (thread) => thread.session?.status === "ready" && thread.session?.activeTurnId === null,
+    );
+    await harness.drain();
+    unsubscribe();
+
+    const states = published.map((entry) => entry.state);
+    // A turn opens quiet, both deltas report generating, and it ends idle.
+    expect(states[0]).toBe("quiet");
+    expect(states).toContain("generating");
+    expect(states.at(-1)).toBe("idle");
+
+    // The pulse only ever advances on a real token and never regresses. How
+    // many "generating" frames reach the wire is timing-dependent (deltas
+    // inside one throttle window collapse — the token is still counted, which
+    // the service unit test pins), so assert the invariant, not the frame count.
+    const generating = published.filter((entry) => entry.state === "generating");
+    expect(generating.length).toBeGreaterThan(0);
+    const chunks = generating.map((entry) => entry.tokenChunks);
+    expect(chunks[0]).toBeGreaterThanOrEqual(1);
+    expect(chunks).toEqual([...chunks].sort((a, b) => a - b));
+
+    // The turn is forgotten once it ends, so a reconnecting client re-derives
+    // from the next event rather than inheriting a stale pulse.
+    expect(harness.turnActivity.get("thread-1")).toBeUndefined();
   });
 
   // The sidebar reads "Working" off the session status alone, so a session left
