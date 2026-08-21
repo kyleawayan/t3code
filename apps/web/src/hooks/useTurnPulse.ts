@@ -5,6 +5,7 @@ import { useEnvironmentQuery } from "../state/query";
 import { threadEnvironment } from "../state/threads";
 import {
   resolveTurnPulse,
+  TURN_PULSE_QUIET_WARN_AFTER_MS,
   TURN_PULSE_WARN_AFTER_MS,
   type TurnPulseVerdict,
 } from "../components/chat/turnPulse.logic";
@@ -46,7 +47,12 @@ export function useTurnPulse(threadRef: ScopedThreadRef | null): TurnPulseVerdic
     () =>
       activity === undefined
         ? HIDDEN
-        : resolveTurnPulse({ activity, nowMs, warnAfterMs: TURN_PULSE_WARN_AFTER_MS }),
+        : resolveTurnPulse({
+            activity,
+            nowMs,
+            warnAfterMs: TURN_PULSE_WARN_AFTER_MS,
+            quietWarnAfterMs: TURN_PULSE_QUIET_WARN_AFTER_MS,
+          }),
     [activity, nowMs],
   );
 }
