@@ -73,6 +73,7 @@ function makeReadModel(
       readonly updatedAt: string;
     } | null;
     readonly backgroundLiveness?: "working" | "monitoring" | null;
+    readonly hasPendingApprovals?: boolean;
     readonly latestTurn?: {
       readonly turnId: TurnId;
       readonly state: "running" | "interrupted" | "completed" | "error";
@@ -116,7 +117,7 @@ function makeReadModel(
       settledOverride: null,
       settledAt: null,
       latestUserMessageAt: null,
-      hasPendingApprovals: false,
+      hasPendingApprovals: thread.hasPendingApprovals ?? false,
       hasPendingUserInput: false,
       hasActionableProposedPlan: false,
       latestTurn: thread.latestTurn ?? null,
@@ -174,6 +175,7 @@ describe("ProviderSessionReaper", () => {
     readonly deadSessionGraceMs?: number;
     readonly sweepIntervalMs?: number;
     readonly stopSessionTimeoutMs?: number;
+    readonly stallCutoffMs?: number | null;
   }) {
     const stoppedThreadIds = new Set<ThreadId>();
     const dispatchedCommands: Array<OrchestrationCommand> = [];
@@ -244,6 +246,7 @@ describe("ProviderSessionReaper", () => {
       stallThresholdMs: 1_000,
       deadSessionGraceMs: input.deadSessionGraceMs ?? 1_000,
       stopSessionTimeoutMs: input.stopSessionTimeoutMs ?? 15_000,
+      stallCutoffMs: input.stallCutoffMs === undefined ? null : input.stallCutoffMs,
     }).pipe(
       Layer.provideMerge(providerSessionDirectoryLayer),
       Layer.provideMerge(runtimeRepositoryLayer),
@@ -802,6 +805,7 @@ describe("ProviderSessionReaper", () => {
     const now = "2026-01-01T00:00:00.000Z";
     const harness = await createHarness({
       sweepIntervalMs: 5,
+      stallCutoffMs: null,
       readModel: makeReadModel([
         {
           id: threadId,
@@ -995,5 +999,123 @@ describe("ProviderSessionReaper", () => {
       wedgedThreadId,
       nextThreadId,
     ]);
+  });
+
+  it("ends a turn that stays silent past the cutoff", async () => {
+    const threadId = ThreadId.make("thread-reaper-cutoff");
+    const turnId = TurnId.make("turn-reaper-cutoff");
+    const now = "2026-01-01T00:00:00.000Z";
+    const harness = await createHarness({
+      stallCutoffMs: 5 * 60 * 1000,
+      readModel: makeReadModel([
+        {
+          id: threadId,
+          session: {
+            threadId: threadId,
+            status: "running",
+            providerName: "claudeAgent",
+            runtimeMode: "full-access",
+            activeTurnId: turnId,
+            lastError: null,
+            updatedAt: now,
+          },
+        },
+      ]),
+    });
+    const repository = await runtime!.runPromise(
+      Effect.service(ProviderSessionRuntime.ProviderSessionRuntimeRepository),
+    );
+    await runtime!.runPromise(
+      repository.upsert({
+        threadId,
+        providerName: "claudeAgent",
+        providerInstanceId: null,
+        adapterKey: "claudeAgent",
+        runtimeMode: "full-access",
+        status: "running",
+        lastSeenAt: "2026-04-14T00:00:00.000Z",
+        resumeCursor: { opaque: "resume-cutoff" },
+        runtimePayload: null,
+      }),
+    );
+    const streamActivity = await runtime!.runPromise(
+      Effect.service(ThreadStreamActivity.ThreadStreamActivityService),
+    );
+    const nowMs = await Effect.runPromise(Clock.currentTimeMillis);
+    streamActivity.recordActivity(threadId, nowMs - 6 * 60 * 1000);
+
+    await startReaper();
+    await waitFor(() => harness.stopSession.mock.calls.length === 1);
+
+    expect(harness.stopSession.mock.calls[0]?.[0]).toEqual({ threadId });
+    // The user is told the turn was ended, not left to wonder.
+    const notices = harness.dispatchedCommands.filter(
+      (command) =>
+        command.type === "thread.activity.append" &&
+        command.activity.kind === "provider.turn.stall-stopped",
+    );
+    expect(notices).toHaveLength(1);
+  });
+
+  // The three states in which a healthy Claude turn legitimately streams
+  // nothing. Each must survive silence far past the cutoff untouched — killing
+  // a running build is worse than the bug this watchdog exists for.
+  it.each([
+    { label: "an open tool call", open: true, compacting: false, approval: false },
+    { label: "compaction", open: false, compacting: true, approval: false },
+    { label: "a pending approval", open: false, compacting: false, approval: true },
+  ])("never ends a turn during $label", async ({ open, compacting, approval }) => {
+    const threadId = ThreadId.make("thread-reaper-exempt");
+    const turnId = TurnId.make("turn-reaper-exempt");
+    const now = "2026-01-01T00:00:00.000Z";
+    const harness = await createHarness({
+      stallCutoffMs: 5 * 60 * 1000,
+      readModel: makeReadModel([
+        {
+          id: threadId,
+          session: {
+            threadId,
+            status: "running",
+            providerName: "claudeAgent",
+            runtimeMode: "full-access",
+            activeTurnId: turnId,
+            lastError: null,
+            updatedAt: now,
+          },
+          hasPendingApprovals: approval,
+        },
+      ]),
+    });
+    const repository = await runtime!.runPromise(
+      Effect.service(ProviderSessionRuntime.ProviderSessionRuntimeRepository),
+    );
+    await runtime!.runPromise(
+      repository.upsert({
+        threadId,
+        providerName: "claudeAgent",
+        providerInstanceId: null,
+        adapterKey: "claudeAgent",
+        runtimeMode: "full-access",
+        status: "running",
+        lastSeenAt: "2026-04-14T00:00:00.000Z",
+        resumeCursor: { opaque: "resume-exempt" },
+        runtimePayload: null,
+      }),
+    );
+    const streamActivity = await runtime!.runPromise(
+      Effect.service(ThreadStreamActivity.ThreadStreamActivityService),
+    );
+    const nowMs = await Effect.runPromise(Clock.currentTimeMillis);
+    // Twenty minutes of silence — well past anything the watchdog would
+    // otherwise act on.
+    streamActivity.recordActivity(threadId, nowMs - 20 * 60 * 1000);
+    if (open) streamActivity.openToolCall(threadId, "item-long-bash");
+    if (compacting) streamActivity.setCompacting(threadId, true);
+
+    await startReaper();
+    await Effect.runPromise(drainFibers);
+
+    expect(harness.stopSession).not.toHaveBeenCalled();
+    expect(harness.dispatchedCommands).toHaveLength(0);
   });
 });

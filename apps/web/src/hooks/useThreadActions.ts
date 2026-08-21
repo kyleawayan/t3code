@@ -470,6 +470,24 @@ export function useThreadActions() {
     ],
   );
 
+  /**
+   * Force a thread back to a usable state.
+   *
+   * `thread.session.stop` clears the session and its active turn in the read
+   * model whether or not the provider answers, so this works on exactly the
+   * threads nothing else can reach: a turn that will not end, a session whose
+   * process is gone. It is the manual counterpart to the server's stall
+   * watchdog, for when you would rather not wait for it.
+   */
+  const resetThreadSession = useCallback(
+    async (target: ScopedThreadRef) =>
+      stopThreadSession({
+        environmentId: target.environmentId,
+        input: { threadId: target.threadId },
+      }),
+    [stopThreadSession],
+  );
+
   const settleThread = useCallback(
     async (target: ScopedThreadRef) => {
       // Version skew: never send the command to a server that predates it —
@@ -710,6 +728,7 @@ export function useThreadActions() {
       pinThread,
       unpinThread,
       reorderPinnedThread,
+      resetThreadSession,
     }),
     [
       archiveThread,
@@ -717,6 +736,7 @@ export function useThreadActions() {
       deleteThread,
       pinThread,
       reorderPinnedThread,
+      resetThreadSession,
       settleThread,
       snoozeThread,
       unarchiveThread,

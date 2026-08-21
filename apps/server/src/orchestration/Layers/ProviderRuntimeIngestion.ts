@@ -1508,6 +1508,33 @@ const make = Effect.gen(function* () {
       const activityAtMs = yield* Clock.currentTimeMillis;
       threadStreamActivity.recordActivity(thread.id, activityAtMs);
 
+      // Track the two states in which a healthy Claude turn streams nothing at
+      // all, so the watchdog can exempt them instead of calling them wedged.
+      // A foreground tool call is silent from tool_use to tool_result (the
+      // CLI's tool_progress heartbeat is env-gated off here), and compaction is
+      // one long summarization call between its start marker and its boundary.
+      if (
+        (event.type === "item.started" || event.type === "item.completed") &&
+        event.itemId !== undefined &&
+        isToolLifecycleItemType(event.payload.itemType)
+      ) {
+        if (event.type === "item.started") {
+          threadStreamActivity.openToolCall(thread.id, event.itemId);
+        } else {
+          threadStreamActivity.closeToolCall(thread.id, event.itemId);
+        }
+      }
+      if (event.type === "session.state.changed") {
+        threadStreamActivity.setCompacting(thread.id, event.payload.reason === "status:compacting");
+      } else if (event.type === "thread.state.changed" && event.payload.state === "compacted") {
+        threadStreamActivity.setCompacting(thread.id, false);
+      } else if (event.type === "session.exited" || event.type === "turn.completed") {
+        // A turn that ends with a tool still open (interrupted mid-call, or a
+        // session torn down) must not leave the thread permanently exempt.
+        threadStreamActivity.clear(thread.id);
+        threadStreamActivity.recordActivity(thread.id, activityAtMs);
+      }
+
       let loadedThreadDetail: OrchestrationThread | null | undefined;
       const getLoadedThreadDetail = () =>
         Effect.gen(function* () {

@@ -1758,6 +1758,7 @@ export default function Sidebar() {
     reorderPinnedThread,
     archiveThread,
     deleteThread,
+    resetThreadSession,
   } = useThreadActions();
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
@@ -2538,6 +2539,30 @@ export default function Sidebar() {
     },
     [planForwardNavigation, settleThread],
   );
+  const attemptResetSession = useCallback(
+    (threadRef: ScopedThreadRef) => {
+      void (async () => {
+        const result = await resetThreadSession(threadRef);
+        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+          const error = squashAtomCommandFailure(result);
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "Failed to reset session",
+              description: error instanceof Error ? error.message : "An error occurred.",
+            }),
+          );
+          return;
+        }
+        toastManager.add({
+          type: "success",
+          title: "Session reset",
+          description: "The thread's provider session was stopped and its turn cleared.",
+        });
+      })();
+    },
+    [resetThreadSession],
+  );
   const attemptUnsettle = useCallback(
     (threadRef: ScopedThreadRef) => {
       void (async () => {
@@ -3099,6 +3124,7 @@ export default function Sidebar() {
               isRegeneratingTitle,
               isRunning:
                 thread.session?.status === "running" && thread.session.activeTurnId != null,
+              hasLiveSession: thread.session != null && thread.session.status !== "stopped",
               supports: {
                 settlement: supportsSettlement,
                 snooze: supportsSnooze,
@@ -3178,6 +3204,9 @@ export default function Sidebar() {
             }
             return;
           }
+          case "reset-session":
+            attemptResetSession(threadRef);
+            return;
           case "mark-unread":
             markThreadUnread(threadKey, thread.latestTurn?.completedAt);
             return;

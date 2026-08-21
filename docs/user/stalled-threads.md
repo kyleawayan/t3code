@@ -1,13 +1,17 @@
 # When a thread stops responding
 
 A thread that is mid-turn shows **Working**. If the agent goes silent — no output of any
-kind, not even thinking — for several minutes, T3 Code stops showing Working and shows
-**Stalled** instead, and writes a line into the thread saying how long it has been quiet.
+kind, not even thinking — for two minutes, T3 Code shows **Stalled** instead and writes a
+line into the thread saying how long it has been quiet. If the silence reaches five
+minutes, the turn is ended and the thread says so. Send the message again to pick it up.
 
-Stalled is a warning, not a verdict. A turn can legitimately go quiet inside one long
-command, so T3 Code never cancels a stalled turn on your behalf. When you decide it is
-stuck, press **Stop**: that ends the turn and hands the thread back to you, even if the
-agent is wedged and never answers.
+Silence only counts when the agent should be producing something. A running command, a
+context compaction, a question waiting on your answer, and background work all keep a
+thread healthy for as long as they take, however quiet they are.
+
+You never have to wait for either timer. **Stop** ends the turn immediately, and
+**Reset session** in the thread's menu clears a thread that will not respond to anything
+else.
 
 ## Threads that were left running
 
