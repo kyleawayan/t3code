@@ -13,8 +13,13 @@ import type { ThreadTurnActivity } from "@t3tools/contracts";
 export const TURN_PULSE_WARN_AFTER_MS = 10_000;
 
 export type TurnPulseVerdict =
-  /** Nothing to show: no turn, or silence that needs no explanation. */
+  /** Nothing to show: no turn running. */
   | { readonly kind: "hidden" }
+  /**
+   * Working, but not emitting — a tool is running or a question is waiting.
+   * Distinct from stalled: this silence has a reason, so it must never alarm.
+   */
+  | { readonly kind: "paused"; readonly tokenChunks: number }
   /** Tokens are arriving. `tokenChunks` only ever advances on a real token. */
   | { readonly kind: "moving"; readonly tokenChunks: number }
   /** Should be producing and is not. */
@@ -36,11 +41,13 @@ export function resolveTurnPulse(input: {
 }): TurnPulseVerdict {
   const activity = input.activity;
   if (!activity) return { kind: "hidden" };
-  // A tool call and a pending question are silent by nature. Showing a frozen
-  // pulse through either would train you to ignore it, which costs the one time
-  // it means something.
-  if (activity.state === "tool" || activity.state === "waiting" || activity.state === "idle") {
-    return { kind: "hidden" };
+  if (activity.state === "idle") return { kind: "hidden" };
+  // A tool call and a pending question are silent by nature, so they never
+  // alarm — but they keep the same widget. Swapping it out for a different
+  // indicator mid-turn made the row flicker between two shapes every time the
+  // agent touched a tool, which is exactly the churn this is meant to remove.
+  if (activity.state === "tool" || activity.state === "waiting") {
+    return { kind: "paused", tokenChunks: activity.tokenChunks };
   }
   const updatedAtMs = Date.parse(activity.updatedAt);
   if (Number.isNaN(updatedAtMs)) {
