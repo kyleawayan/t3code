@@ -50,6 +50,19 @@ export const STALL_WARN_MS = 2 * 60 * 1000;
  */
 export const STALL_CUTOFF_MS = 5 * 60 * 1000;
 
+/**
+ * Silence past this ends the turn even while a tool call is open or compaction
+ * is running.
+ *
+ * Those states explain silence, but not unlimited silence. The CLI caps its own
+ * Bash calls at 600s, so a tool that has produced nothing for far longer is as
+ * wedged as one with no tool at all — and without a bound here, a hang that
+ * begins while a tool is open would be exempt forever, which is precisely the
+ * thread that never comes back. Generous enough that a real long-running tool
+ * finishes well inside it.
+ */
+export const STALL_QUIET_STATE_CUTOFF_MS = 30 * 60 * 1000;
+
 export interface ThreadStalledInput {
   readonly activeTurnId: string | null | undefined;
   readonly lastActivityMs: number | undefined;
@@ -62,6 +75,12 @@ export interface ThreadStalledInput {
   readonly hasOpenToolCall?: boolean | undefined;
   /** Compaction is running: one long summarization call, no progress events. */
   readonly isCompacting?: boolean | undefined;
+  /**
+   * Threshold to use instead when a tool call is open or compaction is running.
+   * Omitted means those states are exempt outright — which is what the warning
+   * and the sidebar pill want, since a running tool is not news.
+   */
+  readonly quietStateThresholdMs?: number | undefined;
 }
 
 /**
@@ -74,12 +93,17 @@ export interface ThreadStalledInput {
 export const computeThreadStalled = (input: ThreadStalledInput): boolean => {
   if (input.activeTurnId == null) return false;
   if (input.lastActivityMs === undefined) return false;
+  // Waiting on a person, or on background work that outlives the turn, is
+  // unbounded by nature — neither can ever be called wedged.
   if (input.hasPendingApprovals || input.hasPendingUserInput) return false;
   if (input.backgroundLiveness != null) return false;
-  // Silence is the expected behavior in both of these, so it proves nothing.
-  if (input.hasOpenToolCall === true) return false;
-  if (input.isCompacting === true) return false;
-  return input.nowMs - input.lastActivityMs >= input.thresholdMs;
+
+  // A running tool or a compaction explains silence, so it is judged on a much
+  // longer clock — or on none at all, for callers that only want to warn.
+  const inQuietState = input.hasOpenToolCall === true || input.isCompacting === true;
+  if (inQuietState && input.quietStateThresholdMs === undefined) return false;
+  const thresholdMs = inQuietState ? input.quietStateThresholdMs! : input.thresholdMs;
+  return input.nowMs - input.lastActivityMs >= thresholdMs;
 };
 
 export class ThreadStreamActivityService extends Context.Service<

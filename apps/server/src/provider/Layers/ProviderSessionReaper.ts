@@ -26,6 +26,7 @@ import { ProviderService } from "../Services/ProviderService.ts";
 import {
   computeThreadStalled,
   STALL_CUTOFF_MS,
+  STALL_QUIET_STATE_CUTOFF_MS,
   STALL_WARN_MS,
   ThreadStreamActivityService,
 } from "../../orchestration/ThreadStreamActivity.ts";
@@ -41,6 +42,10 @@ const DEFAULT_SWEEP_INTERVAL_MS = 2 * 60 * 1000;
 // notice agree.
 const DEFAULT_STALL_THRESHOLD_MS = STALL_WARN_MS;
 const DEFAULT_STALL_CUTOFF_MS = STALL_CUTOFF_MS;
+// The same cut-off for a thread whose silence has an explanation (a tool call
+// in flight, a compaction). Longer, but not infinite: a hang that begins inside
+// a tool call would otherwise be exempt for as long as it lasted.
+const DEFAULT_STALL_QUIET_STATE_CUTOFF_MS = STALL_QUIET_STATE_CUTOFF_MS;
 // Zombie recovery: a thread whose read model still names an active turn while
 // no adapter holds a session for it has no process left to finish that turn.
 // Wait this long after the binding was last written before believing it, so a
@@ -58,6 +63,7 @@ export interface ProviderSessionReaperLiveOptions {
   readonly stallThresholdMs?: number;
   /** Silence past this ends the turn. Set to null to warn only, never stop. */
   readonly stallCutoffMs?: number | null;
+  readonly stallQuietStateCutoffMs?: number;
   readonly deadSessionGraceMs?: number;
   readonly stopSessionTimeoutMs?: number;
 }
@@ -80,6 +86,10 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
       options?.stallCutoffMs === null
         ? null
         : Math.max(stallThresholdMs, options?.stallCutoffMs ?? DEFAULT_STALL_CUTOFF_MS);
+    const stallQuietStateCutoffMs = Math.max(
+      stallCutoffMs ?? 1,
+      options?.stallQuietStateCutoffMs ?? DEFAULT_STALL_QUIET_STATE_CUTOFF_MS,
+    );
     const deadSessionGraceMs = Math.max(
       0,
       options?.deadSessionGraceMs ?? DEFAULT_DEAD_SESSION_GRACE_MS,
@@ -371,7 +381,11 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
             // interrupt, and stopping tears the child down for real.
             if (
               stallCutoffMs !== null &&
-              computeThreadStalled({ ...stalledInput, thresholdMs: stallCutoffMs })
+              computeThreadStalled({
+                ...stalledInput,
+                thresholdMs: stallCutoffMs,
+                quietStateThresholdMs: stallQuietStateCutoffMs,
+              })
             ) {
               yield* Effect.logWarning("provider.session.stall-cutoff", {
                 threadId: binding.threadId,
@@ -516,6 +530,7 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
           sweepIntervalMs,
           stallThresholdMs,
           stallCutoffMs,
+          stallQuietStateCutoffMs,
           deadSessionGraceMs,
         });
       });
