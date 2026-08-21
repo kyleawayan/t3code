@@ -61,10 +61,26 @@ describe("resolveTurnPulse", () => {
     if (verdict.kind === "stalled") expect(verdict.quietForMs).toBe(15_000);
   });
 
-  it("treats a turn awaiting its first token the same as one that went quiet", () => {
-    // The reported failure: the request goes out and no token ever comes back.
+  it("gives a turn awaiting its first token a far longer rope", () => {
+    // Seen in real use: after a tool result hands a large context back, the
+    // model routinely takes 10-20s to emit its first token. Judging that on the
+    // mid-stream clock painted every gap between tool calls orange.
+    const at = (updatedAt: string) =>
+      resolveTurnPulse({
+        activity: activity({ state: "quiet", tokenChunks: 0, updatedAt }),
+        nowMs: NOW,
+      }).kind;
+    // 20s of waiting for a first token is healthy.
+    expect(at("2026-08-21T00:00:10.000Z")).toBe("moving");
+    // Past 45s it is not.
+    expect(at("2026-08-20T23:59:40.000Z")).toBe("stalled");
+  });
+
+  it("still alarms fast when output stops mid-stream", () => {
+    // Tokens that were flowing and stopped is abnormal within seconds — that is
+    // the wedge this exists to catch.
     const verdict = resolveTurnPulse({
-      activity: activity({ state: "quiet", tokenChunks: 0, updatedAt: "2026-08-21T00:00:10.000Z" }),
+      activity: activity({ state: "generating", updatedAt: "2026-08-21T00:00:15.000Z" }),
       nowMs: NOW,
     });
     expect(verdict.kind).toBe("stalled");
