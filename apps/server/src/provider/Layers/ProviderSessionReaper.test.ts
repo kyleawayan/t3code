@@ -176,6 +176,7 @@ describe("ProviderSessionReaper", () => {
     readonly sweepIntervalMs?: number;
     readonly stopSessionTimeoutMs?: number;
     readonly stallCutoffMs?: number | null;
+    readonly stallQuietStateCutoffMs?: number;
   }) {
     const stoppedThreadIds = new Set<ThreadId>();
     const dispatchedCommands: Array<OrchestrationCommand> = [];
@@ -247,6 +248,9 @@ describe("ProviderSessionReaper", () => {
       deadSessionGraceMs: input.deadSessionGraceMs ?? 1_000,
       stopSessionTimeoutMs: input.stopSessionTimeoutMs ?? 15_000,
       stallCutoffMs: input.stallCutoffMs === undefined ? null : input.stallCutoffMs,
+      ...(input.stallQuietStateCutoffMs !== undefined
+        ? { stallQuietStateCutoffMs: input.stallQuietStateCutoffMs }
+        : {}),
     }).pipe(
       Layer.provideMerge(providerSessionDirectoryLayer),
       Layer.provideMerge(runtimeRepositoryLayer),
@@ -1117,5 +1121,60 @@ describe("ProviderSessionReaper", () => {
 
     expect(harness.stopSession).not.toHaveBeenCalled();
     expect(harness.dispatchedCommands).toHaveLength(0);
+  });
+
+  // The reported failure: the CLI holds an open socket to the API and waits for
+  // tokens that never arrive. Process alive, CPU idle, nothing streaming, for
+  // three quarters of an hour. If that starts while a tool is open, an
+  // unbounded exemption would protect it forever — so the quiet states get a
+  // long clock, not no clock.
+  it("ends a turn wedged with a tool open once the quiet-state clock runs out", async () => {
+    const threadId = ThreadId.make("thread-reaper-quiet-cutoff");
+    const turnId = TurnId.make("turn-reaper-quiet-cutoff");
+    const now = "2026-01-01T00:00:00.000Z";
+    const harness = await createHarness({
+      stallCutoffMs: 5 * 60 * 1000,
+      stallQuietStateCutoffMs: 30 * 60 * 1000,
+      readModel: makeReadModel([
+        {
+          id: threadId,
+          session: {
+            threadId,
+            status: "running",
+            providerName: "claudeAgent",
+            runtimeMode: "full-access",
+            activeTurnId: turnId,
+            lastError: null,
+            updatedAt: now,
+          },
+        },
+      ]),
+    });
+    const repository = await runtime!.runPromise(
+      Effect.service(ProviderSessionRuntime.ProviderSessionRuntimeRepository),
+    );
+    await runtime!.runPromise(
+      repository.upsert({
+        threadId,
+        providerName: "claudeAgent",
+        providerInstanceId: null,
+        adapterKey: "claudeAgent",
+        runtimeMode: "full-access",
+        status: "running",
+        lastSeenAt: "2026-04-14T00:00:00.000Z",
+        resumeCursor: { opaque: "resume-quiet-cutoff" },
+        runtimePayload: null,
+      }),
+    );
+    const streamActivity = await runtime!.runPromise(
+      Effect.service(ThreadStreamActivity.ThreadStreamActivityService),
+    );
+    const nowMs = await Effect.runPromise(Clock.currentTimeMillis);
+    streamActivity.recordActivity(threadId, nowMs - 46 * 60 * 1000);
+    streamActivity.openToolCall(threadId, "item-wedged-tool");
+
+    await startReaper();
+    await waitFor(() => harness.stopSession.mock.calls.length === 1);
+    expect(harness.stopSession.mock.calls[0]?.[0]).toEqual({ threadId });
   });
 });

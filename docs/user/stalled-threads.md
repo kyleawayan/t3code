@@ -5,9 +5,10 @@ kind, not even thinking — for two minutes, T3 Code shows **Stalled** instead a
 line into the thread saying how long it has been quiet. If the silence reaches five
 minutes, the turn is ended and the thread says so. Send the message again to pick it up.
 
-Silence only counts when the agent should be producing something. A running command, a
-context compaction, a question waiting on your answer, and background work all keep a
-thread healthy for as long as they take, however quiet they are.
+Silence only counts when the agent should be producing something. A question waiting on
+your answer and background work keep a thread healthy for as long as they take. A running
+command or a context compaction buys a much longer clock rather than an unlimited one — an
+agent that wedges while a command is open is still wedged.
 
 You never have to wait for either timer. **Stop** ends the turn immediately, and
 **Reset session** in the thread's menu clears a thread that will not respond to anything
