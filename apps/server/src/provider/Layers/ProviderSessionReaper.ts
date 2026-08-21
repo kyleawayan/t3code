@@ -1,4 +1,11 @@
-import { CommandId, EventId, type ThreadId, type TurnId } from "@t3tools/contracts";
+import {
+  CommandId,
+  EventId,
+  type OrchestrationLatestTurn,
+  type OrchestrationThreadShell,
+  type ThreadId,
+  type TurnId,
+} from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -34,12 +41,18 @@ const DEFAULT_STALL_THRESHOLD_MS = STALL_THRESHOLD_MS;
 // Wait this long after the binding was last written before believing it, so a
 // session that is still coming up is never mistaken for a dead one.
 const DEFAULT_DEAD_SESSION_GRACE_MS = 60 * 1000;
+// Per-thread bound on stopSession inside the sweep. A stop that never settles
+// is the same hang class the watchdog exists to clean up, and the sweep is
+// sequential — unbounded, one of them parks the reaper (and the idle reap)
+// forever.
+const DEFAULT_STOP_SESSION_TIMEOUT_MS = 15 * 1000;
 
 export interface ProviderSessionReaperLiveOptions {
   readonly inactivityThresholdMs?: number;
   readonly sweepIntervalMs?: number;
   readonly stallThresholdMs?: number;
   readonly deadSessionGraceMs?: number;
+  readonly stopSessionTimeoutMs?: number;
 }
 
 const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =>
@@ -59,6 +72,10 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
     const deadSessionGraceMs = Math.max(
       0,
       options?.deadSessionGraceMs ?? DEFAULT_DEAD_SESSION_GRACE_MS,
+    );
+    const stopSessionTimeoutMs = Math.max(
+      1,
+      options?.stopSessionTimeoutMs ?? DEFAULT_STOP_SESSION_TIMEOUT_MS,
     );
 
     // One stall notice per wedged turn, not one per sweep. Cleared as soon as
@@ -118,6 +135,80 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
         ),
       );
 
+    /**
+     * Stop one session without letting it take the watchdog down with it.
+     *
+     * The sweep is a sequential loop and `Schedule.spaced` waits for the sweep
+     * to finish before scheduling the next one, so a `stopSession` that never
+     * settles — the exact failure class this watchdog exists to clean up —
+     * would park the reaper forever, taking the 30-minute idle reap with it.
+     * `Effect.catchCause` covers failure, not non-completion; only a timeout
+     * does. On timeout we move on: the thread stays flagged and the next sweep
+     * tries again.
+     */
+    const stopSessionBounded = (input: { readonly threadId: ThreadId; readonly reason: string }) =>
+      providerService.stopSession({ threadId: input.threadId }).pipe(
+        Effect.as(true),
+        Effect.timeoutOption(Duration.millis(stopSessionTimeoutMs)),
+        Effect.map(Option.getOrElse(() => false)),
+        Effect.tap((stopped) =>
+          stopped
+            ? Effect.void
+            : Effect.logWarning("provider.session.reaper.stop-timed-out", {
+                threadId: input.threadId,
+                reason: input.reason,
+                stopSessionTimeoutMs,
+              }),
+        ),
+        Effect.catchCause((cause) =>
+          Effect.logWarning("provider.session.reaper.stop-failed", {
+            threadId: input.threadId,
+            reason: input.reason,
+            cause,
+          }).pipe(Effect.as(false)),
+        ),
+      );
+
+    /**
+     * Clear a session's claim on a turn that has already finished.
+     *
+     * Distinct from the dead-session case: the session may be perfectly alive,
+     * but its `activeTurnId` names a turn whose row already reached a terminal
+     * state, so the thread renders "Working" for a turn that is over. Stopping
+     * the session would be wrong here — it may still hold background work — so
+     * this only clears the claim, exactly as the turn's own completion would
+     * have.
+     */
+    const clearSettledTurnClaim = (input: {
+      readonly threadId: ThreadId;
+      readonly session: NonNullable<OrchestrationThreadShell["session"]>;
+      readonly turnState: OrchestrationLatestTurn["state"];
+    }) =>
+      Effect.gen(function* () {
+        const updatedAt = yield* Effect.map(DateTime.now, DateTime.formatIso);
+        yield* orchestrationEngine.dispatch({
+          type: "thread.session.set",
+          commandId: CommandId.make(
+            `server:settled-turn-claim:${input.threadId}:${input.session.activeTurnId}`,
+          ),
+          threadId: input.threadId,
+          session: {
+            ...input.session,
+            status: input.turnState === "error" ? "error" : "ready",
+            activeTurnId: null,
+            updatedAt,
+          },
+          createdAt: updatedAt,
+        });
+      }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("provider.session.settled-turn-claim-failed", {
+            threadId: input.threadId,
+            cause,
+          }),
+        ),
+      );
+
     const sweep = Effect.gen(function* () {
       const bindings = yield* directory.listBindings();
       const now = yield* Clock.currentTimeMillis;
@@ -171,18 +262,10 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
             ? Number.POSITIVE_INFINITY
             : now - lastSeenMs;
           if (bindingAgeMs >= deadSessionGraceMs) {
-            const recovered = yield* providerService
-              .stopSession({ threadId: binding.threadId })
-              .pipe(
-                Effect.as(true),
-                Effect.catchCause((cause) =>
-                  Effect.logWarning("provider.session.zombie-recovery-failed", {
-                    threadId: binding.threadId,
-                    provider: binding.provider,
-                    cause,
-                  }).pipe(Effect.as(false)),
-                ),
-              );
+            const recovered = yield* stopSessionBounded({
+              threadId: binding.threadId,
+              reason: "no_live_provider_session",
+            });
             if (recovered) {
               recoveredZombieCount += 1;
               threadStreamActivity.clear(binding.threadId);
@@ -195,6 +278,47 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
                 reason: "no_live_provider_session",
               });
             }
+            continue;
+          }
+        }
+
+        // Settled-turn drift. The session still names an active turn whose turn
+        // row already reached a terminal state, so the thread renders "Working"
+        // for a turn that is demonstrably over. This is the state the community
+        // detects with `status='running' AND turn.completed_at IS NOT NULL`; a
+        // dropped or lost lifecycle write leaves it behind. Provable, so it
+        // acts — but it only clears the claim, never stops the session, which
+        // may still be alive and holding background work.
+        const settledTurn =
+          stallActiveTurnId != null &&
+          stallThread?.session != null &&
+          stallThread.latestTurn != null &&
+          stallThread.latestTurn.turnId === stallActiveTurnId &&
+          stallThread.latestTurn.completedAt !== null
+            ? stallThread.latestTurn
+            : null;
+        if (settledTurn !== null) {
+          const completedMs = Date.parse(settledTurn.completedAt!);
+          // The completion and the session write land in the same ingestion
+          // pass, so anything this recent is a read of that pass in flight.
+          const settledForMs = Number.isNaN(completedMs)
+            ? Number.POSITIVE_INFINITY
+            : now - completedMs;
+          if (settledForMs >= deadSessionGraceMs) {
+            yield* Effect.logWarning("provider.session.settled-turn-claim-cleared", {
+              threadId: binding.threadId,
+              provider: binding.provider,
+              activeTurnId: stallActiveTurnId,
+              turnState: settledTurn.state,
+              settledForMs,
+            });
+            yield* clearSettledTurnClaim({
+              threadId: binding.threadId,
+              session: stallThread!.session!,
+              turnState: settledTurn.state,
+            });
+            threadStreamActivity.clear(binding.threadId);
+            noticedStallKeyByThreadId.delete(binding.threadId);
             continue;
           }
         }
@@ -278,23 +402,19 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
           continue;
         }
 
-        const reaped = yield* providerService.stopSession({ threadId: binding.threadId }).pipe(
-          Effect.tap(() =>
-            Effect.logInfo("provider.session.reaped", {
-              threadId: binding.threadId,
-              provider: binding.provider,
-              idleDurationMs,
-              reason: "inactivity_threshold",
-            }),
-          ),
-          Effect.as(true),
-          Effect.catchCause((cause) =>
-            Effect.logWarning("provider.session.reaper.stop-failed", {
-              threadId: binding.threadId,
-              provider: binding.provider,
-              idleDurationMs,
-              cause,
-            }).pipe(Effect.as(false)),
+        const reaped = yield* stopSessionBounded({
+          threadId: binding.threadId,
+          reason: "inactivity_threshold",
+        }).pipe(
+          Effect.tap((stopped) =>
+            stopped
+              ? Effect.logInfo("provider.session.reaped", {
+                  threadId: binding.threadId,
+                  provider: binding.provider,
+                  idleDurationMs,
+                  reason: "inactivity_threshold",
+                })
+              : Effect.void,
           ),
         );
 
