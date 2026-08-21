@@ -1619,7 +1619,21 @@ const make = Effect.gen(function* () {
           switch (event.type) {
             case "session.state.changed": {
               const runtimeStatus = orchestrationSessionStatusFromRuntimeState(event.payload.state);
-              return hasPendingTurnStart && runtimeStatus === "ready" ? "starting" : runtimeStatus;
+              if (runtimeStatus === "ready") {
+                return hasPendingTurnStart ? "starting" : "ready";
+              }
+              // A plain "running" has to be backed by a turn. The CLI emits a
+              // bare status message between turns and it lands here as running,
+              // which would re-open a settled session — and the sidebar reads
+              // Working off the session status alone, so the thread would spin
+              // forever with nothing to run. session.started/thread.started
+              // already guard this; state.changed was the one path that did not.
+              // Narrowed to the literal runtime state: "waiting" also maps to
+              // running, and applying that transition verbatim is deliberate.
+              if (event.payload.state === "running" && activeTurnId === null) {
+                return hasPendingTurnStart ? "starting" : "ready";
+              }
+              return runtimeStatus;
             }
             case "turn.started":
               return "running";

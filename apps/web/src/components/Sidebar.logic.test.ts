@@ -700,6 +700,16 @@ describe("resolveSidebarThreadStatus", () => {
     ).toBe("working");
   });
 
+  it("does not report working for a running session with no turn", () => {
+    // The lie the user actually sees: a session left at running — a dropped
+    // turn completion, or a row from before the server guarded this — spins
+    // "Working" on a thread where nothing is happening.
+    expect(
+      resolveSidebarThreadStatus({ ...idle, session: { ...session, activeTurnId: null } }),
+    ).toBe("ready");
+    expect(resolveSidebarThreadStatus({ ...idle, session })).toBe("working");
+  });
+
   it("reports stalled above working, below approval and input", () => {
     // A wedged (stalled) running turn shows stalled, not a lying Working.
     expect(resolveSidebarThreadStatus({ ...idle, session, stalled: true })).toBe("stalled");
