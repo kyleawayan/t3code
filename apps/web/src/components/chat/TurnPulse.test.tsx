@@ -5,31 +5,35 @@ import { TurnPulse } from "./TurnPulse";
 import type { TurnPulseFill, TurnPulseVerdict } from "./turnPulse.logic";
 
 type FillEl = ReactElement<{
+  key?: string | number | null;
   className: string;
   style: { width?: string; animationPlayState?: string };
 }>;
 type TrackEl = ReactElement<{ className: string; children: FillEl }>;
 
-/** The component is pure, so its element tree can be read without a renderer. */
+/**
+ * The component is pure, so its tree can be read without a renderer. Children
+ * are [mascot | null, coarse track, fine track]; render() omits the mascot.
+ */
 function render(verdict: TurnPulseVerdict) {
   return TurnPulse({ verdict }) as ReactElement<{
     "aria-label": string;
-    children: [TrackEl, TrackEl];
+    children: [ReactElement | null, TrackEl, TrackEl];
   }> | null;
 }
 
 const coarseWidth = (el: ReturnType<typeof render>) =>
-  Number(/([\d.]+)%/.exec(el!.props.children[0].props.children.props.style.width!)![1]);
-const fineFill = (el: ReturnType<typeof render>) => el!.props.children[1].props.children;
+  Number(/([\d.]+)%/.exec(el!.props.children[1].props.children.props.style.width!)![1]);
+const fineFill = (el: ReturnType<typeof render>) => el!.props.children[2].props.children;
 const finePlayState = (el: ReturnType<typeof render>) =>
   fineFill(el).props.style.animationPlayState;
-const fineClass = (el: ReturnType<typeof render>) => fineFill(el).props.className;
 const barClass = (el: ReturnType<typeof render>) =>
-  el!.props.children[0].props.children.props.className;
+  el!.props.children[1].props.children.props.className;
 
 const fill = (over: Partial<TurnPulseFill> = {}): TurnPulseFill => ({
   coarse: 0.4,
   fine: 0.4,
+  fineCycle: 0,
   ...over,
 });
 
@@ -49,13 +53,12 @@ describe("TurnPulse", () => {
     ).toBeLessThan(100);
   });
 
-  it("runs the fine loop while generating and freezes it otherwise", () => {
-    // The fine track fills-and-repeats via a CSS loop, so it keeps moving even
-    // when the coarse track has flattened near the top. It runs only while
-    // actively generating; a tool, a first-token wait, or a stall freezes it.
-    expect(fineClass(render({ kind: "moving", tokenChunks: 1, fill: fill() }))).toContain(
-      "animate-turn-fine-fill",
-    );
+  it("rises the fine track while generating and freezes it otherwise", () => {
+    // Each chunk animates a full rise to 100 (a CSS one-shot); it runs only
+    // while generating, and a tool, first-token wait, or stall freezes it.
+    expect(
+      fineFill(render({ kind: "moving", tokenChunks: 1, fill: fill() })).props.className,
+    ).toContain("animate-turn-fine-fill");
     expect(finePlayState(render({ kind: "moving", tokenChunks: 1, fill: fill() }))).toBe("running");
     expect(finePlayState(render({ kind: "paused", tokenChunks: 1, fill: fill() }))).toBe("paused");
     expect(finePlayState(render({ kind: "waiting", tokenChunks: 0, fill: fill() }))).toBe("paused");
@@ -65,25 +68,26 @@ describe("TurnPulse", () => {
   });
 
   it("shows a coarse sliver from the very first frame", () => {
-    const el = render({ kind: "waiting", tokenChunks: 0, fill: fill({ coarse: 0, fine: 0 }) });
-    expect(coarseWidth(el)).toBeGreaterThan(0);
-    // The fine track is present even before it runs (paused at its start frame).
-    expect(fineClass(el)).toContain("animate-turn-fine-fill");
+    expect(
+      coarseWidth(render({ kind: "waiting", tokenChunks: 0, fill: fill({ coarse: 0, fine: 0 }) })),
+    ).toBeGreaterThan(0);
   });
 
-  it("colours by state", () => {
+  it("colours every working state Claude orange, only stall red", () => {
+    // The pre-first-token wait and tool pauses are still the turn working, so
+    // they stay orange; the frozen fine bar signals the pause, not the colour.
     expect(barClass(render({ kind: "moving", tokenChunks: 5, fill: fill() }))).toContain(
-      "bg-sky-500",
+      "bg-[#d97757]",
+    );
+    expect(barClass(render({ kind: "waiting", tokenChunks: 0, fill: fill() }))).toContain(
+      "bg-[#d97757]",
+    );
+    expect(barClass(render({ kind: "paused", tokenChunks: 5, fill: fill() }))).toContain(
+      "bg-[#d97757]",
     );
     expect(
       barClass(render({ kind: "stalled", tokenChunks: 5, quietForMs: 12_000, fill: fill() })),
-    ).toContain("bg-orange-500");
-    expect(barClass(render({ kind: "paused", tokenChunks: 5, fill: fill() }))).toContain(
-      "bg-muted-foreground/40",
-    );
-    expect(barClass(render({ kind: "waiting", tokenChunks: 0, fill: fill() }))).toContain(
-      "bg-muted-foreground/40",
-    );
+    ).toContain("bg-red-500");
   });
 
   it("labels each state for screen readers", () => {
@@ -101,6 +105,20 @@ describe("TurnPulse", () => {
         "aria-label"
       ],
     ).toBe("No agent output");
+  });
+
+  it("shows the mascot only for Claude turns", () => {
+    const hasImg = (mascot: boolean) => {
+      const el = TurnPulse({
+        verdict: { kind: "moving", tokenChunks: 1, fill: fill() },
+        mascot,
+      }) as ReactElement<{ children: unknown[] }>;
+      return el.props.children.some(
+        (c) => c != null && typeof c === "object" && (c as ReactElement).type === "img",
+      );
+    };
+    expect(hasImg(true)).toBe(true);
+    expect(hasImg(false)).toBe(false);
   });
 
   it("holds the coarse fill when a tool runs instead of resetting", () => {

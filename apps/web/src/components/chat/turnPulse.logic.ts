@@ -74,6 +74,12 @@ export interface TurnPulseFill {
   readonly coarse: number;
   /** Position within the current chunk, 0 to just under 1. Cycles. */
   readonly fine: number;
+  /**
+   * Which chunk the fine fill is on — increments each time `fine` wraps. The
+   * view keys the fine element by this so a wrap remounts (an instant cut back
+   * to empty) instead of tweening the width backward.
+   */
+  readonly fineCycle: number;
 }
 
 /**
@@ -94,6 +100,7 @@ function resolveFill(activity: ThreadTurnActivity): TurnPulseFill {
   return {
     coarse: 1 - Math.exp(-volume / coarseScale),
     fine: fineUnits - Math.floor(fineUnits),
+    fineCycle: Math.floor(fineUnits),
   };
 }
 
