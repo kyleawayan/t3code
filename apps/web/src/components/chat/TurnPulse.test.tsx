@@ -47,6 +47,16 @@ describe("TurnPulse", () => {
     expect(stalled.props["aria-label"]).toBe("No agent output");
   });
 
+  it("keeps the same widget while a tool runs, muted and held", () => {
+    // The live run flickered here: hiding the pulse swapped in a different
+    // indicator and back on every tool call.
+    const paused = render({ kind: "paused", tokenChunks: 5 })!;
+    expect(paused).not.toBeNull();
+    expect(paused.props.children.props.className).toContain("bg-muted-foreground/40");
+    expect(paused.props["aria-label"]).toBe("Agent running a tool");
+    expect(offsetOf(paused)).toBe(offsetOf(render({ kind: "moving", tokenChunks: 5 })));
+  });
+
   it("freezes where the last token left it", () => {
     // Stalling must not reset or restart the travel — the position it stopped
     // at is the evidence.

@@ -20,12 +20,28 @@ describe("resolveTurnPulse", () => {
     expect(resolveTurnPulse({ activity: undefined, nowMs: NOW })).toEqual({ kind: "hidden" });
   });
 
-  it("hides through states that are silent by nature", () => {
-    // A frozen pulse during a running tool would train the user to ignore it.
+  it("pauses rather than hiding through states that are silent by nature", () => {
+    // Hiding swapped the indicator for a different one mid-turn, so the row
+    // flickered between two shapes every time the agent touched a tool. Same
+    // widget, held still — and never alarming, because this silence has a
+    // reason.
     expect(resolveTurnPulse({ activity: activity({ state: "tool" }), nowMs: NOW }).kind).toBe(
-      "hidden",
+      "paused",
     );
     expect(resolveTurnPulse({ activity: activity({ state: "waiting" }), nowMs: NOW }).kind).toBe(
+      "paused",
+    );
+    // Long past the warning window, a running tool still must not alarm.
+    expect(
+      resolveTurnPulse({
+        activity: activity({ state: "tool", updatedAt: "2026-08-21T00:00:00.000Z" }),
+        nowMs: NOW,
+      }).kind,
+    ).toBe("paused");
+  });
+
+  it("hides only when no turn is running", () => {
+    expect(resolveTurnPulse({ activity: activity({ state: "idle" }), nowMs: NOW }).kind).toBe(
       "hidden",
     );
   });

@@ -17,6 +17,9 @@ const TRAVEL_PER_CHUNK = 0.06;
 export function TurnPulse({ verdict }: { verdict: TurnPulseVerdict }) {
   if (verdict.kind === "hidden") return null;
   const stalled = verdict.kind === "stalled";
+  // Working with a reason to be silent: same widget, held still and muted, so
+  // the row never swaps shape when the agent picks up a tool.
+  const paused = verdict.kind === "paused";
   // Wraps rather than filling toward an end: a turn has no knowable finish, and
   // a bar that claims one is the lie we are trying to remove.
   const offset = ((verdict.tokenChunks * TRAVEL_PER_CHUNK) % 1) * 100;
@@ -27,7 +30,9 @@ export function TurnPulse({ verdict }: { verdict: TurnPulseVerdict }) {
         stalled ? "bg-orange-500/25" : "bg-muted-foreground/20",
       )}
       role="status"
-      aria-label={stalled ? "No agent output" : "Agent output streaming"}
+      aria-label={
+        stalled ? "No agent output" : paused ? "Agent running a tool" : "Agent output streaming"
+      }
     >
       <span
         className={cn(
@@ -35,7 +40,7 @@ export function TurnPulse({ verdict }: { verdict: TurnPulseVerdict }) {
           // Eases between updates so the step reads as motion rather than a
           // stutter — but only ever toward a position a token paid for.
           "transition-transform duration-200 ease-linear",
-          stalled ? "bg-orange-500" : "bg-sky-500",
+          stalled ? "bg-orange-500" : paused ? "bg-muted-foreground/40" : "bg-sky-500",
         )}
         style={{ transform: `translateX(${offset * 3}%)` }}
       />
