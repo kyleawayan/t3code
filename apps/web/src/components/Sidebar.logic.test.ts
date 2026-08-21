@@ -737,6 +737,17 @@ describe("resolveSidebarThreadStatus", () => {
     ).toBe("working");
   });
 
+  it("reports stalled from the live pulse, not only the server watchdog", () => {
+    // Two sources, same verdict: the server's watchdog survives a reload but
+    // takes minutes; the token pulse is seconds old but only while connected.
+    expect(resolveSidebarThreadStatus({ ...idle, session }, true)).toBe("stalled");
+    expect(resolveSidebarThreadStatus({ ...idle, session }, false)).toBe("working");
+    // Blocked-on-you work still outranks a stall from either source.
+    expect(resolveSidebarThreadStatus({ ...idle, hasPendingApprovals: true, session }, true)).toBe(
+      "approval",
+    );
+  });
+
   it("does not report working for a running session with no turn", () => {
     // The lie the user actually sees: a session left at running — a dropped
     // turn completion, or a row from before the server guarded this — spins

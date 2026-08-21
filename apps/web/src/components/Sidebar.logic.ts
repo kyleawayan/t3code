@@ -483,7 +483,10 @@ type SidebarThreadStatusInput = Pick<
   "hasPendingApprovals" | "hasPendingUserInput" | "session" | "backgroundLiveness" | "stalled"
 >;
 
-export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): SidebarThreadStatus {
+export function resolveSidebarThreadStatus(
+  thread: SidebarThreadStatusInput,
+  pulseStalled?: boolean,
+): SidebarThreadStatus {
   if (thread.hasPendingApprovals) {
     return "approval";
   }
@@ -491,8 +494,10 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
     return "input";
   }
   // A wedged turn outranks Working: the turn is still "running" but has gone
-  // silent, so surface the stall rather than a lying Working spinner.
-  if (thread.stalled) {
+  // silent, so surface the stall rather than a lying Working spinner. Two
+  // sources, same verdict: the server's own watchdog (minutes, survives a
+  // reload) and the live token pulse (seconds, only while connected).
+  if (thread.stalled || pulseStalled === true) {
     return "stalled";
   }
   // "running" is only believable with a turn behind it. A session left at
