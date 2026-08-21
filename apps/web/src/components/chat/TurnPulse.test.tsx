@@ -4,7 +4,10 @@ import { describe, expect, it } from "vite-plus/test";
 import { TurnPulse } from "./TurnPulse";
 import type { TurnPulseFill, TurnPulseVerdict } from "./turnPulse.logic";
 
-type FillEl = ReactElement<{ className: string; style: { width: string } }>;
+type FillEl = ReactElement<{
+  className: string;
+  style: { width?: string; animationPlayState?: string };
+}>;
 type TrackEl = ReactElement<{ className: string; children: FillEl }>;
 
 /** The component is pure, so its element tree can be read without a renderer. */
@@ -16,9 +19,11 @@ function render(verdict: TurnPulseVerdict) {
 }
 
 const coarseWidth = (el: ReturnType<typeof render>) =>
-  Number(/([\d.]+)%/.exec(el!.props.children[0].props.children.props.style.width)![1]);
-const fineWidth = (el: ReturnType<typeof render>) =>
-  Number(/([\d.]+)%/.exec(el!.props.children[1].props.children.props.style.width)![1]);
+  Number(/([\d.]+)%/.exec(el!.props.children[0].props.children.props.style.width!)![1]);
+const fineFill = (el: ReturnType<typeof render>) => el!.props.children[1].props.children;
+const finePlayState = (el: ReturnType<typeof render>) =>
+  fineFill(el).props.style.animationPlayState;
+const fineClass = (el: ReturnType<typeof render>) => fineFill(el).props.className;
 const barClass = (el: ReturnType<typeof render>) =>
   el!.props.children[0].props.children.props.className;
 
@@ -44,19 +49,26 @@ describe("TurnPulse", () => {
     ).toBeLessThan(100);
   });
 
-  it("keeps the fine track moving even when the coarse track has flattened", () => {
-    // The whole point: near-saturated overall, the chunk track still advances.
-    const near = { coarse: 0.999, fine: 0.2 };
-    const later = { coarse: 0.999, fine: 0.8 };
-    expect(fineWidth(render({ kind: "moving", tokenChunks: 1, fill: later }))).toBeGreaterThan(
-      fineWidth(render({ kind: "moving", tokenChunks: 1, fill: near })),
+  it("runs the fine loop while generating and freezes it otherwise", () => {
+    // The fine track fills-and-repeats via a CSS loop, so it keeps moving even
+    // when the coarse track has flattened near the top. It runs only while
+    // actively generating; a tool, a first-token wait, or a stall freezes it.
+    expect(fineClass(render({ kind: "moving", tokenChunks: 1, fill: fill() }))).toContain(
+      "animate-turn-fine-fill",
     );
+    expect(finePlayState(render({ kind: "moving", tokenChunks: 1, fill: fill() }))).toBe("running");
+    expect(finePlayState(render({ kind: "paused", tokenChunks: 1, fill: fill() }))).toBe("paused");
+    expect(finePlayState(render({ kind: "waiting", tokenChunks: 0, fill: fill() }))).toBe("paused");
+    expect(
+      finePlayState(render({ kind: "stalled", tokenChunks: 1, quietForMs: 12_000, fill: fill() })),
+    ).toBe("paused");
   });
 
-  it("shows a sliver on both tracks from the very first frame", () => {
+  it("shows a coarse sliver from the very first frame", () => {
     const el = render({ kind: "waiting", tokenChunks: 0, fill: fill({ coarse: 0, fine: 0 }) });
     expect(coarseWidth(el)).toBeGreaterThan(0);
-    expect(fineWidth(el)).toBeGreaterThan(0);
+    // The fine track is present even before it runs (paused at its start frame).
+    expect(fineClass(el)).toContain("animate-turn-fine-fill");
   });
 
   it("colours by state", () => {
