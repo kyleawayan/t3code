@@ -47,10 +47,9 @@ describe("resolveTurnPulse", () => {
   });
 
   it("moves while tokens are recent", () => {
-    expect(resolveTurnPulse({ activity: activity(), nowMs: NOW })).toEqual({
-      kind: "moving",
-      tokenChunks: 12,
-    });
+    const verdict = resolveTurnPulse({ activity: activity(), nowMs: NOW });
+    expect(verdict.kind).toBe("moving");
+    if (verdict.kind === "moving") expect(verdict.tokenChunks).toBe(12);
   });
 
   it("calls a turn stalled once it has produced nothing for the warning window", () => {
@@ -75,6 +74,25 @@ describe("resolveTurnPulse", () => {
     expect(
       resolveTurnPulse({ activity: activity({ updatedAt: "nonsense" }), nowMs: NOW }).kind,
     ).toBe("moving");
+  });
+});
+
+describe("travel", () => {
+  it("uses real output volume when the provider reports it", () => {
+    // 220 tokens carries the sweep exactly one lap.
+    const verdict = resolveTurnPulse({
+      activity: activity({ generatedTokens: 110 }),
+      nowMs: NOW,
+    });
+    expect(verdict.kind).toBe("moving");
+    if (verdict.kind === "moving") expect(verdict.travel).toBeCloseTo(0.5, 5);
+  });
+
+  it("falls back to frame count for a provider that reports no volume", () => {
+    // Same motion, coarser resolution — never a dead bar.
+    const verdict = resolveTurnPulse({ activity: activity({ tokenChunks: 8 }), nowMs: NOW });
+    expect(verdict.kind).toBe("moving");
+    if (verdict.kind === "moving") expect(verdict.travel).toBeCloseTo(0.5, 5);
   });
 });
 
