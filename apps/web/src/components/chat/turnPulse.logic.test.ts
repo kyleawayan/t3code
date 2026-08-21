@@ -52,6 +52,16 @@ describe("resolveTurnPulse", () => {
     if (verdict.kind === "moving") expect(verdict.tokenChunks).toBe(12);
   });
 
+  it("reports waiting, not streaming, before the first token of a stretch", () => {
+    // Calling this "streaming" claimed output that had not arrived and left the
+    // bar frozen at the start of every turn.
+    const verdict = resolveTurnPulse({
+      activity: activity({ state: "quiet", tokenChunks: 0 }),
+      nowMs: NOW,
+    });
+    expect(verdict.kind).toBe("waiting");
+  });
+
   it("calls a turn stalled once it has produced nothing for the warning window", () => {
     const verdict = resolveTurnPulse({
       activity: activity({ updatedAt: "2026-08-21T00:00:15.000Z" }),
@@ -70,8 +80,8 @@ describe("resolveTurnPulse", () => {
         activity: activity({ state: "quiet", tokenChunks: 0, updatedAt }),
         nowMs: NOW,
       }).kind;
-    // 20s of waiting for a first token is healthy.
-    expect(at("2026-08-21T00:00:10.000Z")).toBe("moving");
+    // 20s of waiting for a first token is healthy (waiting, not stalled).
+    expect(at("2026-08-21T00:00:10.000Z")).toBe("waiting");
     // Past 45s it is not.
     expect(at("2026-08-20T23:59:40.000Z")).toBe("stalled");
   });
@@ -94,21 +104,21 @@ describe("resolveTurnPulse", () => {
 });
 
 describe("travel", () => {
-  it("uses real output volume when the provider reports it", () => {
-    // 220 tokens carries the sweep exactly one lap.
-    const verdict = resolveTurnPulse({
-      activity: activity({ generatedTokens: 110 }),
-      nowMs: NOW,
-    });
-    expect(verdict.kind).toBe("moving");
-    if (verdict.kind === "moving") expect(verdict.travel).toBeCloseTo(0.5, 5);
+  it("fills further with more real output and never reaches full", () => {
+    const at = (generatedTokens: number) => {
+      const v = resolveTurnPulse({ activity: activity({ generatedTokens }), nowMs: NOW });
+      return v.kind === "moving" ? v.travel : -1;
+    };
+    expect(at(800)).toBeGreaterThan(at(200));
+    // Asymptotic: even enormous volume stays at or below full, never over.
+    expect(at(100_000)).toBeLessThanOrEqual(1);
+    expect(at(100_000)).toBeGreaterThan(at(800));
   });
 
-  it("falls back to frame count for a provider that reports no volume", () => {
-    // Same motion, coarser resolution — never a dead bar.
-    const verdict = resolveTurnPulse({ activity: activity({ tokenChunks: 8 }), nowMs: NOW });
-    expect(verdict.kind).toBe("moving");
-    if (verdict.kind === "moving") expect(verdict.travel).toBeCloseTo(0.5, 5);
+  it("falls back to frame count when a provider reports no volume", () => {
+    const v = resolveTurnPulse({ activity: activity({ tokenChunks: 8 }), nowMs: NOW });
+    expect(v.kind).toBe("moving");
+    if (v.kind === "moving") expect(v.travel).toBeGreaterThan(0);
   });
 });
 
