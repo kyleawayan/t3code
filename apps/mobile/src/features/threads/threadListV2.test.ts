@@ -151,6 +151,29 @@ describe("resolveThreadListV2Status", () => {
     );
   });
 
+  it("does not report Working for a running session with no turn", () => {
+    // A dropped turn completion, or a row left behind by an older server: the
+    // session says running, but there is nothing to run.
+    expect(
+      resolveThreadListV2Status(
+        makeThread({
+          id: ThreadId.make("t"),
+          title: "t",
+          session: {
+            threadId: ThreadId.make("t"),
+            status: "running",
+            providerName: "Codex",
+            providerInstanceId: ProviderInstanceId.make("codex"),
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: NOW,
+          },
+        }),
+      ),
+    ).toBe("ready");
+  });
+
   it("surfaces a wedged turn as stalled instead of a lying Working", () => {
     const session = {
       threadId: ThreadId.make("t"),
@@ -158,7 +181,7 @@ describe("resolveThreadListV2Status", () => {
       providerName: "Codex",
       providerInstanceId: ProviderInstanceId.make("codex"),
       runtimeMode: "full-access" as const,
-      activeTurnId: null,
+      activeTurnId: TurnId.make("turn-1"),
       lastError: null,
       updatedAt: NOW,
     };

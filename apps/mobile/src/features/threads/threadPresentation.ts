@@ -89,7 +89,9 @@ export function resolveThreadStatus(
     };
   }
 
-  if (thread.session?.status === "running") {
+  // Only with a turn behind it: a session left at running with no active turn
+  // would otherwise spin forever on a thread where nothing is happening.
+  if (thread.session?.status === "running" && thread.session.activeTurnId != null) {
     return {
       kind: "working",
       label: "Working",

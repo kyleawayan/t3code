@@ -459,7 +459,15 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
   if (thread.stalled) {
     return "stalled";
   }
-  if (thread.session?.status === "running" || thread.session?.status === "starting") {
+  // "running" is only believable with a turn behind it. A session left at
+  // running with no active turn — a dropped completion, a stale row from before
+  // the server learned to guard this — otherwise spins forever on a thread
+  // where nothing is happening. "starting" is exempt: it precedes the turn id
+  // by design.
+  if (thread.session?.status === "starting") {
+    return "working";
+  }
+  if (thread.session?.status === "running" && thread.session.activeTurnId != null) {
     return "working";
   }
   // A failed session outranks lingering background liveness: the user must
@@ -647,7 +655,7 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if (thread.session?.status === "running") {
+  if (thread.session?.status === "running" && thread.session.activeTurnId != null) {
     return {
       label: "Working",
       colorClass: "text-sky-600 dark:text-sky-300/80",
