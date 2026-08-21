@@ -9,12 +9,16 @@ function render(verdict: TurnPulseVerdict) {
   return TurnPulse({ verdict }) as ReactElement<{
     className: string;
     "aria-label": string;
-    children: ReactElement<{ className: string; style: { transform: string } }>;
+    children: Array<ReactElement<{ className: string; style: { transform: string } }>>;
   }> | null;
 }
 
-const offsetOf = (element: ReturnType<typeof render>) =>
-  Number(/translateX\((-?[\d.]+)%\)/.exec(element!.props.children.props.style.transform)![1]);
+const offsetsOf = (element: ReturnType<typeof render>) =>
+  element!.props.children.map((band) =>
+    Number(/translateX\((-?[\d.]+)%\)/.exec(band.props.style.transform)![1]),
+  );
+const offsetOf = (element: ReturnType<typeof render>) => offsetsOf(element)[0]!;
+const classOf = (element: ReturnType<typeof render>) => element!.props.children[0]!.props.className;
 
 describe("TurnPulse", () => {
   it("renders nothing when there is nothing to report", () => {
@@ -29,10 +33,22 @@ describe("TurnPulse", () => {
   });
 
   it("enters and exits rather than filling toward an end", () => {
-    // Starts fully off the left and ends fully off the right, so it never rests
-    // at a position that reads as a value.
+    // Each band crosses and leaves; none rests at a position that reads as a
+    // value.
     expect(offsetOf(render({ kind: "moving", tokenChunks: 1, travel: 0 }))).toBe(-100);
     expect(offsetOf(render({ kind: "moving", tokenChunks: 1, travel: 0.999 }))).toBeGreaterThan(95);
+  });
+
+  it("never leaves the track empty, including at the very start", () => {
+    // The live run sat at translateX(-100%) — fully off-screen — for the first
+    // 35 seconds of a turn, so the indicator was blank exactly when it was
+    // most wanted. A second band half a lap behind covers every gap.
+    for (const travel of [0, 0.25, 0.5, 0.75, 0.999, 3.5]) {
+      const onTrack = offsetsOf(render({ kind: "moving", tokenChunks: 1, travel })).filter(
+        (x) => x > -100 && x < 100,
+      );
+      expect(onTrack.length).toBeGreaterThan(0);
+    }
   });
 
   it("keeps sweeping past a full lap instead of stopping", () => {
@@ -46,8 +62,8 @@ describe("TurnPulse", () => {
   it("switches colour and label when the turn goes quiet", () => {
     const moving = render({ kind: "moving", tokenChunks: 5, travel: 0.4 })!;
     const stalled = render({ kind: "stalled", tokenChunks: 5, quietForMs: 12_000, travel: 0.4 })!;
-    expect(moving.props.children.props.className).toContain("via-sky-500");
-    expect(stalled.props.children.props.className).toContain("via-orange-500");
+    expect(classOf(moving)).toContain("via-sky-500");
+    expect(classOf(stalled)).toContain("via-orange-500");
     expect(moving.props["aria-label"]).toBe("Agent output streaming");
     expect(stalled.props["aria-label"]).toBe("No agent output");
   });
@@ -57,7 +73,7 @@ describe("TurnPulse", () => {
     // indicator and back on every tool call.
     const paused = render({ kind: "paused", tokenChunks: 5, travel: 0.4 })!;
     expect(paused).not.toBeNull();
-    expect(paused.props.children.props.className).toContain("via-muted-foreground/45");
+    expect(classOf(paused)).toContain("via-muted-foreground/45");
     expect(paused.props["aria-label"]).toBe("Agent running a tool");
     expect(offsetOf(paused)).toBe(
       offsetOf(render({ kind: "moving", tokenChunks: 5, travel: 0.4 })),

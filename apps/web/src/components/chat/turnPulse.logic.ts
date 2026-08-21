@@ -12,6 +12,20 @@ import type { ThreadTurnActivity } from "@t3tools/contracts";
  */
 export const TURN_PULSE_WARN_AFTER_MS = 10_000;
 
+/**
+ * The same warning, for a turn that is between activities rather than
+ * mid-sentence.
+ *
+ * Silence means different things in the two cases. Tokens that were flowing and
+ * stopped is abnormal within seconds. Waiting for the *first* token — at turn
+ * start, or after a tool result hands a large context back to the model — is
+ * routinely ten to twenty seconds and entirely healthy. Judging both on the
+ * short clock painted every gap between tool calls orange, which is worse than
+ * no warning at all: an indicator that cries wolf gets ignored the once it
+ * matters.
+ */
+export const TURN_PULSE_QUIET_WARN_AFTER_MS = 45_000;
+
 export type TurnPulseVerdict =
   /** Nothing to show: no turn running. */
   | { readonly kind: "hidden" }
@@ -61,6 +75,7 @@ export function resolveTurnPulse(input: {
   readonly activity: ThreadTurnActivity | undefined;
   readonly nowMs: number;
   readonly warnAfterMs?: number;
+  readonly quietWarnAfterMs?: number;
 }): TurnPulseVerdict {
   const activity = input.activity;
   if (!activity) return { kind: "hidden" };
@@ -82,7 +97,14 @@ export function resolveTurnPulse(input: {
   }
   const quietForMs = Math.max(0, input.nowMs - updatedAtMs);
   const travel = resolveTravel(activity);
-  return quietForMs >= (input.warnAfterMs ?? TURN_PULSE_WARN_AFTER_MS)
+  // "generating" means the last thing we saw was a token, so staleness here is
+  // output that stopped mid-stream. "quiet" means we are waiting on the first
+  // token of a stretch, which is legitimately slow.
+  const threshold =
+    activity.state === "generating"
+      ? (input.warnAfterMs ?? TURN_PULSE_WARN_AFTER_MS)
+      : (input.quietWarnAfterMs ?? TURN_PULSE_QUIET_WARN_AFTER_MS);
+  return quietForMs >= threshold
     ? { kind: "stalled", quietForMs, tokenChunks: activity.tokenChunks, travel }
     : { kind: "moving", tokenChunks: activity.tokenChunks, travel };
 }

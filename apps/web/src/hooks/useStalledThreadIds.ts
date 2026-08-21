@@ -3,7 +3,11 @@ import type { EnvironmentId } from "@t3tools/contracts";
 
 import { useEnvironmentQuery } from "../state/query";
 import { threadEnvironment } from "../state/threads";
-import { resolveTurnPulse, TURN_PULSE_WARN_AFTER_MS } from "../components/chat/turnPulse.logic";
+import {
+  resolveTurnPulse,
+  TURN_PULSE_QUIET_WARN_AFTER_MS,
+  TURN_PULSE_WARN_AFTER_MS,
+} from "../components/chat/turnPulse.logic";
 
 const EMPTY: ReadonlySet<string> = new Set();
 const TICK_MS = 1_000;
@@ -39,6 +43,7 @@ export function useStalledThreadIds(environmentId: EnvironmentId | null): Readon
         activity,
         nowMs,
         warnAfterMs: TURN_PULSE_WARN_AFTER_MS,
+        quietWarnAfterMs: TURN_PULSE_QUIET_WARN_AFTER_MS,
       });
       if (verdict.kind === "stalled") stalled.add(threadId);
     }
