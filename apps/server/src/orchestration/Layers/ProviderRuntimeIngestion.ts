@@ -39,6 +39,7 @@ import * as Clock from "effect/Clock";
 import { ThreadBackgroundLivenessService } from "../ThreadBackgroundLiveness.ts";
 import { ThreadPlanProgressService } from "../ThreadPlanProgress.ts";
 import { ThreadStreamActivityService } from "../ThreadStreamActivity.ts";
+import { ThreadTurnActivityService } from "../ThreadTurnActivity.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import {
   ProviderRuntimeIngestionService,
@@ -893,6 +894,7 @@ export function runtimeEventToActivities(
 const make = Effect.gen(function* () {
   const threadBackgroundLiveness = yield* ThreadBackgroundLivenessService;
   const threadStreamActivity = yield* ThreadStreamActivityService;
+  const threadTurnActivity = yield* ThreadTurnActivityService;
   const threadPlanProgress = yield* ThreadPlanProgressService;
   const crypto = yield* Crypto.Crypto;
   const orchestrationEngine = yield* OrchestrationEngineService;
@@ -1524,6 +1526,20 @@ const make = Effect.gen(function* () {
           threadStreamActivity.closeToolCall(thread.id, event.itemId);
         }
       }
+      // Live liveness for the open thread: whether tokens are arriving right
+      // now, at a granularity the durable log does not keep. Folded after the
+      // tool bookkeeping above so item.completed sees the updated open count.
+      const turnActivity = threadTurnActivity.observe({
+        threadId: thread.id,
+        event,
+        streamKind: event.type === "content.delta" ? event.payload.streamKind : undefined,
+        openToolCount: threadStreamActivity.hasOpenToolCall(thread.id) ? 1 : 0,
+        nowMs: activityAtMs,
+      });
+      if (turnActivity) {
+        yield* threadTurnActivity.publish(turnActivity);
+      }
+
       if (event.type === "session.state.changed") {
         threadStreamActivity.setCompacting(thread.id, event.payload.reason === "status:compacting");
       } else if (event.type === "thread.state.changed" && event.payload.state === "compacted") {

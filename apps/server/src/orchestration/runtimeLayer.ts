@@ -8,6 +8,7 @@ import { OrchestrationProjectionSnapshotQueryLive } from "./Layers/ProjectionSna
 import * as ThreadBackgroundLiveness from "./ThreadBackgroundLiveness.ts";
 import * as ThreadPlanProgress from "./ThreadPlanProgress.ts";
 import * as ThreadStreamActivity from "./ThreadStreamActivity.ts";
+import * as ThreadTurnActivity from "./ThreadTurnActivity.ts";
 
 export const OrchestrationEventInfrastructureLayerLive = Layer.mergeAll(
   OrchestrationEventStoreLive,
@@ -30,6 +31,7 @@ export const OrchestrationInfrastructureLayerLive = Layer.mergeAll(
   Layer.provideMerge(ThreadBackgroundLiveness.layer),
   Layer.provideMerge(ThreadPlanProgress.layer),
   Layer.provideMerge(ThreadStreamActivity.layer),
+  Layer.provideMerge(ThreadTurnActivity.layer),
 );
 
 export const OrchestrationLayerLive = Layer.mergeAll(
