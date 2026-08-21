@@ -161,6 +161,8 @@ interface TimelineRowActivityState {
   workingStepLabel: string | null;
   /** Live token-driven liveness for the working row. */
   turnPulse: TurnPulseVerdict;
+  /** Perch the Claude mascot on the working bar (Claude threads only). */
+  showTurnMascot: boolean;
 }
 
 const TimelineRowCtx = createContext<TimelineRowSharedState>(null!);
@@ -215,6 +217,7 @@ interface MessagesTimelineProps {
   isWorking: boolean;
   workingStepLabel?: string | null;
   turnPulse?: TurnPulseVerdict;
+  showTurnMascot?: boolean;
   activeTurnInProgress: boolean;
   activeTurnStartedAt: string | null;
   listRef: React.RefObject<LegendListRef | null>;
@@ -260,6 +263,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   isWorking,
   workingStepLabel = null,
   turnPulse = HIDDEN_TURN_PULSE,
+  showTurnMascot = false,
   activeTurnInProgress,
   activeTurnStartedAt,
   agentPanelModel = EMPTY_AGENT_PANEL_MODEL,
@@ -563,6 +567,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       latestTurnId: latestTurn?.turnId ?? null,
       workingStepLabel,
       turnPulse,
+      showTurnMascot,
     }),
     [
       activeTurnInProgress,
@@ -571,6 +576,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       latestTurn?.turnId,
       workingStepLabel,
       turnPulse,
+      showTurnMascot,
     ],
   );
 
@@ -1330,7 +1336,7 @@ const TurnPlanTimelineRow = memo(function TurnPlanTimelineRow({
 });
 
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
-  const { workingStepLabel, turnPulse } = use(TimelineRowActivityCtx);
+  const { workingStepLabel, turnPulse, showTurnMascot } = use(TimelineRowActivityCtx);
   return (
     <div className="py-0.5 pl-1.5">
       <div className="flex min-w-0 items-center gap-2 pt-1 text-secondary-label text-[11px] tabular-nums">
@@ -1345,7 +1351,7 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
             <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-status-pulse [animation-delay:400ms]" />
           </span>
         ) : (
-          <TurnPulse verdict={turnPulse} />
+          <TurnPulse verdict={turnPulse} mascot={showTurnMascot} />
         )}
         <span className="shrink-0">
           {row.createdAt ? (

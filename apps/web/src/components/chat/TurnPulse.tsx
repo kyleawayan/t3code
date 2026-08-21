@@ -1,5 +1,6 @@
 import { cn } from "~/lib/utils";
 
+import claudeTypingGif from "../../assets/claude-typing.gif";
 import type { TurnPulseVerdict } from "./turnPulse.logic";
 
 /**
@@ -16,17 +17,26 @@ import type { TurnPulseVerdict } from "./turnPulse.logic";
  * Growing means output is arriving; frozen means it stopped; dim means working
  * but quiet (a tool, or awaiting the first token); orange means stalled.
  */
-export function TurnPulse({ verdict }: { verdict: TurnPulseVerdict }) {
+export function TurnPulse({
+  verdict,
+  mascot = false,
+}: {
+  verdict: TurnPulseVerdict;
+  /** Show the Claude mascot perched above the bar. Claude threads only. */
+  mascot?: boolean;
+}) {
   if (verdict.kind === "hidden") return null;
   const stalled = verdict.kind === "stalled";
-  // Working with a reason to be quiet: hold both tracks and dim, never alarm.
-  const holding = verdict.kind === "paused" || verdict.kind === "waiting";
-  const barColor = stalled ? "bg-orange-500" : holding ? "bg-muted-foreground/40" : "bg-sky-500";
+  // The whole turn is Claude's orange — including the pre-first-token wait and
+  // tool pauses, which are still the turn working. The frozen fine bar already
+  // signals a pause, so colour need not; only a stall changes it, to red.
+  const barColor = stalled ? "bg-red-500" : "bg-[#d97757]";
+  const trackBg = stalled ? "bg-red-500/25" : "bg-muted-foreground/15";
   // A floor on each so a starting turn shows a sliver rather than nothing.
   const coarsePercent = Math.max(2, Math.min(100, verdict.fill.coarse * 100));
   return (
     <span
-      className="inline-flex w-10 shrink-0 flex-col gap-[2px]"
+      className="relative inline-flex w-10 shrink-0 flex-col gap-[2px]"
       role="status"
       aria-label={
         stalled
@@ -41,13 +51,22 @@ export function TurnPulse({ verdict }: { verdict: TurnPulseVerdict }) {
       data-turn-fine={verdict.fill.fine.toFixed(4)}
       data-turn-chunks={verdict.tokenChunks}
     >
+      {mascot ? (
+        // In normal flow above the bars, not absolutely positioned: the row's
+        // height grows to include it, so the `contain: content` item wrapper
+        // cannot clip its head (an absolutely-positioned gif poking above the
+        // row box gets cut). The negative bottom margin pulls the bars up under
+        // its feet — the gif has transparent foot padding — and is the knob for
+        // how much the feet overlap the bar. Pixelated keeps the art crisp.
+        <img
+          src={claudeTypingGif}
+          alt=""
+          aria-hidden
+          className="pointer-events-none -mb-[1px] h-6 w-auto self-start [image-rendering:pixelated]"
+        />
+      ) : null}
       {/* Overall progress: cumulative, only ever forward. */}
-      <span
-        className={cn(
-          "relative block h-[3px] overflow-hidden rounded-full",
-          stalled ? "bg-orange-500/25" : "bg-muted-foreground/15",
-        )}
-      >
+      <span className={cn("relative block h-[3px] overflow-hidden rounded-full", trackBg)}>
         <span
           className={cn(
             "absolute inset-y-0 left-0 rounded-full transition-[width,background-color] duration-500 ease-out",
@@ -56,15 +75,14 @@ export function TurnPulse({ verdict }: { verdict: TurnPulseVerdict }) {
           style={{ width: `${coarsePercent}%` }}
         />
       </span>
-      {/* Current chunk: fills to full, snaps to empty, repeats — each cycle is
-          one chunk feeding the bar above. A CSS loop drives it so it always
-          completes before resetting; a width tween would animate the wrap
-          backward, which read as the bar bouncing. It runs only while the turn
-          is actively generating — holding or stalled freezes it in place. */}
+      {/* Current chunk heartbeat: rises to full, touches 100 for a beat, then
+          the loop cuts instantly back to empty and repeats. Runs only while
+          generating; holding or stalled freezes it where it is, so it still
+          reads as liveness rather than decoration. */}
       <span className="relative block h-[2px] overflow-hidden rounded-full bg-muted-foreground/10">
         <span
           className={cn(
-            "absolute inset-y-0 left-0 rounded-full opacity-70 animate-turn-fine-fill",
+            "absolute inset-y-0 left-0 w-1 rounded-full opacity-80 animate-turn-fine-fill",
             barColor,
           )}
           style={{ animationPlayState: verdict.kind === "moving" ? "running" : "paused" }}
