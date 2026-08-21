@@ -34,6 +34,13 @@ export type TurnPulseVerdict =
    * Distinct from stalled: this silence has a reason, so it must never alarm.
    */
   | { readonly kind: "paused"; readonly tokenChunks: number; readonly travel: number }
+  /**
+   * The turn should be producing and has not started yet — before the first
+   * token, or after a tool result while the model reads the context back.
+   * Calling this "streaming" claimed output that had not arrived, which is why
+   * the bar appeared frozen at the start of every turn.
+   */
+  | { readonly kind: "waiting"; readonly tokenChunks: number; readonly travel: number }
   /** Tokens are arriving. `tokenChunks` only ever advances on a real token. */
   | { readonly kind: "moving"; readonly tokenChunks: number; readonly travel: number }
   /** Should be producing and is not. */
@@ -44,22 +51,32 @@ export type TurnPulseVerdict =
       readonly travel: number;
     };
 
-/** Tokens of output that carry the sweep once across the track. */
-const TOKENS_PER_SWEEP = 220;
-/** Frames per sweep, used only when a provider reports no volume. */
-const FRAMES_PER_SWEEP = 16;
+/**
+ * Output that fills the bar to roughly two thirds.
+ *
+ * The fill is asymptotic — it approaches full and never arrives — so it can
+ * grow with real work without ever claiming the turn is nearly done, which a
+ * turn with no knowable end cannot honestly say.
+ */
+const TOKENS_TO_TWO_THIRDS = 400;
+/** Frames standing in for volume when a provider reports none. */
+const FRAMES_TO_TWO_THIRDS = 30;
 
 /**
- * How far the sweep has travelled, in whole and fractional laps.
+ * How full the bar is, from 0 to just under 1.
  *
- * Real generated volume when the provider reports it, so a burst visibly races
- * and a grind visibly crawls. Frame count is the fallback for providers that
- * stream deltas but no measurable text — same motion, coarser resolution.
+ * Real generated volume when the provider reports it, so a burst fills visibly
+ * faster than a grind; frame count stands in for providers that stream deltas
+ * but no measurable text. Growth slows as it goes, which reads as "still
+ * going" rather than "nearly done", and it only ever moves forward — a bar
+ * that resets mid-turn reads as losing progress.
  */
 function resolveTravel(activity: ThreadTurnActivity): number {
-  return activity.generatedTokens !== undefined
-    ? activity.generatedTokens / TOKENS_PER_SWEEP
-    : activity.tokenChunks / FRAMES_PER_SWEEP;
+  const units =
+    activity.generatedTokens !== undefined
+      ? activity.generatedTokens / TOKENS_TO_TWO_THIRDS
+      : activity.tokenChunks / FRAMES_TO_TWO_THIRDS;
+  return 1 - Math.exp(-units);
 }
 
 /**
@@ -104,9 +121,12 @@ export function resolveTurnPulse(input: {
     activity.state === "generating"
       ? (input.warnAfterMs ?? TURN_PULSE_WARN_AFTER_MS)
       : (input.quietWarnAfterMs ?? TURN_PULSE_QUIET_WARN_AFTER_MS);
-  return quietForMs >= threshold
-    ? { kind: "stalled", quietForMs, tokenChunks: activity.tokenChunks, travel }
-    : { kind: "moving", tokenChunks: activity.tokenChunks, travel };
+  if (quietForMs >= threshold) {
+    return { kind: "stalled", quietForMs, tokenChunks: activity.tokenChunks, travel };
+  }
+  return activity.state === "generating"
+    ? { kind: "moving", tokenChunks: activity.tokenChunks, travel }
+    : { kind: "waiting", tokenChunks: activity.tokenChunks, travel };
 }
 
 /** Whole seconds of silence, for the warning copy. */
