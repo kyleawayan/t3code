@@ -10,6 +10,7 @@
  * @module ProviderServiceLive
  */
 import {
+  EventId,
   ModelSelection,
   NonNegativeInt,
   ThreadId,
@@ -240,6 +241,50 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       Effect.flatMap((canonicalEvent) => PubSub.publish(runtimeEventPubSub, canonicalEvent)),
       Effect.asVoid,
     );
+
+  /**
+   * Announce that a thread's provider session is gone when no adapter can.
+   *
+   * Adapters emit `session.exited` as they tear a live session down, but a
+   * session can vanish without one: the server was killed mid-turn, the child
+   * crashed, or the adapter's in-memory session was evicted. Orchestration only
+   * clears a thread's `activeTurnId` when it sees an exit, so those threads keep
+   * rendering "Working" forever — Stop is a no-op, and the decider refuses to
+   * settle a thread whose session still looks running. That is the zombie
+   * thread. Publishing the exit from here is what releases it.
+   *
+   * The event id is derived rather than random so a duplicate announcement in
+   * the same millisecond dedupes through the engine's command id instead of
+   * appending a second exit.
+   */
+  const announceDeadSessionExit = (input: {
+    readonly threadId: ThreadId;
+    readonly provider: ProviderDriverKind;
+    readonly providerInstanceId: ProviderInstanceId;
+    readonly reason: string;
+  }): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      const createdAt = yield* nowIso;
+      yield* Effect.logInfo("provider.session.dead-session-exit-announced", {
+        threadId: input.threadId,
+        provider: input.provider,
+        reason: input.reason,
+      });
+      yield* publishRuntimeEvent({
+        type: "session.exited",
+        eventId: EventId.make(`provider-dead-session-exit:${input.threadId}:${createdAt}`),
+        provider: input.provider,
+        providerInstanceId: input.providerInstanceId,
+        threadId: input.threadId,
+        createdAt,
+        payload: {
+          reason: input.reason,
+          recoverable: true,
+          exitKind: "error",
+        },
+        providerRefs: {},
+      });
+    });
 
   const requireBindingInstanceId = (
     operation: string,
@@ -783,10 +828,15 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       });
       let metricProvider = "unknown";
       return yield* Effect.gen(function* () {
+        // Never recover here. Interrupt used to spawn a replacement session for
+        // a thread whose session had died, then interrupt that brand-new idle
+        // session: a guaranteed no-op that left the thread's active turn set
+        // forever. Stop is the user's escape hatch from a wedged thread, so it
+        // has to settle the thread even when there is nothing left to stop.
         const routed = yield* resolveRoutableSession({
           threadId: input.threadId,
           operation: "ProviderService.interruptTurn",
-          allowRecovery: true,
+          allowRecovery: false,
         });
         metricProvider = routed.adapter.provider;
         yield* Effect.annotateCurrentSpan({
@@ -795,6 +845,13 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           "provider.thread_id": input.threadId,
           "provider.turn_id": input.turnId,
         });
+        if (!routed.isActive) {
+          // Nothing is running to interrupt. Take the stop path instead: it
+          // announces the exit that clears the thread's active turn, marks the
+          // binding stopped, and revokes the dead session's MCP credential.
+          yield* stopSession({ threadId: input.threadId });
+          return;
+        }
         yield* routed.adapter.interruptTurn(routed.threadId, input.turnId);
         yield* analytics.record("provider.turn.interrupted", {
           provider: routed.adapter.provider,
@@ -905,6 +962,16 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         });
         if (routed.isActive) {
           yield* routed.adapter.stopSession(routed.threadId);
+        } else {
+          // No adapter holds this session, so nothing will emit the exit that
+          // orchestration needs to clear the thread's active turn. Say it here
+          // or the thread stays wedged at "Working" (see announceDeadSessionExit).
+          yield* announceDeadSessionExit({
+            threadId: input.threadId,
+            provider: routed.adapter.provider,
+            providerInstanceId: routed.instanceId,
+            reason: "Provider session is no longer running.",
+          });
         }
         yield* clearMcpSession(input.threadId);
         yield* directory.upsert({

@@ -1844,6 +1844,121 @@ fanout.layer("ProviderServiceLive fanout", (it) => {
         );
       }),
   );
+
+  // Zombie threads: a provider session can vanish without ever emitting
+  // `session.exited` (server killed mid-turn, child crashed, adapter session
+  // evicted). Orchestration only clears a thread's active turn when it sees an
+  // exit, so the thread renders "Working" forever and Stop cannot free it.
+  it.effect("interrupting a thread whose provider session died announces the exit", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const session = yield* provider.startSession(asThreadId("thread-zombie-interrupt"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-zombie-interrupt"),
+        runtimeMode: "full-access",
+      });
+      yield* provider.sendTurn({
+        threadId: session.threadId,
+        input: "work on it",
+        attachments: [],
+      });
+
+      // The session dies without telling anyone, exactly as a killed server or
+      // a crashed child leaves it: the binding still says "running".
+      yield* fanout.codex.adapter.stopSession(session.threadId);
+      fanout.codex.startSession.mockClear();
+
+      const eventsRef = yield* Ref.make<Array<ProviderRuntimeEvent>>([]);
+      const consumer = yield* Stream.runForEach(provider.streamEvents, (event) =>
+        Ref.update(eventsRef, (current) => [...current, event]),
+      ).pipe(Effect.forkChild);
+      yield* advanceTestClock(50);
+
+      yield* provider.interruptTurn({ threadId: session.threadId });
+      yield* advanceTestClock(50);
+
+      const events = yield* Ref.get(eventsRef);
+      yield* Fiber.interrupt(consumer);
+
+      assert.equal(
+        events.some(
+          (event) => event.type === "session.exited" && event.threadId === session.threadId,
+        ),
+        true,
+      );
+      // Interrupt must not resurrect the session just to interrupt a fresh idle
+      // one — that was the no-op that left the turn active forever.
+      assert.equal(fanout.codex.startSession.mock.calls.length, 0);
+    }),
+  );
+
+  it.effect("stopping a thread whose provider session died announces the exit", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const session = yield* provider.startSession(asThreadId("thread-zombie-stop"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-zombie-stop"),
+        runtimeMode: "full-access",
+      });
+      yield* fanout.codex.adapter.stopSession(session.threadId);
+
+      const eventsRef = yield* Ref.make<Array<ProviderRuntimeEvent>>([]);
+      const consumer = yield* Stream.runForEach(provider.streamEvents, (event) =>
+        Ref.update(eventsRef, (current) => [...current, event]),
+      ).pipe(Effect.forkChild);
+      yield* advanceTestClock(50);
+
+      yield* provider.stopSession({ threadId: session.threadId });
+      yield* advanceTestClock(50);
+
+      const events = yield* Ref.get(eventsRef);
+      yield* Fiber.interrupt(consumer);
+
+      assert.equal(
+        events.some(
+          (event) => event.type === "session.exited" && event.threadId === session.threadId,
+        ),
+        true,
+      );
+    }),
+  );
+
+  it.effect("interrupting a live session still reaches the adapter", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const session = yield* provider.startSession(asThreadId("thread-live-interrupt"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-live-interrupt"),
+        runtimeMode: "full-access",
+      });
+      fanout.codex.interruptTurn.mockClear();
+
+      const eventsRef = yield* Ref.make<Array<ProviderRuntimeEvent>>([]);
+      const consumer = yield* Stream.runForEach(provider.streamEvents, (event) =>
+        Ref.update(eventsRef, (current) => [...current, event]),
+      ).pipe(Effect.forkChild);
+      yield* advanceTestClock(50);
+
+      yield* provider.interruptTurn({ threadId: session.threadId });
+      yield* advanceTestClock(50);
+
+      const events = yield* Ref.get(eventsRef);
+      yield* Fiber.interrupt(consumer);
+
+      assert.equal(fanout.codex.interruptTurn.mock.calls.length, 1);
+      // A live session owns its own lifecycle: the adapter decides whether the
+      // interrupt ends the session, so we must not fake an exit on its behalf.
+      assert.equal(
+        events.some(
+          (event) => event.type === "session.exited" && event.threadId === session.threadId,
+        ),
+        false,
+      );
+    }),
+  );
 });
 
 const validation = makeProviderServiceLayer();

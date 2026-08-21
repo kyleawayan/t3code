@@ -5,6 +5,8 @@ import {
   TurnId,
   ProviderDriverKind,
   ProviderInstanceId,
+  type OrchestrationCommand,
+  type ProviderSession,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
@@ -17,6 +19,7 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ThreadStreamActivity from "../../orchestration/ThreadStreamActivity.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
@@ -122,7 +125,9 @@ function makeReadModel(
 
 describe("ProviderSessionReaper", () => {
   let runtime: ManagedRuntime.ManagedRuntime<
-    ProviderSessionReaper | ProviderSessionRuntime.ProviderSessionRuntimeRepository,
+    | ProviderSessionReaper
+    | ProviderSessionRuntime.ProviderSessionRuntimeRepository
+    | ThreadStreamActivity.ThreadStreamActivityService,
     unknown
   > | null = null;
   let scope: Scope.Closeable | null = null;
@@ -151,8 +156,18 @@ describe("ProviderSessionReaper", () => {
     readonly stopSessionImplementation?: (input: {
       readonly threadId: ThreadId;
     }) => ReturnType<ProviderServiceShape["stopSession"]>;
+    /**
+     * Threads an adapter still holds a live session for. Defaults to every
+     * thread whose read-model session is not stopped, which is what a healthy
+     * server looks like; pass an explicit set to model a session that died
+     * without ever announcing it.
+     */
+    readonly liveThreadIds?: ReadonlyArray<ThreadId>;
+    readonly deadSessionGraceMs?: number;
+    readonly sweepIntervalMs?: number;
   }) {
     const stoppedThreadIds = new Set<ThreadId>();
+    const dispatchedCommands: Array<OrchestrationCommand> = [];
     const stopSession = vi.fn<ProviderServiceShape["stopSession"]>(
       (request) =>
         (input.stopSessionImplementation
@@ -169,7 +184,26 @@ describe("ProviderSessionReaper", () => {
       respondToRequest: () => unsupported(),
       respondToUserInput: () => unsupported(),
       stopSession,
-      listSessions: () => Effect.succeed([]),
+      listSessions: () =>
+        Effect.succeed(
+          (
+            input.liveThreadIds ??
+            input.readModel.threads
+              .filter((thread) => thread.session && thread.session.status !== "stopped")
+              .map((thread) => thread.id)
+          ).map(
+            (threadId) =>
+              ({
+                provider: ProviderDriverKind.make("claudeAgent"),
+                providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+                status: "ready",
+                runtimeMode: "full-access",
+                threadId,
+                createdAt: "2026-01-01T00:00:00.000Z",
+                updatedAt: "2026-01-01T00:00:00.000Z",
+              }) satisfies ProviderSession,
+          ),
+        ),
       getCapabilities: () => Effect.succeed({ sessionModelSwitch: "in-session" }),
       getInstanceInfo: (instanceId) => {
         const driverKind = ProviderDriverKind.make(String(instanceId));
@@ -196,7 +230,9 @@ describe("ProviderSessionReaper", () => {
     );
     const layer = makeProviderSessionReaperLive({
       inactivityThresholdMs: 1_000,
-      sweepIntervalMs: 60_000,
+      sweepIntervalMs: input.sweepIntervalMs ?? 60_000,
+      stallThresholdMs: 1_000,
+      deadSessionGraceMs: input.deadSessionGraceMs ?? 1_000,
     }).pipe(
       Layer.provideMerge(providerSessionDirectoryLayer),
       Layer.provideMerge(runtimeRepositoryLayer),
@@ -227,11 +263,23 @@ describe("ProviderSessionReaper", () => {
         }),
       ),
       Layer.provideMerge(ThreadStreamActivity.layer),
+      Layer.provideMerge(
+        Layer.succeed(OrchestrationEngineService, {
+          readEvents: () => Stream.empty,
+          dispatch: (command) =>
+            Effect.sync(() => {
+              dispatchedCommands.push(command);
+              return { sequence: dispatchedCommands.length };
+            }),
+          streamDomainEvents: Stream.empty,
+          latestSequence: Effect.succeed(0),
+        }),
+      ),
       Layer.provideMerge(NodeServices.layer),
     );
 
     runtime = ManagedRuntime.make(layer);
-    return { stopSession, stoppedThreadIds };
+    return { stopSession, stoppedThreadIds, dispatchedCommands };
   }
 
   it("reaps stale persisted sessions without active turns", async () => {
@@ -636,5 +684,166 @@ describe("ProviderSessionReaper", () => {
       defectThreadId,
       reapedThreadId,
     ]);
+  });
+
+  // Zombie threads: the read model still names an active turn while no adapter
+  // holds a session for the thread. Nothing is left to finish that turn, so
+  // without this the thread renders "Working" forever.
+  it("recovers a thread whose active turn has no live provider session", async () => {
+    const threadId = ThreadId.make("thread-reaper-zombie");
+    const turnId = TurnId.make("turn-reaper-zombie");
+    const now = "2026-01-01T00:00:00.000Z";
+    const harness = await createHarness({
+      liveThreadIds: [],
+      readModel: makeReadModel([
+        {
+          id: threadId,
+          session: {
+            threadId,
+            status: "running",
+            providerName: "claudeAgent",
+            runtimeMode: "full-access",
+            activeTurnId: turnId,
+            lastError: null,
+            updatedAt: now,
+          },
+        },
+      ]),
+    });
+    const repository = await runtime!.runPromise(
+      Effect.service(ProviderSessionRuntime.ProviderSessionRuntimeRepository),
+    );
+
+    await runtime!.runPromise(
+      repository.upsert({
+        threadId,
+        providerName: "claudeAgent",
+        providerInstanceId: null,
+        adapterKey: "claudeAgent",
+        runtimeMode: "full-access",
+        status: "running",
+        lastSeenAt: "2026-04-14T00:00:00.000Z",
+        resumeCursor: { opaque: "resume-zombie" },
+        runtimePayload: null,
+      }),
+    );
+
+    await startReaper();
+
+    await waitFor(() => harness.stopSession.mock.calls.length === 1);
+    expect(harness.stopSession.mock.calls[0]?.[0]).toEqual({ threadId });
+  });
+
+  it("waits out the dead-session grace before recovering a zombie thread", async () => {
+    const threadId = ThreadId.make("thread-reaper-zombie-grace");
+    const turnId = TurnId.make("turn-reaper-zombie-grace");
+    const now = DateTime.formatIso(await Effect.runPromise(DateTime.now));
+    const harness = await createHarness({
+      liveThreadIds: [],
+      deadSessionGraceMs: 10 * 60 * 1000,
+      readModel: makeReadModel([
+        {
+          id: threadId,
+          session: {
+            threadId,
+            status: "running",
+            providerName: "claudeAgent",
+            runtimeMode: "full-access",
+            activeTurnId: turnId,
+            lastError: null,
+            updatedAt: now,
+          },
+        },
+      ]),
+    });
+    const repository = await runtime!.runPromise(
+      Effect.service(ProviderSessionRuntime.ProviderSessionRuntimeRepository),
+    );
+
+    await runtime!.runPromise(
+      repository.upsert({
+        threadId,
+        providerName: "claudeAgent",
+        providerInstanceId: null,
+        adapterKey: "claudeAgent",
+        runtimeMode: "full-access",
+        status: "running",
+        // Written just now: a session that is still coming up looks exactly
+        // like this, and must not be mistaken for a dead one.
+        lastSeenAt: now,
+        resumeCursor: { opaque: "resume-zombie-grace" },
+        runtimePayload: null,
+      }),
+    );
+
+    await startReaper();
+    await Effect.runPromise(drainFibers);
+
+    expect(harness.stopSession).not.toHaveBeenCalled();
+  });
+
+  // A live-but-silent turn is only a suspicion (one long tool call streams
+  // nothing), so the reaper warns instead of killing it — and the warning has to
+  // reach the clients, which only refresh a thread when something changes.
+  it("announces a stalled turn once, without stopping the live session", async () => {
+    const threadId = ThreadId.make("thread-reaper-stalled");
+    const turnId = TurnId.make("turn-reaper-stalled");
+    const now = "2026-01-01T00:00:00.000Z";
+    const harness = await createHarness({
+      sweepIntervalMs: 5,
+      readModel: makeReadModel([
+        {
+          id: threadId,
+          session: {
+            threadId,
+            status: "running",
+            providerName: "claudeAgent",
+            runtimeMode: "full-access",
+            activeTurnId: turnId,
+            lastError: null,
+            updatedAt: now,
+          },
+        },
+      ]),
+    });
+    const repository = await runtime!.runPromise(
+      Effect.service(ProviderSessionRuntime.ProviderSessionRuntimeRepository),
+    );
+    await runtime!.runPromise(
+      repository.upsert({
+        threadId,
+        providerName: "claudeAgent",
+        providerInstanceId: null,
+        adapterKey: "claudeAgent",
+        runtimeMode: "full-access",
+        status: "running",
+        lastSeenAt: "2026-04-14T00:00:00.000Z",
+        resumeCursor: { opaque: "resume-stalled" },
+        runtimePayload: null,
+      }),
+    );
+
+    const streamActivity = await runtime!.runPromise(
+      Effect.service(ThreadStreamActivity.ThreadStreamActivityService),
+    );
+    const nowMs = await Effect.runPromise(Clock.currentTimeMillis);
+    streamActivity.recordActivity(threadId, nowMs - 9 * 60 * 1000);
+
+    await startReaper();
+
+    await waitFor(() => harness.dispatchedCommands.length === 1);
+    // Several sweeps run inside this window; the notice must not repeat.
+    await waitFor(async () => {
+      await Effect.runPromise(drainFibers);
+      return harness.dispatchedCommands.length >= 1;
+    });
+
+    const stallNotices = harness.dispatchedCommands.filter(
+      (command) =>
+        command.type === "thread.activity.append" &&
+        command.activity.kind === "provider.turn.stalled",
+    );
+    expect(stallNotices).toHaveLength(1);
+    expect(harness.stopSession).not.toHaveBeenCalled();
   });
 });

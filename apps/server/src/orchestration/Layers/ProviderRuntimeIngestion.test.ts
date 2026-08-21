@@ -737,6 +737,51 @@ describe("ProviderRuntimeIngestion", () => {
     );
   });
 
+  // The zombie-thread release valve: a provider session that died without ever
+  // completing its turn is announced as an exit by ProviderService (see
+  // announceDeadSessionExit), and that exit has to clear the active turn.
+  // Without it the thread renders "Working" forever and cannot even be settled.
+  it("clears an active turn when a dead session's exit arrives", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-turn-started-dead-session"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-dead-session"),
+    });
+
+    await waitForThread(
+      harness.readModel,
+      (thread) =>
+        thread.session?.status === "running" &&
+        thread.session?.activeTurnId === "turn-dead-session",
+      10_000,
+    );
+
+    harness.emit({
+      type: "session.exited",
+      eventId: asEventId("evt-dead-session-exit"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:05.000Z",
+      threadId: asThreadId("thread-1"),
+      payload: {
+        reason: "Provider session is no longer running.",
+        recoverable: true,
+        exitKind: "error",
+      },
+    });
+
+    await waitForThread(
+      harness.readModel,
+      (thread) => thread.session?.status === "stopped" && thread.session?.activeTurnId === null,
+      10_000,
+    );
+  });
+
   it("accepts claude turn lifecycle when seeded thread id is a synthetic placeholder", async () => {
     const harness = await createHarness();
     const seededAt = "2026-01-01T00:00:00.000Z";
