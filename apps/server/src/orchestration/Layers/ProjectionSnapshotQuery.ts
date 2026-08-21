@@ -49,7 +49,7 @@ import { ThreadBackgroundLivenessService } from "../ThreadBackgroundLiveness.ts"
 import { ThreadPlanProgressService } from "../ThreadPlanProgress.ts";
 import {
   computeThreadStalled,
-  STALL_THRESHOLD_MS,
+  STALL_WARN_MS,
   ThreadStreamActivityService,
 } from "../ThreadStreamActivity.ts";
 import { ProjectionProject } from "../../persistence/Services/ProjectionProjects.ts";
@@ -2090,12 +2090,14 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                         nowMs,
                         activeTurnId: sessionByThread.get(row.threadId)?.activeTurnId ?? null,
                         lastActivityMs: threadStreamActivity.getLastActivityMs(row.threadId),
-                        thresholdMs: STALL_THRESHOLD_MS,
+                        thresholdMs: STALL_WARN_MS,
                         hasPendingApprovals: row.pendingApprovalCount > 0,
                         hasPendingUserInput: row.pendingUserInputCount > 0,
                         backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
                           row.threadId,
                         ),
+                        hasOpenToolCall: threadStreamActivity.hasOpenToolCall(row.threadId),
+                        isCompacting: threadStreamActivity.isCompacting(row.threadId),
                       }),
                       planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
                     } satisfies OrchestrationThreadShell)
@@ -2251,12 +2253,14 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                     nowMs,
                     activeTurnId: sessionByThread.get(row.threadId)?.activeTurnId ?? null,
                     lastActivityMs: threadStreamActivity.getLastActivityMs(row.threadId),
-                    thresholdMs: STALL_THRESHOLD_MS,
+                    thresholdMs: STALL_WARN_MS,
                     hasPendingApprovals: row.pendingApprovalCount > 0,
                     hasPendingUserInput: row.pendingUserInputCount > 0,
                     backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
                       row.threadId,
                     ),
+                    hasOpenToolCall: threadStreamActivity.hasOpenToolCall(row.threadId),
+                    isCompacting: threadStreamActivity.isCompacting(row.threadId),
                   }),
                   planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
                 }),
@@ -2548,12 +2552,14 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             ? (mapSessionRow(sessionRow.value).activeTurnId ?? null)
             : null,
           lastActivityMs: threadStreamActivity.getLastActivityMs(threadRow.value.threadId),
-          thresholdMs: STALL_THRESHOLD_MS,
+          thresholdMs: STALL_WARN_MS,
           hasPendingApprovals: threadRow.value.pendingApprovalCount > 0,
           hasPendingUserInput: threadRow.value.pendingUserInputCount > 0,
           backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
             threadRow.value.threadId,
           ),
+          hasOpenToolCall: threadStreamActivity.hasOpenToolCall(threadRow.value.threadId),
+          isCompacting: threadStreamActivity.isCompacting(threadRow.value.threadId),
         }),
         planProgress: threadPlanProgress.getThreadPlanProgress(threadRow.value.threadId),
       } satisfies OrchestrationThreadShell);
