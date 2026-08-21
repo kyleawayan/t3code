@@ -427,6 +427,14 @@ const ContentDeltaPayload = Schema.Struct({
   delta: Schema.String,
   contentIndex: Schema.optional(Schema.Int),
   summaryIndex: Schema.optional(Schema.Int),
+  /**
+   * Provider's own estimate of tokens this delta represents, when it reports a
+   * count rather than text. Claude's thinking phase streams no reasoning text
+   * but does emit a running token estimate; carrying it here lets liveness
+   * reflect silent thinking without a bespoke event. Absent on ordinary text
+   * deltas, whose length is the measure instead.
+   */
+  tokenEstimate: Schema.optional(NonNegativeInt),
 });
 export type ContentDeltaPayload = typeof ContentDeltaPayload.Type;
 
