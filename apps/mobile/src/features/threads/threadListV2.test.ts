@@ -193,6 +193,41 @@ describe("resolveThreadListV2Status", () => {
       "ready",
     );
   });
+
+  it("surfaces a wedged turn as stalled instead of a lying Working", () => {
+    const session = {
+      threadId: ThreadId.make("t"),
+      status: "running" as const,
+      providerName: "Codex",
+      providerInstanceId: ProviderInstanceId.make("codex"),
+      runtimeMode: "full-access" as const,
+      activeTurnId: null,
+      lastError: null,
+      updatedAt: NOW,
+    };
+    expect(
+      resolveThreadListV2Status(
+        makeThread({ id: ThreadId.make("t"), title: "t", session, stalled: true }),
+      ),
+    ).toBe("stalled");
+    expect(
+      resolveThreadListV2Status(
+        makeThread({ id: ThreadId.make("t"), title: "t", session, stalled: false }),
+      ),
+    ).toBe("working");
+    // Blocked-on-you work still outranks the stall.
+    expect(
+      resolveThreadListV2Status(
+        makeThread({
+          id: ThreadId.make("t"),
+          title: "t",
+          session,
+          stalled: true,
+          hasPendingApprovals: true,
+        }),
+      ),
+    ).toBe("approval");
+  });
 });
 
 describe("resolveThreadListV2SwipeActions", () => {

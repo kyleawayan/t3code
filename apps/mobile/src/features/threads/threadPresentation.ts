@@ -10,6 +10,7 @@ export function threadSortValue(thread: EnvironmentThreadShell): number {
 export type ThreadStatusKind =
   | "pending-approval"
   | "awaiting-input"
+  | "stalled"
   | "working"
   | "connecting"
   | "error"
@@ -69,6 +70,21 @@ export function resolveThreadStatus(
       textClassName: "text-indigo-700 dark:text-indigo-300",
       iconColor: "#5e5ce6",
       iconBackground: "rgba(94,92,230,0.22)",
+      pulse: false,
+    };
+  }
+
+  // A wedged turn outranks Working: the turn is still "running" but has gone
+  // silent, so surface the stall rather than a lying Working spinner. No pulse
+  // — nothing is moving.
+  if (thread.stalled) {
+    return {
+      kind: "stalled",
+      label: "Stalled",
+      pillClassName: "bg-orange-500/12 dark:bg-orange-500/16",
+      textClassName: "text-orange-700 dark:text-orange-300",
+      iconColor: "#ff9500",
+      iconBackground: "rgba(255,149,0,0.22)",
       pulse: false,
     };
   }
