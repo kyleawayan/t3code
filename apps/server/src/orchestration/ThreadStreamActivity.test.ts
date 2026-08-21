@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { computeThreadStalled, make, STALL_THRESHOLD_MS } from "./ThreadStreamActivity.ts";
+import { computeThreadStalled, make, STALL_WARN_MS } from "./ThreadStreamActivity.ts";
 
 const NOW = 10_000_000;
 // A turn that IS stalled: active, silent past the threshold, nothing else live.
 const stalledInput = {
   activeTurnId: "turn-1",
-  lastActivityMs: NOW - STALL_THRESHOLD_MS,
+  lastActivityMs: NOW - STALL_WARN_MS,
   nowMs: NOW,
-  thresholdMs: STALL_THRESHOLD_MS,
+  thresholdMs: STALL_WARN_MS,
   hasPendingApprovals: false,
   hasPendingUserInput: false,
   backgroundLiveness: null,
@@ -20,9 +20,9 @@ describe("computeThreadStalled", () => {
   });
 
   it("treats the threshold as inclusive (>=)", () => {
-    expect(
-      computeThreadStalled({ ...stalledInput, lastActivityMs: NOW - STALL_THRESHOLD_MS }),
-    ).toBe(true);
+    expect(computeThreadStalled({ ...stalledInput, lastActivityMs: NOW - STALL_WARN_MS })).toBe(
+      true,
+    );
   });
 
   it("does NOT flag when silence is under the threshold (still streaming/thinking)", () => {

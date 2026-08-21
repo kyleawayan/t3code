@@ -73,6 +73,7 @@ export function useThreadActionMenu(input: {
     pinThread,
     unpinThread,
     deleteThread,
+    resetThreadSession,
   } = useThreadActions();
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
@@ -131,6 +132,7 @@ export function useThreadActionMenu(input: {
           isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
           canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
           isRegeneratingTitle,
+          hasLiveSession: thread.session != null && thread.session.status !== "stopped",
           supports,
           snoozePresets,
         });
@@ -216,6 +218,16 @@ export function useThreadActionMenu(input: {
               updateThreadMetadata({
                 environmentId: threadRef.environmentId,
                 input: { threadId: threadRef.threadId, regenerateTitle: true },
+              }),
+            );
+            return;
+          case "reset-session":
+            await reportFailure("Failed to reset session", () => resetThreadSession(threadRef));
+            toastManager.add(
+              stackedThreadToast({
+                type: "success",
+                title: "Session reset",
+                description: "The thread's provider session was stopped and its turn cleared.",
               }),
             );
             return;

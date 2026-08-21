@@ -9,6 +9,7 @@ const baseState: ThreadActionMenuState = {
   isSnoozed: false,
   canSnoozeNow: true,
   isRegeneratingTitle: false,
+  hasLiveSession: false,
   supports: { settlement: true, snooze: true, pinning: true, titleRegeneration: true },
   snoozePresets: [
     { id: "hour", label: "In 1 hour", whenLabel: "3:00 PM", snoozedUntil: "2026-08-07T15:00:00Z" },
@@ -62,5 +63,12 @@ describe("buildThreadActionMenuItems", () => {
   it("marks delete as destructive and keeps it last", () => {
     const items = buildThreadActionMenuItems({ ...baseState, branch: "main" });
     expect(items.at(-1)).toMatchObject({ id: "delete", destructive: true });
+  });
+});
+
+describe("reset session", () => {
+  it("is offered only while a session is live", () => {
+    expect(ids({ ...baseState, hasLiveSession: true })).toContain("reset-session");
+    expect(ids({ ...baseState, hasLiveSession: false })).not.toContain("reset-session");
   });
 });

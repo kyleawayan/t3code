@@ -17,6 +17,7 @@ export type ThreadActionMenuId =
   | "unsnooze"
   | "rename"
   | "regenerate-title"
+  | "reset-session"
   | "mark-unread"
   | "copy-path"
   | "copy-branch"
@@ -29,6 +30,12 @@ export interface ThreadActionMenuState {
   readonly isSnoozed: boolean;
   readonly canSnoozeNow: boolean;
   readonly isRegeneratingTitle: boolean;
+  /**
+   * The thread has a provider session that is not stopped. Reset is only
+   * offered here: it is the way out of a thread whose turn will not end, and
+   * on an idle thread it would be a no-op with a scary name.
+   */
+  readonly hasLiveSession: boolean;
   readonly supports: {
     readonly settlement: boolean;
     readonly snooze: boolean;
@@ -87,6 +94,10 @@ export function buildThreadActionMenuItems(
               },
         ]
       : []),
+    // Force-clears the thread's session and active turn without asking the
+    // provider's permission — the one action that always works on a thread
+    // whose turn is wedged.
+    ...(state.hasLiveSession ? [{ id: "reset-session" as const, label: "Reset session" }] : []),
     { id: "rename", label: "Rename thread" },
     ...(state.supports.titleRegeneration
       ? [

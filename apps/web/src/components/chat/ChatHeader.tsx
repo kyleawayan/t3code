@@ -205,6 +205,9 @@ export const ChatHeader = memo(function ChatHeader({
         renameCommittedRef.current = true;
         commitRename(event.currentTarget.value);
       } else if (event.key === "Escape") {
+        // Claim the key: this Escape cancelled the rename, and the composer's
+        // Escape-stops-the-turn handler skips anything already handled.
+        event.preventDefault();
         renameCommittedRef.current = true;
         setRenaming(null);
       }

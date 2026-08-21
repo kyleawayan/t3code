@@ -25,17 +25,22 @@ import { forkParked } from "../../serverActivation.ts";
 import { ProviderService } from "../Services/ProviderService.ts";
 import {
   computeThreadStalled,
-  STALL_THRESHOLD_MS,
+  STALL_CUTOFF_MS,
+  STALL_WARN_MS,
   ThreadStreamActivityService,
 } from "../../orchestration/ThreadStreamActivity.ts";
 
 const DEFAULT_INACTIVITY_THRESHOLD_MS = 30 * 60 * 1000;
 const DEFAULT_SWEEP_INTERVAL_MS = 2 * 60 * 1000;
-// Stall watchdog: an active turn with no provider stream events for this long is
-// treated as wedged. The turn may still be alive (one long tool call emits
-// nothing), so this only warns — it never kills a turn. Shared with the sidebar
-// projection via STALL_THRESHOLD_MS so the pill and the notice agree.
-const DEFAULT_STALL_THRESHOLD_MS = STALL_THRESHOLD_MS;
+// Stall watchdog, two stages. Warn first so a thread that is merely slow
+// announces itself; end the turn only once the silence is long enough that no
+// healthy state explains it. Both stages read the same predicate, which exempts
+// an open tool call, compaction, anyone waiting on the human, and live
+// background work — so what is left is a turn that should be streaming and is
+// not. Shared with the sidebar projection via STALL_WARN_MS so the pill and the
+// notice agree.
+const DEFAULT_STALL_THRESHOLD_MS = STALL_WARN_MS;
+const DEFAULT_STALL_CUTOFF_MS = STALL_CUTOFF_MS;
 // Zombie recovery: a thread whose read model still names an active turn while
 // no adapter holds a session for it has no process left to finish that turn.
 // Wait this long after the binding was last written before believing it, so a
@@ -51,6 +56,8 @@ export interface ProviderSessionReaperLiveOptions {
   readonly inactivityThresholdMs?: number;
   readonly sweepIntervalMs?: number;
   readonly stallThresholdMs?: number;
+  /** Silence past this ends the turn. Set to null to warn only, never stop. */
+  readonly stallCutoffMs?: number | null;
   readonly deadSessionGraceMs?: number;
   readonly stopSessionTimeoutMs?: number;
 }
@@ -69,6 +76,10 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
     );
     const sweepIntervalMs = Math.max(1, options?.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS);
     const stallThresholdMs = Math.max(1, options?.stallThresholdMs ?? DEFAULT_STALL_THRESHOLD_MS);
+    const stallCutoffMs =
+      options?.stallCutoffMs === null
+        ? null
+        : Math.max(stallThresholdMs, options?.stallCutoffMs ?? DEFAULT_STALL_CUTOFF_MS);
     const deadSessionGraceMs = Math.max(
       0,
       options?.deadSessionGraceMs ?? DEFAULT_DEAD_SESSION_GRACE_MS,
@@ -95,9 +106,12 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
       readonly threadId: ThreadId;
       readonly turnId: TurnId;
       readonly silenceMs: number;
+      readonly stopped: boolean;
     }) =>
       Effect.gen(function* () {
-        const key = `${input.threadId}:${input.turnId}`;
+        // Warn and cut-off are separate notices: a thread that warned and then
+        // got stopped must still say so.
+        const key = `${input.threadId}:${input.turnId}:${input.stopped ? "stopped" : "warned"}`;
         if (noticedStallKeyByThreadId.get(input.threadId) === key) {
           return;
         }
@@ -105,7 +119,7 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
         const silenceMinutes = Math.max(1, Math.round(input.silenceMs / 60_000));
         // Deterministic ids: the engine dedupes by command id, so a retried
         // sweep can never append the same notice twice.
-        const id = `server:thread-stalled:${input.threadId}:${input.turnId}`;
+        const id = `server:thread-stalled:${key}`;
         yield* orchestrationEngine.dispatch({
           type: "thread.activity.append",
           commandId: CommandId.make(id),
@@ -113,11 +127,14 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
           activity: {
             id: EventId.make(id),
             tone: "error",
-            kind: "provider.turn.stalled",
-            summary: `No agent output for ${silenceMinutes} minutes — this turn may be stuck.`,
+            kind: input.stopped ? "provider.turn.stall-stopped" : "provider.turn.stalled",
+            summary: input.stopped
+              ? `Turn stopped after ${silenceMinutes} minutes with no agent output.`
+              : `No agent output for ${silenceMinutes} minutes — this turn may be stuck.`,
             payload: {
-              detail:
-                "The provider session is still open but has streamed nothing. Stop the turn to recover the thread, then send it again.",
+              detail: input.stopped
+                ? "The agent streamed nothing for long enough that no running tool, compaction, or approval could explain it, so the turn was ended. Send the message again to pick it back up."
+                : "The agent has streamed nothing while it should be working. It may recover on its own; if it does not, the turn is ended automatically.",
               silenceMs: input.silenceMs,
             },
             turnId: input.turnId,
@@ -335,32 +352,68 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
             // Never treat a missing entry (e.g. right after a restart) as
             // infinite silence — seed it so the thread gets a full window.
             threadStreamActivity.recordActivity(binding.threadId, now);
-          } else if (
-            computeThreadStalled({
+          } else {
+            const silenceMs = now - lastActivityMs;
+            const stalledInput = {
               activeTurnId: stallActiveTurnId,
               lastActivityMs,
               nowMs: now,
-              thresholdMs: stallThresholdMs,
               hasPendingApprovals: stallThread?.hasPendingApprovals === true,
               hasPendingUserInput: stallThread?.hasPendingUserInput === true,
               backgroundLiveness: stallThread?.backgroundLiveness ?? null,
-            })
-          ) {
-            const silenceMs = now - lastActivityMs;
-            yield* Effect.logWarning("provider.session.stall-detected", {
-              threadId: binding.threadId,
-              provider: binding.provider,
-              activeTurnId: stallActiveTurnId,
-              silenceMs,
-              stallThresholdMs,
-            });
-            yield* announceStall({
-              threadId: binding.threadId,
-              turnId: stallActiveTurnId,
-              silenceMs,
-            });
-          } else {
-            noticedStallKeyByThreadId.delete(binding.threadId);
+              hasOpenToolCall: threadStreamActivity.hasOpenToolCall(binding.threadId),
+              isCompacting: threadStreamActivity.isCompacting(binding.threadId),
+            } as const;
+
+            // Cut off first: past this there is no healthy state left that
+            // explains the silence, so the turn ends rather than sitting on a
+            // spinner. Stop, not interrupt — a wedged CLI never acks an
+            // interrupt, and stopping tears the child down for real.
+            if (
+              stallCutoffMs !== null &&
+              computeThreadStalled({ ...stalledInput, thresholdMs: stallCutoffMs })
+            ) {
+              yield* Effect.logWarning("provider.session.stall-cutoff", {
+                threadId: binding.threadId,
+                provider: binding.provider,
+                activeTurnId: stallActiveTurnId,
+                silenceMs,
+                stallCutoffMs,
+              });
+              yield* announceStall({
+                threadId: binding.threadId,
+                turnId: stallActiveTurnId,
+                silenceMs,
+                stopped: true,
+              });
+              const stopped = yield* stopSessionBounded({
+                threadId: binding.threadId,
+                reason: "stall_cutoff",
+              });
+              if (stopped) {
+                threadStreamActivity.clear(binding.threadId);
+                noticedStallKeyByThreadId.delete(binding.threadId);
+              }
+              continue;
+            }
+
+            if (computeThreadStalled({ ...stalledInput, thresholdMs: stallThresholdMs })) {
+              yield* Effect.logWarning("provider.session.stall-detected", {
+                threadId: binding.threadId,
+                provider: binding.provider,
+                activeTurnId: stallActiveTurnId,
+                silenceMs,
+                stallThresholdMs,
+              });
+              yield* announceStall({
+                threadId: binding.threadId,
+                turnId: stallActiveTurnId,
+                silenceMs,
+                stopped: false,
+              });
+            } else {
+              noticedStallKeyByThreadId.delete(binding.threadId);
+            }
           }
         }
 
@@ -462,6 +515,7 @@ const makeProviderSessionReaper = (options?: ProviderSessionReaperLiveOptions) =
           inactivityThresholdMs,
           sweepIntervalMs,
           stallThresholdMs,
+          stallCutoffMs,
           deadSessionGraceMs,
         });
       });
