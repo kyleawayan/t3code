@@ -24,7 +24,6 @@ export function TurnPulse({ verdict }: { verdict: TurnPulseVerdict }) {
   const barColor = stalled ? "bg-orange-500" : holding ? "bg-muted-foreground/40" : "bg-sky-500";
   // A floor on each so a starting turn shows a sliver rather than nothing.
   const coarsePercent = Math.max(2, Math.min(100, verdict.fill.coarse * 100));
-  const finePercent = Math.max(2, Math.min(100, verdict.fill.fine * 100));
   return (
     <span
       className="inline-flex w-10 shrink-0 flex-col gap-[2px]"
@@ -57,15 +56,18 @@ export function TurnPulse({ verdict }: { verdict: TurnPulseVerdict }) {
           style={{ width: `${coarsePercent}%` }}
         />
       </span>
-      {/* Current chunk: cycles, so motion stays visible when the overall bar
-          has flattened near the top. Dimmer — it is the detail line. */}
+      {/* Current chunk: fills to full, snaps to empty, repeats — each cycle is
+          one chunk feeding the bar above. A CSS loop drives it so it always
+          completes before resetting; a width tween would animate the wrap
+          backward, which read as the bar bouncing. It runs only while the turn
+          is actively generating — holding or stalled freezes it in place. */}
       <span className="relative block h-[2px] overflow-hidden rounded-full bg-muted-foreground/10">
         <span
           className={cn(
-            "absolute inset-y-0 left-0 rounded-full opacity-70 transition-[width,background-color] duration-300 ease-linear",
+            "absolute inset-y-0 left-0 rounded-full opacity-70 animate-turn-fine-fill",
             barColor,
           )}
-          style={{ width: `${finePercent}%` }}
+          style={{ animationPlayState: verdict.kind === "moving" ? "running" : "paused" }}
         />
       </span>
     </span>
