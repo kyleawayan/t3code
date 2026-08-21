@@ -865,7 +865,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           // "running". Orange sets it apart from working (sky) and approval
           // (amber); full strength so it never recedes — it wants attention.
           label: "Stalled",
-          icon: null,
+          icon: "stalled" as const,
           className: "text-orange-600 dark:text-orange-300",
         }
       : status === "working"
@@ -1504,12 +1504,17 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                           <CircleDashedIcon aria-hidden className="size-4 shrink-0" />
                         ) : topStatus.icon === "done" ? (
                           <CircleCheckIcon aria-hidden className="size-4 shrink-0" />
+                        ) : topStatus.icon === "stalled" ? (
+                          <CircleAlertIcon aria-hidden className="size-4 shrink-0" />
                         ) : null}
                         {/* The label alone is the live region: a role="status"
                             wrapper around the ticking duration would make
                             screen readers announce every second. */}
                         <span role="status">{topStatus.label}</span>
-                        {status === "working" ? (
+                        {/* Stalled keeps the timer: how long the turn has been
+                            running is the number that tells you whether to wait
+                            or to stop it. */}
+                        {status === "working" || status === "stalled" ? (
                           <span aria-hidden>
                             <WorkingDuration startedAt={resolveWorkingStartedAt(thread)} />
                           </span>
