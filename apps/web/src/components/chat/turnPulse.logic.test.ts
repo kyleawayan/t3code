@@ -103,22 +103,38 @@ describe("resolveTurnPulse", () => {
   });
 });
 
-describe("travel", () => {
-  it("fills further with more real output and never reaches full", () => {
-    const at = (generatedTokens: number) => {
+describe("fill", () => {
+  const coarseAt = (generatedTokens: number) => {
+    const v = resolveTurnPulse({ activity: activity({ generatedTokens }), nowMs: NOW });
+    return v.kind === "moving" ? v.fill.coarse : -1;
+  };
+
+  it("grows the coarse fill with more real output and never reaches full", () => {
+    expect(coarseAt(4_000)).toBeGreaterThan(coarseAt(1_000));
+    // Stays short of full across any realistic turn (a very long think is a
+    // few thousand tokens); it only rounds to 1 at absurd volumes the display
+    // clamps anyway.
+    expect(coarseAt(20_000)).toBeLessThan(1);
+  });
+
+  it("keeps the fine fill advancing after the coarse fill has flattened", () => {
+    // The saturation bug: at high volume the coarse fill barely moves between
+    // ticks, but the fine fill must still distinguish them so motion stays
+    // visible.
+    const near = coarseAt(50_000);
+    const later = coarseAt(50_250);
+    expect(later - near).toBeLessThan(0.001);
+    const fineOf = (generatedTokens: number) => {
       const v = resolveTurnPulse({ activity: activity({ generatedTokens }), nowMs: NOW });
-      return v.kind === "moving" ? v.travel : -1;
+      return v.kind === "moving" ? v.fill.fine : -1;
     };
-    expect(at(800)).toBeGreaterThan(at(200));
-    // Asymptotic: even enormous volume stays at or below full, never over.
-    expect(at(100_000)).toBeLessThanOrEqual(1);
-    expect(at(100_000)).toBeGreaterThan(at(800));
+    expect(fineOf(50_000)).not.toBe(fineOf(50_125));
   });
 
   it("falls back to frame count when a provider reports no volume", () => {
     const v = resolveTurnPulse({ activity: activity({ tokenChunks: 8 }), nowMs: NOW });
     expect(v.kind).toBe("moving");
-    if (v.kind === "moving") expect(v.travel).toBeGreaterThan(0);
+    if (v.kind === "moving") expect(v.fill.coarse).toBeGreaterThan(0);
   });
 });
 
