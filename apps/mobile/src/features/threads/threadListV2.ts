@@ -171,7 +171,12 @@ export function resolveThreadListV2Status(
   if (thread.stalled) {
     return "stalled";
   }
-  if (thread.session?.status === "running" || thread.session?.status === "starting") {
+  // "starting" precedes the turn id by design; "running" without one is a
+  // session claiming work it does not have.
+  if (thread.session?.status === "starting") {
+    return "working";
+  }
+  if (thread.session?.status === "running" && thread.session.activeTurnId != null) {
     return "working";
   }
   if (thread.session?.status === "error") {

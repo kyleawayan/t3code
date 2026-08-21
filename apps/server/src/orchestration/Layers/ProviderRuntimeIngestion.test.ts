@@ -787,6 +787,55 @@ describe("ProviderRuntimeIngestion", () => {
     );
   });
 
+  // The sidebar reads "Working" off the session status alone, so a session left
+  // at "running" with no turn to run renders a spinner forever. The CLI emits a
+  // bare status message between turns, and it maps to runtime state "running" —
+  // which must not be allowed to re-open a settled session.
+  it("keeps a settled session out of running when a bare status arrives", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-turn-started-bare-status"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-bare-status"),
+    });
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-turn-completed-bare-status"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:01.000Z",
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-bare-status"),
+      status: "completed",
+    });
+
+    await waitForThread(
+      harness.readModel,
+      (thread) => thread.session?.status === "ready" && thread.session?.activeTurnId === null,
+      10_000,
+    );
+
+    harness.emit({
+      type: "session.state.changed",
+      eventId: asEventId("evt-bare-status-running"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:02.000Z",
+      threadId: asThreadId("thread-1"),
+      payload: { state: "running", reason: "status:active" },
+    });
+
+    await harness.drain();
+    const readModel = await harness.readModel();
+    const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+    // Nothing is running, so nothing may claim to be.
+    expect(thread?.session?.activeTurnId).toBeNull();
+    expect(thread?.session?.status).not.toBe("running");
+  });
+
   it("accepts claude turn lifecycle when seeded thread id is a synthetic placeholder", async () => {
     const harness = await createHarness();
     const seededAt = "2026-01-01T00:00:00.000Z";
