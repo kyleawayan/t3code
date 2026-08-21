@@ -73,6 +73,7 @@ import {
   OrchestrationGetTurnDiffInput,
   OrchestrationRpcSchemas,
   OrchestrationGetWorkflowScriptError,
+  ThreadTurnActivity,
 } from "./orchestration.ts";
 import {
   ProviderUploadFeedbackError,
@@ -323,6 +324,7 @@ export const WS_METHODS = {
   // Streaming subscriptions
   subscribeVcsStatus: "subscribeVcsStatus",
   subscribeTerminalEvents: "subscribeTerminalEvents",
+  subscribeTurnActivity: "subscribeTurnActivity",
   subscribeTerminalMetadata: "subscribeTerminalMetadata",
   subscribePreviewEvents: "subscribePreviewEvents",
   subscribeDiscoveredLocalServers: "subscribeDiscoveredLocalServers",
@@ -968,6 +970,18 @@ export const WsOrchestrationSubscribeThreadRpc = Rpc.make(
   },
 );
 
+/**
+ * Live per-turn liveness. Not persisted and not replayed: it describes the
+ * present moment only, and a client that reconnects re-derives it from the next
+ * event rather than replaying a history of heartbeats.
+ */
+export const WsSubscribeTurnActivityRpc = Rpc.make(WS_METHODS.subscribeTurnActivity, {
+  payload: Schema.Struct({}),
+  success: ThreadTurnActivity,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
 export const WsSubscribeTerminalEventsRpc = Rpc.make(WS_METHODS.subscribeTerminalEvents, {
   payload: Schema.Struct({}),
   success: TerminalEvent,
@@ -1094,6 +1108,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsTerminalRestartRpc,
   WsTerminalCloseRpc,
   WsSubscribeTerminalEventsRpc,
+  WsSubscribeTurnActivityRpc,
   WsSubscribeTerminalMetadataRpc,
   WsPreviewOpenRpc,
   WsPreviewNavigateRpc,

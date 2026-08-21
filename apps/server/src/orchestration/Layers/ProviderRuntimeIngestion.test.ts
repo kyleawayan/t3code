@@ -48,6 +48,7 @@ import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQu
 import * as ThreadBackgroundLiveness from "../ThreadBackgroundLiveness.ts";
 import * as ThreadPlanProgress from "../ThreadPlanProgress.ts";
 import * as ThreadStreamActivity from "../ThreadStreamActivity.ts";
+import * as ThreadTurnActivity from "../ThreadTurnActivity.ts";
 import { ProviderRuntimeIngestionLive } from "./ProviderRuntimeIngestion.ts";
 import { DEFAULT_THREAD_TITLE } from "../threadTitles.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
@@ -251,6 +252,7 @@ describe("ProviderRuntimeIngestion", () => {
       Layer.provideMerge(ThreadBackgroundLiveness.layer),
       Layer.provideMerge(ThreadPlanProgress.layer),
       Layer.provideMerge(ThreadStreamActivity.layer),
+      Layer.provideMerge(ThreadTurnActivity.layer),
       Layer.provideMerge(SqlitePersistenceMemory),
       Layer.provideMerge(Layer.succeed(ProviderService, provider.service)),
       Layer.provideMerge(makeTestServerSettingsLayer(options?.serverSettings)),

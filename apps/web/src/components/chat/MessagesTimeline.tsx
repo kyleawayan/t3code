@@ -116,6 +116,10 @@ import {
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
+import { TurnPulse } from "./TurnPulse";
+import type { TurnPulseVerdict } from "./turnPulse.logic";
+
+const HIDDEN_TURN_PULSE: TurnPulseVerdict = { kind: "hidden" };
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import {
   buildReviewCommentRenderablePatch,
@@ -155,6 +159,8 @@ interface TimelineRowActivityState {
   latestTurnId: TurnId | null;
   /** Current plan step label for the working row, when the turn has a plan. */
   workingStepLabel: string | null;
+  /** Live token-driven liveness for the working row. */
+  turnPulse: TurnPulseVerdict;
 }
 
 const TimelineRowCtx = createContext<TimelineRowSharedState>(null!);
@@ -208,6 +214,8 @@ interface MessagesTimelineProps {
   onOpenAgents?: () => void;
   isWorking: boolean;
   workingStepLabel?: string | null;
+  turnPulse?: TurnPulseVerdict;
+  activeTurnInProgress: boolean;
   activeTurnStartedAt: string | null;
   listRef: React.RefObject<LegendListRef | null>;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
@@ -251,6 +259,8 @@ interface MessagesTimelineProps {
 export const MessagesTimeline = memo(function MessagesTimeline({
   isWorking,
   workingStepLabel = null,
+  turnPulse = HIDDEN_TURN_PULSE,
+  activeTurnInProgress,
   activeTurnStartedAt,
   agentPanelModel = EMPTY_AGENT_PANEL_MODEL,
   onOpenAgents = NOOP_OPEN_AGENTS,
@@ -552,8 +562,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isRevertingCheckpoint,
       latestTurnId: latestTurn?.turnId ?? null,
       workingStepLabel,
+      turnPulse,
     }),
-    [isRevertingCheckpoint, isWorking, latestTurn?.turnId, workingStepLabel],
+    [
+      activeTurnInProgress,
+      isRevertingCheckpoint,
+      isWorking,
+      latestTurn?.turnId,
+      workingStepLabel,
+      turnPulse,
+    ],
   );
 
   // Stable renderItem — no closure deps. Row components read shared state
@@ -1312,11 +1330,24 @@ const TurnPlanTimelineRow = memo(function TurnPlanTimelineRow({
 });
 
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
-  const { workingStepLabel } = use(TimelineRowActivityCtx);
+  const { workingStepLabel, turnPulse } = use(TimelineRowActivityCtx);
   return (
-    <div>
-      <div className="border-b border-border/60 pb-2 pt-1">
-        <div className="px-1 text-sm leading-relaxed text-muted-foreground tabular-nums">
+    <div className="py-0.5 pl-1.5">
+      <div className="flex min-w-0 items-center gap-2 pt-1 text-secondary-label text-[11px] tabular-nums">
+        {/* The dots animated on a timer, so they looked identical whether the
+            agent was working or wedged. The pulse only moves on real output;
+            the dots stay as the fallback for providers that stream nothing we
+            can count. */}
+        {turnPulse.kind === "hidden" ? (
+          <span className="inline-flex items-center gap-[3px]">
+            <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-status-pulse" />
+            <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-status-pulse [animation-delay:200ms]" />
+            <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-status-pulse [animation-delay:400ms]" />
+          </span>
+        ) : (
+          <TurnPulse verdict={turnPulse} />
+        )}
+        <span className="shrink-0">
           {row.createdAt ? (
             <>
               Working for <WorkingTimer createdAt={row.createdAt} />
@@ -1324,10 +1355,10 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
           ) : (
             "Working..."
           )}
-          {workingStepLabel ? (
-            <span className="ml-2 text-muted-foreground/55">· {workingStepLabel}</span>
-          ) : null}
-        </div>
+        </span>
+        {workingStepLabel ? (
+          <span className="min-w-0 truncate text-muted-foreground/55">· {workingStepLabel}</span>
+        ) : null}
       </div>
       {row.showThinking ? (
         <div className="mt-1">

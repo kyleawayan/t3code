@@ -115,6 +115,7 @@ import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import { OrchestrationListenerCallbackError } from "./orchestration/Errors.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as ThreadTurnActivity from "./orchestration/ThreadTurnActivity.ts";
 import { SqlitePersistenceMemory } from "./persistence/Layers/Sqlite.ts";
 import { PersistenceSqlError } from "./persistence/Errors.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
@@ -786,13 +787,16 @@ const buildAppUnderTest = (options?: {
         ),
       ),
       Layer.provide(
-        Layer.mock(OrchestrationEngine.OrchestrationEngineService)({
-          readEvents: () => Stream.empty,
-          dispatch: () => Effect.succeed({ sequence: 0 }),
-          streamDomainEvents: Stream.empty,
-          latestSequence: Effect.succeed(0),
-          ...options?.layers?.orchestrationEngine,
-        }),
+        Layer.mergeAll(
+          ThreadTurnActivity.layer,
+          Layer.mock(OrchestrationEngine.OrchestrationEngineService)({
+            readEvents: () => Stream.empty,
+            dispatch: () => Effect.succeed({ sequence: 0 }),
+            streamDomainEvents: Stream.empty,
+            latestSequence: Effect.succeed(0),
+            ...options?.layers?.orchestrationEngine,
+          }),
+        ),
       ),
       Layer.provide(
         Layer.mock(ProjectionSnapshotQuery.ProjectionSnapshotQuery)({
