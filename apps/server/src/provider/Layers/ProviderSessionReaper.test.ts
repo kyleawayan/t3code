@@ -73,6 +73,14 @@ function makeReadModel(
       readonly updatedAt: string;
     } | null;
     readonly backgroundLiveness?: "working" | "monitoring" | null;
+    readonly latestTurn?: {
+      readonly turnId: TurnId;
+      readonly state: "running" | "interrupted" | "completed" | "error";
+      readonly requestedAt: string;
+      readonly startedAt: string | null;
+      readonly completedAt: string | null;
+      readonly assistantMessageId: null;
+    } | null;
   }>,
 ) {
   const now = "2026-01-01T00:00:00.000Z";
@@ -111,7 +119,7 @@ function makeReadModel(
       hasPendingApprovals: false,
       hasPendingUserInput: false,
       hasActionableProposedPlan: false,
-      latestTurn: null,
+      latestTurn: thread.latestTurn ?? null,
       messages: [],
       session: thread.session,
       backgroundLiveness: thread.backgroundLiveness ?? null,
@@ -165,6 +173,7 @@ describe("ProviderSessionReaper", () => {
     readonly liveThreadIds?: ReadonlyArray<ThreadId>;
     readonly deadSessionGraceMs?: number;
     readonly sweepIntervalMs?: number;
+    readonly stopSessionTimeoutMs?: number;
   }) {
     const stoppedThreadIds = new Set<ThreadId>();
     const dispatchedCommands: Array<OrchestrationCommand> = [];
@@ -233,6 +242,7 @@ describe("ProviderSessionReaper", () => {
       sweepIntervalMs: input.sweepIntervalMs ?? 60_000,
       stallThresholdMs: 1_000,
       deadSessionGraceMs: input.deadSessionGraceMs ?? 1_000,
+      stopSessionTimeoutMs: input.stopSessionTimeoutMs ?? 15_000,
     }).pipe(
       Layer.provideMerge(providerSessionDirectoryLayer),
       Layer.provideMerge(runtimeRepositoryLayer),
@@ -845,5 +855,144 @@ describe("ProviderSessionReaper", () => {
     );
     expect(stallNotices).toHaveLength(1);
     expect(harness.stopSession).not.toHaveBeenCalled();
+  });
+
+  // #4713's detection query in code form: session says running, the turn row it
+  // names already finished. The session may be perfectly healthy — only its
+  // claim on the turn is stale — so this clears the claim and leaves the
+  // session alone.
+  it("clears a session's claim on a turn that already finished", async () => {
+    const threadId = ThreadId.make("thread-reaper-settled-claim");
+    const turnId = TurnId.make("turn-reaper-settled-claim");
+    const now = "2026-01-01T00:00:00.000Z";
+    const harness = await createHarness({
+      readModel: makeReadModel([
+        {
+          id: threadId,
+          session: {
+            threadId,
+            status: "running",
+            providerName: "claudeAgent",
+            runtimeMode: "full-access",
+            activeTurnId: turnId,
+            lastError: null,
+            updatedAt: now,
+          },
+          latestTurn: {
+            turnId,
+            state: "completed",
+            requestedAt: now,
+            startedAt: now,
+            completedAt: now,
+            assistantMessageId: null,
+          },
+        },
+      ]),
+    });
+    const repository = await runtime!.runPromise(
+      Effect.service(ProviderSessionRuntime.ProviderSessionRuntimeRepository),
+    );
+    await runtime!.runPromise(
+      repository.upsert({
+        threadId,
+        providerName: "claudeAgent",
+        providerInstanceId: null,
+        adapterKey: "claudeAgent",
+        runtimeMode: "full-access",
+        status: "running",
+        lastSeenAt: "2026-04-14T00:00:00.000Z",
+        resumeCursor: { opaque: "resume-settled-claim" },
+        runtimePayload: null,
+      }),
+    );
+
+    await startReaper();
+    await waitFor(() => harness.dispatchedCommands.length === 1);
+
+    const command = harness.dispatchedCommands[0];
+    expect(command?.type).toBe("thread.session.set");
+    if (command?.type === "thread.session.set") {
+      expect(command.session.activeTurnId).toBeNull();
+      expect(command.session.status).toBe("ready");
+    }
+    // The session is not the problem — only its stale claim on a finished turn.
+    expect(harness.stopSession).not.toHaveBeenCalled();
+  });
+
+  // The sweep is sequential and the schedule waits for it, so an adapter whose
+  // stop never settles would park the watchdog — and the idle reap with it —
+  // forever. That is the very hang class this exists to clean up.
+  it("keeps sweeping when one stop never settles", async () => {
+    const wedgedThreadId = ThreadId.make("thread-reaper-stop-wedged");
+    const nextThreadId = ThreadId.make("thread-reaper-after-wedged");
+    const now = "2026-01-01T00:00:00.000Z";
+    const harness = await createHarness({
+      stopSessionTimeoutMs: 50,
+      stopSessionImplementation: (request) =>
+        request.threadId === wedgedThreadId ? Effect.never : Effect.void,
+      readModel: makeReadModel([
+        {
+          id: wedgedThreadId,
+          session: {
+            threadId: wedgedThreadId,
+            status: "ready",
+            providerName: "claudeAgent",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: now,
+          },
+        },
+        {
+          id: nextThreadId,
+          session: {
+            threadId: nextThreadId,
+            status: "ready",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: now,
+          },
+        },
+      ]),
+    });
+    const repository = await runtime!.runPromise(
+      Effect.service(ProviderSessionRuntime.ProviderSessionRuntimeRepository),
+    );
+    await runtime!.runPromise(
+      repository.upsert({
+        threadId: wedgedThreadId,
+        providerName: "claudeAgent",
+        providerInstanceId: null,
+        adapterKey: "claudeAgent",
+        runtimeMode: "full-access",
+        status: "running",
+        lastSeenAt: "2026-04-14T00:00:00.000Z",
+        resumeCursor: { opaque: "resume-stop-wedged" },
+        runtimePayload: null,
+      }),
+    );
+    await runtime!.runPromise(
+      repository.upsert({
+        threadId: nextThreadId,
+        providerName: "codex",
+        providerInstanceId: null,
+        adapterKey: "codex",
+        runtimeMode: "full-access",
+        status: "running",
+        lastSeenAt: "2026-04-14T00:01:00.000Z",
+        resumeCursor: { opaque: "resume-after-wedged" },
+        runtimePayload: null,
+      }),
+    );
+
+    await startReaper();
+
+    await waitFor(() => harness.stopSession.mock.calls.length === 2, 10_000);
+    expect(harness.stopSession.mock.calls.map(([request]) => request.threadId)).toEqual([
+      wedgedThreadId,
+      nextThreadId,
+    ]);
   });
 });
