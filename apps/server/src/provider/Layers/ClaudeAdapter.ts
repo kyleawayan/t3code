@@ -420,10 +420,53 @@ function resultErrorsText(result: SDKResultMessage): string {
  * so they must never become the error banner.
  */
 function resultUserFacingError(result: SDKResultMessage): string | undefined {
+  // A success-stamped result carries no `errors` array, so without this the
+  // banner for a usage limit or an API error would be empty.
+  const failedReason = failedResultReason(result);
+  if (failedReason !== undefined) {
+    return failedReason;
+  }
   if (result.subtype === "success" || !Array.isArray(result.errors)) {
     return undefined;
   }
   return result.errors.find((error) => !error.startsWith("[ede_diagnostic]"));
+}
+
+/**
+ * Terminal reasons that mean the turn stopped short for a reason the user has
+ * to see. The CLI stamps them on `subtype: "success"` results too, so they are
+ * only visible to a reader that looks past the subtype.
+ */
+const FAILED_TERMINAL_REASONS: Record<string, string> = {
+  blocking_limit: "Claude stopped this turn: usage limit reached.",
+  rapid_refill_breaker: "Claude stopped this turn: rate limited.",
+  prompt_too_long: "Claude stopped this turn: the conversation exceeded the context limit.",
+  image_error: "Claude stopped this turn: an image could not be processed.",
+  model_error: "Claude stopped this turn: the model returned an error.",
+};
+
+/**
+ * A result the CLI called a success but that did not finish the work.
+ *
+ * `subtype: "success"` is not a claim that the turn completed: the CLI stamps
+ * it whenever the last committed message happens to be assistant text or tool
+ * results, and carries the real outcome in `terminal_reason` / `is_error`. A
+ * usage limit or an API error therefore arrives looking exactly like a clean
+ * finish — which is how a whole workday's threads can all "complete" at the
+ * same moment while their transcripts are visibly cut off mid-task.
+ */
+function failedResultReason(result: SDKResultMessage): string | undefined {
+  const terminalReason = result.terminal_reason;
+  if (terminalReason !== undefined && terminalReason in FAILED_TERMINAL_REASONS) {
+    return FAILED_TERMINAL_REASONS[terminalReason];
+  }
+  if (result.subtype === "success" && result.is_error === true) {
+    const status = result.api_error_status;
+    return status != null
+      ? `Claude stopped this turn: the API returned ${status}.`
+      : "Claude stopped this turn: the model returned an error.";
+  }
+  return undefined;
 }
 
 function isInterruptedResult(result: SDKResultMessage): boolean {
@@ -1341,14 +1384,21 @@ const buildUserMessageEffect = Effect.fn("buildUserMessageEffect")(function* (
 });
 
 function turnStatusFromResult(result: SDKResultMessage): ProviderRuntimeTurnStatus {
+  // The explicit stamps outrank the subtype. Reading `subtype === "success"`
+  // first recorded every user abort, usage limit, and API error as a clean
+  // completion: the thread settled and looked finished while its transcript
+  // stopped mid-task, with nothing anywhere saying why.
+  if (isInterruptedResult(result)) {
+    return "interrupted";
+  }
+  if (failedResultReason(result) !== undefined) {
+    return "failed";
+  }
   if (result.subtype === "success") {
     return "completed";
   }
 
   const errors = resultErrorsText(result);
-  if (isInterruptedResult(result)) {
-    return "interrupted";
-  }
   if (errors.includes("cancel")) {
     return "cancelled";
   }
