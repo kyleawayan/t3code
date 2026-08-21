@@ -3444,8 +3444,27 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           },
         });
         return;
-      case "thinking_tokens":
+      case "thinking_tokens": {
+        // Thinking streams no text on this model, so nothing else marks the
+        // thread alive while it reasons — the liveness bar would sit frozen and
+        // a long think would trip a false stall. Carry the token estimate on a
+        // reasoning content.delta (no text, so it stores nothing and only feeds
+        // liveness), which flips the thread to "generating" and advances the
+        // bar by real thinking volume.
+        const thinkingDelta = message.estimated_tokens_delta;
+        if (context.turnState && typeof thinkingDelta === "number" && thinkingDelta > 0) {
+          yield* offerRuntimeEvent({
+            ...base,
+            type: "content.delta",
+            payload: {
+              streamKind: "reasoning_text",
+              delta: "",
+              tokenEstimate: thinkingDelta,
+            },
+          });
+        }
         return;
+      }
       case "api_retry":
         // Transport-level retry heartbeat. Surfacing each attempt as a
         // warning row spammed the work log (10 rows during a 502 storm);
