@@ -6152,6 +6152,7 @@ function ChatViewContent(props: ChatViewProps) {
                 isWorking={isWorking}
                 workingStepLabel={workingStepLabel}
                 turnPulse={turnPulse}
+                showTurnMascot={activeThread.session?.providerName === "claudeAgent"}
                 activeTurnInProgress={isWorking || !latestTurnSettled}
                 activeTurnStartedAt={activeWorkStartedAt}
                 listRef={legendListRef}
