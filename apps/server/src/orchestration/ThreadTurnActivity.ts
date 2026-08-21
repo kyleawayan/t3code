@@ -37,7 +37,7 @@ import * as Layer from "effect/Layer";
 export const GENERATING_EMIT_INTERVAL_MS = 250;
 
 /** Characters per token, near enough for a progress read. */
-const CHARS_PER_TOKEN = 4;
+export const CHARS_PER_TOKEN = 4;
 
 export interface TurnActivitySnapshot {
   readonly state: TurnActivityState;

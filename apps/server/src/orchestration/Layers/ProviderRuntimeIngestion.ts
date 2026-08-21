@@ -39,7 +39,7 @@ import * as Clock from "effect/Clock";
 import { ThreadBackgroundLivenessService } from "../ThreadBackgroundLiveness.ts";
 import { ThreadPlanProgressService } from "../ThreadPlanProgress.ts";
 import { ThreadStreamActivityService } from "../ThreadStreamActivity.ts";
-import { ThreadTurnActivityService } from "../ThreadTurnActivity.ts";
+import { CHARS_PER_TOKEN, ThreadTurnActivityService } from "../ThreadTurnActivity.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import {
   ProviderRuntimeIngestionService,
@@ -1512,7 +1512,14 @@ const make = Effect.gen(function* () {
         threadId: thread.id,
         event,
         streamKind: event.type === "content.delta" ? event.payload.streamKind : undefined,
-        deltaLength: event.type === "content.delta" ? event.payload.delta.length : undefined,
+        // Real text length when the delta carries text; the provider's token
+        // estimate (normalized to the same char unit) when it is a silent
+        // thinking tick. Same accumulator either way, so the bar climbs
+        // continuously through thinking and answering.
+        deltaLength:
+          event.type === "content.delta"
+            ? event.payload.delta.length || (event.payload.tokenEstimate ?? 0) * CHARS_PER_TOKEN
+            : undefined,
         openToolCount: threadStreamActivity.hasOpenToolCall(thread.id) ? 1 : 0,
         nowMs: activityAtMs,
       });

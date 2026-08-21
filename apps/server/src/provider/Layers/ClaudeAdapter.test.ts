@@ -801,6 +801,55 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("carries thinking token estimates as reasoning deltas for liveness", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "content.delta"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("claudeAgent"),
+          model: "claude-sonnet-4-5",
+        },
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: session.threadId, input: "think", attachments: [] });
+
+      // On this model the thinking phase streams no text, only a running token
+      // estimate. Dropping it left the liveness bar frozen through the whole
+      // think; it now rides a reasoning delta so the bar reflects it.
+      harness.query.emit({
+        type: "system",
+        subtype: "thinking_tokens",
+        estimated_tokens: 120,
+        estimated_tokens_delta: 120,
+        session_id: "sdk-session-1",
+        uuid: "thinking-1",
+      } as unknown as SDKMessage);
+
+      const events = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      const delta = events.find((event) => event.type === "content.delta");
+      assert.equal(delta?.type, "content.delta");
+      if (delta?.type === "content.delta") {
+        assert.equal(delta.payload.streamKind, "reasoning_text");
+        // No text — it stores nothing and only feeds liveness.
+        assert.equal(delta.payload.delta, "");
+        assert.equal(delta.payload.tokenEstimate, 120);
+      }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("maps Claude stream/runtime messages to canonical provider runtime events", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
