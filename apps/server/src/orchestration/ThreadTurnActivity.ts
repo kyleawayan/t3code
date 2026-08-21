@@ -25,6 +25,7 @@ import type {
   TurnActivityState,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
@@ -197,7 +198,7 @@ export function make(options?: {
         threadId: input.threadId,
         state: snapshot.state,
         tokenChunks: snapshot.tokenChunks,
-        updatedAt: new Date(input.nowMs).toISOString(),
+        updatedAt: DateTime.formatIso(DateTime.makeUnsafe(input.nowMs)),
       } as ThreadTurnActivity;
     },
     get: (threadId) => byThreadId.get(threadId),
