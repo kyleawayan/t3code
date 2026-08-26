@@ -6970,7 +6970,6 @@ function ChatViewContent(props: ChatViewProps) {
                 workingStepLabel={workingStepLabel}
                 turnPulse={turnPulse}
                 showTurnMascot={activeThread.session?.providerName === "claudeAgent"}
-                activeTurnInProgress={isWorking || !latestTurnSettled}
                 activeTurnStartedAt={activeWorkStartedAt}
                 listRef={legendListRef}
                 timelineEntries={timelineEntries}
@@ -7336,6 +7335,8 @@ function ChatViewContent(props: ChatViewProps) {
             activeSurfaceId={activeRightPanelSurface?.id ?? null}
             pendingSurfaceIds={pendingFileSurfaceIds}
             previewSessions={activePreviewState.sessions}
+            desktopByTabId={activePreviewState.desktopByTabId}
+            previewRuntimeTabId={resolvePreviewRuntimeTabId}
             terminalLabelsById={activeTerminalLabelsById}
             onActivate={activateRightPanelSurface}
             onCloseSurface={closeRightPanelSurface}
@@ -7347,10 +7348,15 @@ function ChatViewContent(props: ChatViewProps) {
             onAddTerminal={addTerminalSurface}
             onAddDiff={addDiffSurface}
             onAddFiles={addFilesSurface}
+            onAddPullRequest={addPullRequestSurface}
             onAddAgents={addAgentsSurface}
             browserAvailable={isPreviewSupportedInRuntime()}
+            terminalAvailable={activeProject !== null}
             diffAvailable={isServerThread && isGitRepo}
             filesAvailable={activeProject !== null}
+            pullRequestAvailable={pullRequestSurfaceAvailable}
+            agentsAvailable
+            pullRequestStatuses={pullRequestTabStatuses}
             liveAgentCount={agentPanelModel.liveCount}
           >
             {rightPanelContent}
