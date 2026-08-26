@@ -238,7 +238,6 @@ interface MessagesTimelineProps {
   workingStepLabel?: string | null;
   turnPulse?: TurnPulseVerdict;
   showTurnMascot?: boolean;
-  activeTurnInProgress: boolean;
   activeTurnStartedAt: string | null;
   listRef: React.RefObject<LegendListRef | null>;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
@@ -287,7 +286,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   workingStepLabel = null,
   turnPulse = HIDDEN_TURN_PULSE,
   showTurnMascot = false,
-  activeTurnInProgress,
   activeTurnStartedAt,
   agentPanelModel = EMPTY_AGENT_PANEL_MODEL,
   onOpenAgents = NOOP_OPEN_AGENTS,
@@ -602,7 +600,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       showTurnMascot,
     }),
     [
-      activeTurnInProgress,
       isRevertingCheckpoint,
       isWorking,
       latestTurn?.turnId,

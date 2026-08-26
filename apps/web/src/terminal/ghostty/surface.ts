@@ -720,7 +720,12 @@ export class GhosttyTerminalSurface {
   private readonly reducedMotionMedia = window.matchMedia?.("(prefers-reduced-motion: reduce)");
   private inputLeft = -1;
   private inputTop = -1;
-  private readonly osc52 = new Osc52ClipboardWatcher((text) => this.options.onCopy(text));
+  // A terminal program's OSC 52 write goes straight to the system clipboard.
+  // Unlike a keyboard/menu copy there is no native copy event racing it, so it
+  // needs none of the token dance the copy-shortcut path uses.
+  private readonly osc52 = new Osc52ClipboardWatcher((text) => {
+    void navigator.clipboard?.writeText(text);
+  });
 
   private constructor(
     mount: HTMLElement,

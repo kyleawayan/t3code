@@ -7,6 +7,8 @@ const { getSharedHighlighter } = vi.hoisted(() => ({
 
 vi.mock("@pierre/diffs", () => ({
   getSharedHighlighter,
+  // diffRendering.ts (pulled in transitively) registers custom themes at import.
+  registerCustomTheme: () => {},
 }));
 
 import { getSyntaxHighlighterPromise } from "./syntaxHighlighting";

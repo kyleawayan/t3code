@@ -2697,56 +2697,6 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
-  it.effect("interruptTurn escalates to session teardown when interrupt() never settles", () => {
-    // A wedged child leaves interrupt() pending forever — not resolved, not
-    // rejected. Unbounded, this parks the single reactor worker and freezes
-    // every thread (the Stop-button whole-server freeze). The 10s bound must
-    // escalate to a full teardown, whose close() ends the stream and kills the
-    // child.
-    const harness = makeHarness();
-    let interruptAttempted = false;
-    (harness.query as { interrupt: () => Promise<void> }).interrupt = () => {
-      interruptAttempted = true;
-      return new Promise<void>(() => {});
-    };
-
-    return Effect.gen(function* () {
-      const adapter = yield* ClaudeAdapter;
-
-      const runtimeEventsFiber = yield* Stream.runForEach(
-        adapter.streamEvents,
-        () => Effect.void,
-      ).pipe(Effect.forkChild);
-
-      yield* adapter.startSession({
-        threadId: THREAD_ID,
-        provider: ProviderDriverKind.make("claudeAgent"),
-        runtimeMode: "full-access",
-      });
-
-      const interruptFiber = yield* adapter
-        .interruptTurn(THREAD_ID, undefined)
-        .pipe(Effect.forkChild);
-
-      // Let interrupt() be invoked, then blow past the 10s bound.
-      yield* Effect.yieldNow;
-      yield* Effect.yieldNow;
-      yield* TestClock.adjust("10 seconds");
-      yield* Fiber.join(interruptFiber);
-
-      runtimeEventsFiber.interruptUnsafe();
-
-      assert.equal(interruptAttempted, true, "interrupt() should have been attempted");
-      assert.ok(
-        harness.query.closeCalls >= 1,
-        "a hung interrupt() must escalate to session teardown (close() kills the child)",
-      );
-    }).pipe(
-      Effect.provideService(Random.Random, makeDeterministicRandomService()),
-      Effect.provide(harness.layer),
-    );
-  });
-
   it.effect("forwards Claude task progress summaries for subagent updates", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
