@@ -46,6 +46,7 @@ import { formatShortTimestamp } from "../timestampFormat";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
 import { DiffStatLabel } from "./chat/DiffStatLabel";
 import { AnnotatableCodeView, type AnnotatableCodeViewHandle } from "./diffs/AnnotatableCodeView";
+import { DiffChangesTree } from "./diffs/DiffChangesTree";
 import { Button } from "./ui/button";
 import { ToggleGroup, Toggle } from "./ui/toggle-group";
 import { Switch } from "./ui/switch";
@@ -439,6 +440,22 @@ export default function DiffPanel({
     if (!selectedDiffFileKey) return;
     codeViewRef.current?.scrollTo({ type: "item", id: selectedDiffFileKey, align: "start" });
   }, [codeViewMountKey, selectedDiffFileKey, selectedFileRevealRequestId]);
+
+  // Right-side Changes list: one entry per file with its scroll key and line
+  // stats. Shown in every mode except the width-capped inline one, where it
+  // would crowd the diff.
+  const changesEntries = useMemo(
+    () =>
+      codeViewFiles.map(({ fileDiff, filePath, fileKey }) => {
+        const stat = getDiffLineStat([fileDiff]);
+        return { path: filePath, fileKey, additions: stat.additions, deletions: stat.deletions };
+      }),
+    [codeViewFiles],
+  );
+  const showChangesList = mode !== "inline";
+  const scrollToFileKey = useCallback((fileKey: string) => {
+    codeViewRef.current?.scrollTo({ type: "item", id: fileKey, align: "start" });
+  }, []);
 
   const openDiffFile = useCallback(
     (filePath: string) => {
@@ -844,7 +861,7 @@ export default function DiffPanel({
           No completed turns yet.
         </div>
       ) : (
-        <>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
             {isSelectedPatchTruncated && (
               <p className="shrink-0 border-b border-border/70 bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
@@ -984,7 +1001,17 @@ export default function DiffPanel({
               </div>
             )}
           </div>
-        </>
+          {showChangesList && renderablePatch?.kind === "files" && codeViewFiles.length > 0 ? (
+            <aside className="flex w-60 shrink-0 flex-col overflow-y-auto border-l border-border/60 bg-background">
+              <DiffChangesTree
+                entries={changesEntries}
+                resolvedTheme={resolvedTheme}
+                selectedFileKey={selectedDiffFileKey}
+                onSelectFileKey={scrollToFileKey}
+              />
+            </aside>
+          ) : null}
+        </div>
       )}
     </DiffPanelShell>
   );
