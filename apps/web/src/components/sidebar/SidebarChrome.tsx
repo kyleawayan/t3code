@@ -82,7 +82,7 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
       <T3Wordmark />
       <span
         className={cn(
-          "-translate-y-px truncate text-sm font-medium tracking-tight",
+          "-translate-y-[0px] truncate text-[15px] font-medium tracking-tight",
           onBackdrop ? "text-white/70" : "text-muted-foreground",
         )}
       >
@@ -96,7 +96,7 @@ function T3Wordmark() {
   return (
     <svg
       aria-label="T3"
-      className="h-2.5 w-auto shrink-0"
+      className="h-2.5 w-auto shrink-0 -translate-y-px"
       viewBox="15.5309 37 94.3941 56.96"
       xmlns="http://www.w3.org/2000/svg"
     >
