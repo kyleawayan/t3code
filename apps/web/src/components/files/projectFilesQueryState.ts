@@ -44,6 +44,21 @@ export function getProjectFileQueryAtom(
   });
 }
 
+/**
+ * Whether an open file preview should be re-read after a turn: the agent
+ * changed the open path and the user has no unsaved edit to it (the editor's
+ * optimistic draft wins, so refreshing under a pending edit would refetch for
+ * nothing). Pure so the refresh decision is unit-tested without the panel.
+ */
+export function shouldRefreshOpenFile(args: {
+  readonly openPath: string | null;
+  readonly isDirty: boolean;
+  readonly changedPaths: readonly string[];
+}): boolean {
+  if (args.openPath === null || args.isDirty) return false;
+  return args.changedPaths.includes(args.openPath);
+}
+
 export function setProjectFileQueryData(
   environmentId: EnvironmentId,
   cwd: string,
