@@ -159,6 +159,7 @@ import { ThreadPreviewMiniPlayer } from "./preview/ThreadPreviewMiniPlayer";
 import { subscribePreviewAction } from "./preview/previewActionBus";
 import { getConfiguredPreviewUrls } from "./preview/previewEmptyStateLogic";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
+import { shouldRefreshOpenFile } from "./files/projectFilesQueryState";
 import {
   selectThreadPreviewMiniPlayer,
   usePreviewMiniPlayerStore,
@@ -2718,6 +2719,22 @@ function ChatViewContent(props: ChatViewProps) {
   ] = useDraftHeroLayoutTransition(isDraftHeroState);
   const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
     useTurnDiffSummaries(activeThread);
+  // When the latest turn changed the open file (and the user is not editing it),
+  // hand the file preview a token so it re-reads and shows the agent's edits.
+  // The path is folded in so switching files re-triggers a stale read too.
+  const fileExternalRefreshToken = useMemo(() => {
+    const openPath =
+      activeRightPanelSurface?.kind === "file" ? activeRightPanelSurface.relativePath : null;
+    const latest = turnDiffSummaries.at(-1) ?? null;
+    if (openPath === null || latest === null) return null;
+    return shouldRefreshOpenFile({
+      openPath,
+      isDirty: pendingFileSurfaceIds.has(`file:${openPath}`),
+      changedPaths: latest.files.map((changed) => changed.path),
+    })
+      ? `${latest.turnId}:${latest.checkpointTurnCount}:${openPath}`
+      : null;
+  }, [activeRightPanelSurface, turnDiffSummaries, pendingFileSurfaceIds]);
   const turnDiffSummaryByAssistantMessageId = useMemo(() => {
     const byMessageId = new Map<MessageId, TurnDiffSummary>();
     for (const summary of turnDiffSummaries) {
@@ -6859,6 +6876,7 @@ function ChatViewContent(props: ChatViewProps) {
           revealRequestId={activeFileSurface?.revealRequestId ?? 0}
           onOpenFile={openFileSurface}
           onPendingChange={handleFilePendingChange}
+          externalRefreshToken={fileExternalRefreshToken}
         />
       </Suspense>
     ) : null
