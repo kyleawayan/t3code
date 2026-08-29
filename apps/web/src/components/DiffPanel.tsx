@@ -37,6 +37,7 @@ import {
   resolveDiffThemeName,
   resolveFileDiffPath,
 } from "../lib/diffRendering";
+import { diffChangeStatusFromType } from "../lib/diffChangesTree";
 import { areAllDiffFilesCollapsed, toggleAllDiffFiles } from "../lib/diffCollapse";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
 import { useProject, useThread } from "../state/entities";
@@ -45,8 +46,10 @@ import { useClientSettings } from "../hooks/useSettings";
 import { formatShortTimestamp } from "../timestampFormat";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
 import { DiffStatLabel } from "./chat/DiffStatLabel";
+import { useResizableWidth } from "../hooks/useResizableWidth";
 import { AnnotatableCodeView, type AnnotatableCodeViewHandle } from "./diffs/AnnotatableCodeView";
 import { DiffChangesTree } from "./diffs/DiffChangesTree";
+import { RightPanelResizeHandle } from "./preview/RightPanelResizeHandle";
 import { Button } from "./ui/button";
 import { ToggleGroup, Toggle } from "./ui/toggle-group";
 import { Switch } from "./ui/switch";
@@ -448,7 +451,13 @@ export default function DiffPanel({
     () =>
       codeViewFiles.map(({ fileDiff, filePath, fileKey }) => {
         const stat = getDiffLineStat([fileDiff]);
-        return { path: filePath, fileKey, additions: stat.additions, deletions: stat.deletions };
+        return {
+          path: filePath,
+          fileKey,
+          status: diffChangeStatusFromType(fileDiff.type),
+          additions: stat.additions,
+          deletions: stat.deletions,
+        };
       }),
     [codeViewFiles],
   );
@@ -456,6 +465,13 @@ export default function DiffPanel({
   const scrollToFileKey = useCallback((fileKey: string) => {
     codeViewRef.current?.scrollTo({ type: "item", id: fileKey, align: "start" });
   }, []);
+  const changesPanel = useResizableWidth({
+    storageKey: "t3code:diff-changes-width",
+    defaultWidth: 150,
+    minWidth: 150,
+    maxWidth: 460,
+    edge: "left",
+  });
 
   const openDiffFile = useCallback(
     (filePath: string) => {
@@ -1002,7 +1018,11 @@ export default function DiffPanel({
             )}
           </div>
           {showChangesList && renderablePatch?.kind === "files" && codeViewFiles.length > 0 ? (
-            <aside className="flex w-60 shrink-0 flex-col overflow-y-auto border-l border-border/60 bg-background">
+            <aside
+              className="relative flex shrink-0 flex-col overflow-y-auto border-l border-border/60 bg-background"
+              style={{ width: `${changesPanel.width}px` }}
+            >
+              <RightPanelResizeHandle handlers={changesPanel.handlers} />
               <DiffChangesTree
                 entries={changesEntries}
                 resolvedTheme={resolvedTheme}
