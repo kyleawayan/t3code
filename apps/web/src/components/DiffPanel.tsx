@@ -437,16 +437,11 @@ export default function DiffPanel({
   // would crowd the diff.
   const changesEntries = useMemo(
     () =>
-      codeViewFiles.map(({ fileDiff, filePath, fileKey }) => {
-        const stat = getDiffLineStat([fileDiff]);
-        return {
-          path: filePath,
-          fileKey,
-          status: diffChangeStatusFromType(fileDiff.type),
-          additions: stat.additions,
-          deletions: stat.deletions,
-        };
-      }),
+      codeViewFiles.map(({ fileDiff, filePath, fileKey }) => ({
+        path: filePath,
+        fileKey,
+        status: diffChangeStatusFromType(fileDiff.type),
+      })),
     [codeViewFiles],
   );
   const showChangesList = mode !== "inline";
@@ -1007,16 +1002,20 @@ export default function DiffPanel({
           </div>
           {showChangesList && renderablePatch?.kind === "files" && codeViewFiles.length > 0 ? (
             <aside
-              className="relative flex shrink-0 flex-col overflow-y-auto border-l border-border/60 bg-background"
+              className="relative flex shrink-0 flex-col border-l border-border/60 bg-background"
               style={{ width: `${changesPanel.width}px` }}
             >
               <RightPanelResizeHandle handlers={changesPanel.handlers} />
-              <DiffChangesTree
-                entries={changesEntries}
-                resolvedTheme={resolvedTheme}
-                selectedFileKey={selectedDiffFileKey}
-                onSelectFileKey={scrollToFileKey}
-              />
+              {/* Scroll on an inner element so the aside's overflow does not clip the
+                  resize handle's negative-inset grab strip. */}
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <DiffChangesTree
+                  entries={changesEntries}
+                  resolvedTheme={resolvedTheme}
+                  selectedFileKey={selectedDiffFileKey}
+                  onSelectFileKey={scrollToFileKey}
+                />
+              </div>
             </aside>
           ) : null}
         </div>

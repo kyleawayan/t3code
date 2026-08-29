@@ -16,8 +16,8 @@ describe("diffChangeStatusFromType", () => {
 describe("buildDiffChangesTreeModel", () => {
   it("maps each entry's path to its viewer key and status", () => {
     const { fileKeyByPath, statusByPath } = buildDiffChangesTreeModel([
-      { path: "src/app.ts", fileKey: "key-app", status: "modified", additions: 3, deletions: 1 },
-      { path: "README.md", fileKey: "key-readme", status: "added", additions: 4, deletions: 0 },
+      { path: "src/app.ts", fileKey: "key-app", status: "modified" },
+      { path: "README.md", fileKey: "key-readme", status: "added" },
     ]);
 
     expect(fileKeyByPath.get("src/app.ts")).toBe("key-app");
@@ -26,20 +26,10 @@ describe("buildDiffChangesTreeModel", () => {
     expect(statusByPath.get("README.md")).toBe("added");
   });
 
-  it("carries per-file stats onto the file nodes", () => {
-    const { nodes } = buildDiffChangesTreeModel([
-      { path: "app.ts", fileKey: "key-app", status: "modified", additions: 5, deletions: 2 },
-    ]);
-
-    const fileNode = nodes.find((node) => node.kind === "file" && node.path === "app.ts");
-    expect(fileNode?.kind).toBe("file");
-    expect(fileNode?.stat).toEqual({ additions: 5, deletions: 2 });
-  });
-
   it("groups nested paths under a directory whose key resolves for scrolling", () => {
     const { nodes, fileKeyByPath } = buildDiffChangesTreeModel([
-      { path: "src/a.ts", fileKey: "key-a", status: "added", additions: 1, deletions: 0 },
-      { path: "src/b.ts", fileKey: "key-b", status: "deleted", additions: 0, deletions: 9 },
+      { path: "src/a.ts", fileKey: "key-a", status: "added" },
+      { path: "src/b.ts", fileKey: "key-b", status: "deleted" },
     ]);
 
     const directory = nodes.find((node) => node.kind === "directory");

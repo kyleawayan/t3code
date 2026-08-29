@@ -8,8 +8,6 @@ export interface DiffChangesEntry {
   readonly path: string;
   readonly fileKey: string;
   readonly status: DiffChangeStatus;
-  readonly additions: number;
-  readonly deletions: number;
 }
 
 export interface DiffChangesTreeModel {
@@ -50,13 +48,10 @@ export function buildDiffChangesTreeModel(
     fileKeyByPath.set(entry.path, entry.fileKey);
     statusByPath.set(entry.path, entry.status);
   }
+  // The tree is used only for structure + status here, so the builder's line
+  // stats are irrelevant; pass zeroes to satisfy its input shape.
   const nodes = buildTurnDiffTree(
-    entries.map((entry) => ({
-      path: entry.path,
-      kind: "file",
-      additions: entry.additions,
-      deletions: entry.deletions,
-    })),
+    entries.map((entry) => ({ path: entry.path, kind: "file", additions: 0, deletions: 0 })),
   );
   return { nodes, fileKeyByPath, statusByPath };
 }
