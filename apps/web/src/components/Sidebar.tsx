@@ -864,12 +864,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const topStatus =
     status === "stalled"
       ? {
-          // A wedged turn: no provider activity for minutes while still
-          // "running". Orange sets it apart from working (sky) and approval
-          // (amber); full strength so it never recedes — it wants attention.
-          label: "Stalled",
+          // A possibly-wedged turn: no provider activity for minutes while
+          // still "running". Yellow (caution, not error) sets it apart from
+          // working (sky) and approval (amber); the label ends in a question
+          // mark because a quiet turn may still recover on its own.
+          label: "Stalled?",
           icon: "stalled" as const,
-          className: "text-orange-600 dark:text-orange-300",
+          className: "text-yellow-600 dark:text-yellow-300",
         }
       : status === "working"
         ? {

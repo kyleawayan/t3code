@@ -54,8 +54,9 @@ const STATUS_LABEL_BY_STATUS: Partial<
 > = {
   approval: { label: "Approval", className: "text-adaptive-amber-700-300" },
   input: { label: "Input", className: "text-adaptive-indigo-600-300" },
-  // Orange sets a wedged turn apart from working (sky) and approval (amber).
-  stalled: { label: "Stalled", className: "text-adaptive-orange-600-300" },
+  // Yellow (caution) sets a maybe-wedged turn apart from working (sky) and
+  // approval (amber); the "?" flags that it may still recover on its own.
+  stalled: { label: "Stalled?", className: "text-adaptive-yellow-600-300" },
   working: { label: "Working", className: "text-adaptive-sky-600-400" },
   failed: { label: "Failed", className: "text-adaptive-red-700-300" },
 };
