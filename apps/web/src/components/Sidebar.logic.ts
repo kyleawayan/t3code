@@ -127,7 +127,7 @@ export function buildBulkTitleRegenerationContextMenuItem(input: {
 export interface ThreadStatusPill {
   label:
     | "Working"
-    | "Stalled"
+    | "Stalled?"
     | "Monitoring"
     | "Connecting"
     | "Completed"
@@ -145,7 +145,7 @@ export interface ThreadStatusPill {
 const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
   "Pending Approval": 7,
   "Awaiting Input": 6,
-  Stalled: 5,
+  "Stalled?": 5,
   Working: 4,
   Connecting: 4,
   "Plan Ready": 3,
@@ -689,9 +689,9 @@ export function resolveThreadStatusPill(input: {
 
   if (thread.stalled) {
     return {
-      label: "Stalled",
-      colorClass: "text-orange-600 dark:text-orange-300/90",
-      dotClass: "bg-orange-500 dark:bg-orange-300/90",
+      label: "Stalled?",
+      colorClass: "text-yellow-600 dark:text-yellow-300/90",
+      dotClass: "bg-yellow-500 dark:bg-yellow-300/90",
       pulse: false,
     };
   }

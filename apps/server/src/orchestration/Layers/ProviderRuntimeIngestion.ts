@@ -1504,9 +1504,10 @@ const make = Effect.gen(function* () {
       const thread = yield* resolveThreadShell(event.threadId);
       if (!thread) return;
 
-      // Stall watchdog: every provider event (including thinking/text deltas)
+      // Stall detection: every provider event (including thinking/text deltas)
       // marks the thread as live, so a long "thinking" turn is never mistaken
-      // for a wedged one. Read by ProviderSessionReaper.
+      // for a wedged one. Read by ProjectionSnapshotQuery to derive the sidebar
+      // stall pill.
       const activityAtMs = yield* Clock.currentTimeMillis;
       threadStreamActivity.recordActivity(thread.id, activityAtMs);
 

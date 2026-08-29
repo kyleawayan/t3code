@@ -3,8 +3,9 @@
  * turn: when the provider last streamed anything, and whether the thread is
  * currently in a state where silence is expected.
  *
- * The stall watchdog (ProviderSessionReaper) uses this to tell a wedged turn
- * from a healthy quiet one. Every provider runtime event bumps the thread's
+ * The sidebar stall pill (via ProjectionSnapshotQuery) uses this to tell a
+ * wedged turn from a healthy quiet one. Every provider runtime event bumps the
+ * thread's
  * timestamp, including thinking/text deltas, so a long "thinking" turn keeps
  * itself fresh and is never mistaken for a stall.
  *
@@ -42,27 +43,6 @@ import * as Layer from "effect/Layer";
  */
 export const STALL_WARN_MS = 2 * 60 * 1000;
 
-/**
- * Silence past this long ends the turn. Only reached outside every exempt
- * state — no open tool call, no compaction, nobody waiting on the human, no
- * background work — where there is nothing left that legitimately streams
- * nothing.
- */
-export const STALL_CUTOFF_MS = 5 * 60 * 1000;
-
-/**
- * Silence past this ends the turn even while a tool call is open or compaction
- * is running.
- *
- * Those states explain silence, but not unlimited silence. The CLI caps its own
- * Bash calls at 600s, so a tool that has produced nothing for far longer is as
- * wedged as one with no tool at all — and without a bound here, a hang that
- * begins while a tool is open would be exempt forever, which is precisely the
- * thread that never comes back. Generous enough that a real long-running tool
- * finishes well inside it.
- */
-export const STALL_QUIET_STATE_CUTOFF_MS = 30 * 60 * 1000;
-
 export interface ThreadStalledInput {
   readonly activeTurnId: string | null | undefined;
   readonly lastActivityMs: number | undefined;
@@ -86,9 +66,9 @@ export interface ThreadStalledInput {
 /**
  * A turn is "stalled" (wedged) when it is active but has streamed nothing past
  * `thresholdMs` from a state in which it should have. A missing activity entry
- * (e.g. right after a restart) is treated as fresh, never as silence. Single
- * source of truth shared by ProviderSessionReaper (warn + cut off) and
- * ProjectionSnapshotQuery (the sidebar stall pill) so the two can never drift.
+ * (e.g. right after a restart) is treated as fresh, never as silence. Consumed
+ * by ProjectionSnapshotQuery to drive the sidebar stall pill. Detection only:
+ * nothing acts on this verdict to stop a turn.
  */
 export const computeThreadStalled = (input: ThreadStalledInput): boolean => {
   if (input.activeTurnId == null) return false;

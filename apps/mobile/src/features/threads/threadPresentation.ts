@@ -80,11 +80,11 @@ export function resolveThreadStatus(
   if (thread.stalled) {
     return {
       kind: "stalled",
-      label: "Stalled",
-      pillClassName: "bg-orange-500/12 dark:bg-orange-500/16",
-      textClassName: "text-orange-700 dark:text-orange-300",
-      iconColor: "#ff9500",
-      iconBackground: "rgba(255,149,0,0.22)",
+      label: "Stalled?",
+      pillClassName: "bg-yellow-500/12 dark:bg-yellow-500/16",
+      textClassName: "text-yellow-700 dark:text-yellow-300",
+      iconColor: "#ffcc00",
+      iconBackground: "rgba(255,204,0,0.22)",
       pulse: false,
     };
   }
