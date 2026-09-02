@@ -164,6 +164,7 @@ import { ThreadPreviewMiniPlayer } from "./preview/ThreadPreviewMiniPlayer";
 import { subscribePreviewAction } from "./preview/previewActionBus";
 import { getConfiguredPreviewUrls } from "./preview/previewEmptyStateLogic";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
+import { shouldRefreshOpenFile } from "./files/projectFilesQueryState";
 import {
   selectThreadPreviewMiniPlayer,
   usePreviewMiniPlayerStore,
@@ -2847,6 +2848,22 @@ function ChatViewContent(props: ChatViewProps) {
   ] = useDraftHeroLayoutTransition(isDraftHeroState);
   const { turnDiffSummaries, inferredCheckpointTurnCountByTurnId } =
     useTurnDiffSummaries(activeThread);
+  // When the latest turn changed the open file (and the user is not editing it),
+  // hand the file preview a token so it re-reads and shows the agent's edits.
+  // The path is folded in so switching files re-triggers a stale read too.
+  const fileExternalRefreshToken = useMemo(() => {
+    const openPath =
+      activeRightPanelSurface?.kind === "file" ? activeRightPanelSurface.relativePath : null;
+    const latest = turnDiffSummaries.at(-1) ?? null;
+    if (openPath === null || latest === null) return null;
+    return shouldRefreshOpenFile({
+      openPath,
+      isDirty: pendingFileSurfaceIds.has(`file:${openPath}`),
+      changedPaths: latest.files.map((changed) => changed.path),
+    })
+      ? `${latest.turnId}:${latest.checkpointTurnCount}:${openPath}`
+      : null;
+  }, [activeRightPanelSurface, turnDiffSummaries, pendingFileSurfaceIds]);
   const turnDiffSummaryByAssistantMessageId = useMemo(() => {
     const byMessageId = new Map<MessageId, TurnDiffSummary>();
     for (const summary of turnDiffSummaries) {
@@ -7181,6 +7198,7 @@ function ChatViewContent(props: ChatViewProps) {
             activeFileSurface !== null && pendingFileSurfaceIds.has(activeFileSurface.id)
           }
           workspaceMutationId={workspaceMutationId}
+          externalRefreshToken={fileExternalRefreshToken}
         />
       </Suspense>
     ) : null
@@ -7644,17 +7662,12 @@ function ChatViewContent(props: ChatViewProps) {
         <RightPanelSheet open onClose={closePreviewPanel}>
           <RightPanelTabs
             mode="sheet"
-            // Same effective inset as the closed-state titlebar controls
-            // (pr-3 in the tab bar plus this pixel equals the absolute
-            // right inset plus mr-px), so the cluster does not creep when
-            // the sheet opens.
-            layoutControls={<div className="mr-px flex items-center">{panelToggleControls}</div>}
+            layoutControls={panelToggleControls}
             surfaces={rightPanelState.surfaces}
             activeSurfaceId={activeRightPanelSurface?.id ?? null}
             pendingSurfaceIds={pendingFileSurfaceIds}
             previewSessions={activePreviewState.sessions}
             desktopByTabId={activePreviewState.desktopByTabId}
-            previewRuntimeTabId={resolvePreviewRuntimeTabId}
             terminalLabelsById={activeTerminalLabelsById}
             onActivate={activateRightPanelSurface}
             onCloseSurface={closeRightPanelSurface}
@@ -7674,7 +7687,6 @@ function ChatViewContent(props: ChatViewProps) {
             filesAvailable={activeProject !== null}
             pullRequestAvailable={pullRequestSurfaceAvailable}
             agentsAvailable
-            pullRequestStatuses={pullRequestTabStatuses}
             liveAgentCount={agentPanelModel.liveCount}
           >
             {rightPanelContent}
