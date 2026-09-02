@@ -491,4 +491,5 @@ describe("terminal session reducers", () => {
       data: writes.slice(100).join(""),
     });
   });
+
 });
