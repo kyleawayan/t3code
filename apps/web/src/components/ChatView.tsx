@@ -181,6 +181,7 @@ import { ThreadPreviewMiniPlayer } from "./preview/ThreadPreviewMiniPlayer";
 import { subscribePreviewAction } from "./preview/previewActionBus";
 import { getConfiguredPreviewUrls } from "./preview/previewEmptyStateLogic";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
+import { shouldRefreshOpenFile } from "./files/projectFilesQueryState";
 import {
   selectThreadPreviewMiniPlayer,
   usePreviewMiniPlayerStore,
@@ -3089,6 +3090,22 @@ export default function ChatView(props: ChatViewProps) {
     attachDraftHeroComposerAnchorRef,
     captureDraftHeroComposerRect,
   ] = useDraftHeroLayoutTransition(isDraftHeroState);
+  // When the latest turn changed the open file (and the user is not editing it),
+  // hand the file preview a token so it re-reads and shows the agent's edits.
+  // The path is folded in so switching files re-triggers a stale read too.
+  const fileExternalRefreshToken = useMemo(() => {
+    const openPath =
+      activeRightPanelSurface?.kind === "file" ? activeRightPanelSurface.relativePath : null;
+    const latest = activeThread?.checkpoints.at(-1) ?? null;
+    if (openPath === null || latest === null) return null;
+    return shouldRefreshOpenFile({
+      openPath,
+      isDirty: pendingFileSurfaceIds.has(`file:${openPath}`),
+      changedPaths: latest.files.map((changed) => changed.path),
+    })
+      ? `${latest.turnId}:${latest.checkpointTurnCount}:${openPath}`
+      : null;
+  }, [activeRightPanelSurface, activeThread, pendingFileSurfaceIds]);
 
   const gitCwd = activeProject
     ? projectScriptCwd({
@@ -7842,6 +7859,7 @@ export default function ChatView(props: ChatViewProps) {
             pendingFileSurfaceIds.has(renderedRightPanelSurface.id)
           }
           workspaceMutationId={workspaceMutationId}
+          externalRefreshToken={fileExternalRefreshToken}
         />
       </Suspense>
     ) : null
@@ -8386,7 +8404,6 @@ export default function ChatView(props: ChatViewProps) {
             pendingSurfaceIds={pendingFileSurfaceIds}
             previewSessions={activePreviewState.sessions}
             desktopByTabId={activePreviewState.desktopByTabId}
-            previewRuntimeTabId={resolvePreviewRuntimeTabId}
             terminalLabelsById={activeTerminalLabelsById}
             onActivate={activateRightPanelSurface}
             onCloseSurface={closeRightPanelSurface}
