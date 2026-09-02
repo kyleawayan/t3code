@@ -3319,6 +3319,14 @@ export default function Sidebar() {
   useEffect(() => {
     const onWindowKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat) return;
+      // Skip while a keybinding is being recorded so ⌘1..9 registers as the new
+      // binding instead of jumping threads.
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.closest("[data-keybinding-capture]")
+      ) {
+        return;
+      }
       const command = resolveShortcutCommand(event, keybindings, {
         platform: navigator.platform,
         context: {
@@ -3351,8 +3359,10 @@ export default function Sidebar() {
       if (jumpIndex === null) return;
       navigateToThreadKey(orderedThreadKeys[jumpIndex] ?? null);
     };
-    window.addEventListener("keydown", onWindowKeyDown);
-    return () => window.removeEventListener("keydown", onWindowKeyDown);
+    // Capture phase so the focused terminal's stopPropagation (it encodes ⌘1..9
+    // as input) can't swallow the thread-jump shortcuts.
+    window.addEventListener("keydown", onWindowKeyDown, true);
+    return () => window.removeEventListener("keydown", onWindowKeyDown, true);
   }, [
     keybindings,
     navigateToThread,

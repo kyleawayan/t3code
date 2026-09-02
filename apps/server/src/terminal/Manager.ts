@@ -1085,7 +1085,11 @@ function createTerminalSpawnEnv(
   baseEnv: NodeJS.ProcessEnv,
   runtimeEnv?: Record<string, string> | null,
 ): NodeJS.ProcessEnv {
-  const spawnEnv: NodeJS.ProcessEnv = {};
+  // Advertise 24-bit color so tools like delta/lazygit emit truecolor SGR rather
+  // than downsampling to the 256-color palette (which greys out dim backgrounds).
+  // The embedded Ghostty VT fully parses 38;2/48;2. A real COLORTERM from the
+  // launching env or runtimeEnv still overrides this default.
+  const spawnEnv: NodeJS.ProcessEnv = { COLORTERM: "truecolor" };
   for (const [key, value] of Object.entries(baseEnv)) {
     if (value === undefined) continue;
     if (shouldExcludeTerminalEnvKey(key)) continue;

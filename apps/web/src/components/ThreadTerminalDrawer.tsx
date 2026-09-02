@@ -42,6 +42,7 @@ import {
   type GhosttyTerminalSurfaceOptions,
 } from "~/terminal/ghostty/surface";
 import { type GhosttyColor, type GhosttyTheme } from "~/terminal/ghostty/core";
+import { XCODE_ANSI_DARK, XCODE_ANSI_LIGHT } from "~/terminal/xcodeAnsiPalette";
 import { useOpenInPreferredEditor } from "../editorPreferences";
 import { isTerminalLinkActivation, isTerminalUrl, resolvePathLinkTarget } from "../terminal-links";
 import {
@@ -198,6 +199,7 @@ export function terminalThemeFromApp(mountElement?: HTMLElement | null): Ghostty
       isDark ? { r: 180, g: 203, b: 255 } : { r: 38, g: 56, b: 78 },
     ),
     selectionBackground: terminalSelection,
+    palette: isDark ? XCODE_ANSI_DARK : XCODE_ANSI_LIGHT,
   };
 }
 
@@ -447,11 +449,15 @@ export function TerminalViewport({
     },
   );
   const terminalVersion = terminalSession.version;
+  const terminalStreamOffset = terminalSession.streamOffset;
+  const terminalResetGeneration = terminalSession.resetGeneration;
   const previousSessionRef = useRef({
     buffer: terminalBuffer,
     error: terminalError,
     status: terminalStatus,
     version: terminalVersion,
+    streamOffset: terminalStreamOffset,
+    resetGeneration: terminalResetGeneration,
   });
   const latestSessionRef = useRef(previousSessionRef.current);
   latestSessionRef.current = {
@@ -459,6 +465,8 @@ export function TerminalViewport({
     error: terminalError,
     status: terminalStatus,
     version: terminalVersion,
+    streamOffset: terminalStreamOffset,
+    resetGeneration: terminalResetGeneration,
   };
 
   useEffect(() => {
@@ -914,6 +922,8 @@ export function TerminalViewport({
       error: terminalError,
       status: terminalStatus,
       version: terminalVersion,
+      streamOffset: terminalStreamOffset,
+      resetGeneration: terminalResetGeneration,
     };
     if (!terminal) {
       previousSessionRef.current = current;
@@ -926,13 +936,22 @@ export function TerminalViewport({
       return;
     }
 
-    if (
-      current.buffer.length >= previous.buffer.length &&
-      current.buffer.startsWith(previous.buffer)
-    ) {
-      terminal.write(current.buffer.slice(previous.buffer.length));
-    } else {
+    if (current.resetGeneration !== previous.resetGeneration) {
+      // The buffer was replaced wholesale (snapshot/restart/clear): replay it.
       writeTerminalBuffer(terminal, current.buffer);
+    } else {
+      // Write only the newly-appended tail. Diffing the buffers directly breaks
+      // once output exceeds the client byte cap: the front-trim makes a naive
+      // prefix check fail on every event, forcing a full reset+replay of a
+      // mid-stream suffix that desyncs the grid (stale cells, phantom chars).
+      const delta = current.streamOffset - previous.streamOffset;
+      if (delta > 0 && delta <= current.buffer.length) {
+        terminal.write(current.buffer.slice(current.buffer.length - delta));
+      } else if (delta > current.buffer.length) {
+        // A burst larger than the retained buffer: resync from what remains.
+        writeTerminalBuffer(terminal, current.buffer);
+      }
+      // delta <= 0: no new output (a status/error-only change) — nothing to write.
     }
     terminal.clearSelection();
 
@@ -946,7 +965,15 @@ export function TerminalViewport({
       });
     }
     previousSessionRef.current = current;
-  }, [autoFocus, terminalBuffer, terminalError, terminalStatus, terminalVersion]);
+  }, [
+    autoFocus,
+    terminalBuffer,
+    terminalError,
+    terminalStatus,
+    terminalVersion,
+    terminalStreamOffset,
+    terminalResetGeneration,
+  ]);
 
   useEffect(() => {
     if (!autoFocus) return;

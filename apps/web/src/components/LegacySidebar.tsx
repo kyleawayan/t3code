@@ -3482,6 +3482,15 @@ export default function LegacySidebar() {
         return;
       }
 
+      // Skip while a keybinding is being recorded so ⌘1..9 registers as the new
+      // binding instead of jumping threads.
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.closest("[data-keybinding-capture]")
+      ) {
+        return;
+      }
+
       const command = resolveShortcutCommand(event, keybindings, {
         platform,
         context: shortcutContext,
@@ -3526,10 +3535,12 @@ export default function LegacySidebar() {
       navigateToThread(scopeThreadRef(targetThread.environmentId, targetThread.id));
     };
 
-    window.addEventListener("keydown", onWindowKeyDown);
+    // Capture phase so the focused terminal's stopPropagation (it encodes ⌘1..9
+    // as input) can't swallow the thread-jump shortcuts.
+    window.addEventListener("keydown", onWindowKeyDown, true);
 
     return () => {
-      window.removeEventListener("keydown", onWindowKeyDown);
+      window.removeEventListener("keydown", onWindowKeyDown, true);
     };
   }, [
     getCurrentSidebarShortcutContext,

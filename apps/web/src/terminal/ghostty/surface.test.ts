@@ -11,6 +11,8 @@ import {
   isTerminalAltGraphText,
   isTerminalCompositionCommitInput,
   isTerminalCompositionKey,
+  Osc52ClipboardWatcher,
+  decodeOsc52Payload,
   isTerminalCopyShortcut,
   isTerminalLinkPointerGesture,
   isTerminalPasteShortcut,
@@ -634,5 +636,98 @@ describe("terminal scrollbar", () => {
       maxOffset: 9_980,
     });
     expect(terminalScrollbarOffsetAtPointer(state, 200, 191, 9)).toBe(9_980);
+  });
+});
+
+const base64 = (text: string) => btoa(String.fromCharCode(...new TextEncoder().encode(text)));
+
+const osc52 = (text: string, targets = "c", terminator = "\x07") =>
+  `\x1b]52;${targets};${base64(text)}${terminator}`;
+
+describe("decodeOsc52Payload", () => {
+  it("decodes UTF-8 base64", () => {
+    expect(decodeOsc52Payload(base64("héllo → 世界"))).toBe("héllo → 世界");
+  });
+
+  it("accepts unpadded base64", () => {
+    // "abc" encodes to "YWJj" (already padded); "ab" -> "YWI=" -> drop the "=".
+    expect(decodeOsc52Payload("YWI")).toBe("ab");
+  });
+
+  it("returns null for invalid base64", () => {
+    expect(decodeOsc52Payload("not valid !!")).toBeNull();
+  });
+});
+
+describe("Osc52ClipboardWatcher", () => {
+  const collect = () => {
+    const texts: string[] = [];
+    return { texts, watcher: new Osc52ClipboardWatcher((text) => texts.push(text)) };
+  };
+
+  it("reports the clipboard text on a BEL-terminated sequence", () => {
+    const { texts, watcher } = collect();
+    watcher.scan(osc52("hello world"));
+    expect(texts).toEqual(["hello world"]);
+  });
+
+  it("accepts an ST (ESC \\) terminator", () => {
+    const { texts, watcher } = collect();
+    watcher.scan(osc52("via ST", "c", "\x1b\\"));
+    expect(texts).toEqual(["via ST"]);
+  });
+
+  it("reassembles a sequence split across chunk boundaries", () => {
+    const { texts, watcher } = collect();
+    const sequence = osc52("fragmented tmux output");
+    for (let index = 0; index < sequence.length; index += 3) {
+      watcher.scan(sequence.slice(index, index + 3));
+    }
+    expect(texts).toEqual(["fragmented tmux output"]);
+  });
+
+  it("handles multiple sequences in one chunk", () => {
+    const { texts, watcher } = collect();
+    watcher.scan(`${osc52("first")}${osc52("second")}`);
+    expect(texts).toEqual(["first", "second"]);
+  });
+
+  it("ignores an empty selection target", () => {
+    const { texts, watcher } = collect();
+    watcher.scan(osc52("no target", ""));
+    expect(texts).toEqual(["no target"]);
+  });
+
+  it("ignores non-52 OSC without emitting", () => {
+    const { texts, watcher } = collect();
+    watcher.scan("\x1b]0;window title\x07");
+    expect(texts).toEqual([]);
+  });
+
+  it("ignores a clipboard read query", () => {
+    const { texts, watcher } = collect();
+    watcher.scan("\x1b]52;c;?\x07");
+    expect(texts).toEqual([]);
+  });
+
+  it("ignores an empty payload", () => {
+    const { texts, watcher } = collect();
+    watcher.scan("\x1b]52;c;\x07");
+    expect(texts).toEqual([]);
+  });
+
+  it("drops a payload over the size cap", () => {
+    const { texts, watcher } = collect();
+    // "A" is valid base64; the watcher drops on length before it ever decodes.
+    watcher.scan(`\x1b]52;c;${"A".repeat(2_000_000)}\x07`);
+    expect(texts).toEqual([]);
+  });
+
+  it("discards partial state on reset", () => {
+    const { texts, watcher } = collect();
+    watcher.scan("\x1b]52;c;aGVs"); // "hel..." then a mount replay resets us.
+    watcher.reset();
+    watcher.scan("bG8=\x07");
+    expect(texts).toEqual([]);
   });
 });

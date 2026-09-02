@@ -15,6 +15,8 @@ export interface TerminalSessionState {
   readonly hasRunningSubprocess: boolean;
   readonly updatedAt: string | null;
   readonly version: number;
+  readonly streamOffset: number;
+  readonly resetGeneration: number;
 }
 
 export interface TerminalBufferState {
@@ -23,6 +25,15 @@ export interface TerminalBufferState {
   readonly error: string | null;
   readonly updatedAt: string | null;
   readonly version: number;
+  /**
+   * Code-unit position of the end of `buffer` within the logical output stream
+   * since the last rebase. Grows by each output chunk's length; a consumer can
+   * write just the new tail (`buffer.slice(buffer.length - delta)`) instead of
+   * diffing capped buffers, whose front-trim breaks a naive prefix check.
+   */
+  readonly streamOffset: number;
+  /** Bumps whenever `buffer` is replaced wholesale (snapshot/restart/clear). */
+  readonly resetGeneration: number;
 }
 
 export interface KnownTerminalSessionTarget {
@@ -50,6 +61,8 @@ export const EMPTY_TERMINAL_BUFFER_STATE = Object.freeze<TerminalBufferState>({
   error: null,
   updatedAt: null,
   version: 0,
+  streamOffset: 0,
+  resetGeneration: 0,
 });
 
 export const EMPTY_TERMINAL_SESSION_STATE = Object.freeze<TerminalSessionState>({
@@ -60,6 +73,8 @@ export const EMPTY_TERMINAL_SESSION_STATE = Object.freeze<TerminalSessionState>(
   hasRunningSubprocess: false,
   updatedAt: null,
   version: 0,
+  streamOffset: 0,
+  resetGeneration: 0,
 });
 
 export const DEFAULT_MAX_TERMINAL_BUFFER_BYTES = 512 * 1024;
@@ -91,13 +106,17 @@ function trimBufferToBytes(buffer: string, maxBufferBytes: number): string {
 export function terminalBufferStateFromSnapshot(
   snapshot: TerminalSessionSnapshot,
   maxBufferBytes: number,
+  resetGeneration = 1,
 ): TerminalBufferState {
+  const buffer = trimBufferToBytes(snapshot.history, maxBufferBytes);
   return {
-    buffer: trimBufferToBytes(snapshot.history, maxBufferBytes),
+    buffer,
     status: snapshot.status,
     error: null,
     updatedAt: snapshot.updatedAt,
     version: 1,
+    streamOffset: buffer.length,
+    resetGeneration,
   };
 }
 
@@ -119,6 +138,8 @@ export function combineTerminalSessionState(
     hasRunningSubprocess: summary?.hasRunningSubprocess ?? false,
     updatedAt: latestTimestamp(summary?.updatedAt ?? null, buffer.updatedAt),
     version: buffer.version,
+    streamOffset: buffer.streamOffset,
+    resetGeneration: buffer.resetGeneration,
   };
 }
 
@@ -130,7 +151,13 @@ export function applyTerminalAttachStreamEvent(
   switch (event.type) {
     case "snapshot":
     case "restarted":
-      return terminalBufferStateFromSnapshot(event.snapshot, maxBufferBytes);
+      // Wholesale buffer replacement: bump the generation so a consumer replays
+      // it instead of treating it as an output append.
+      return terminalBufferStateFromSnapshot(
+        event.snapshot,
+        maxBufferBytes,
+        current.resetGeneration + 1,
+      );
     case "output":
       return {
         ...current,
@@ -138,6 +165,7 @@ export function applyTerminalAttachStreamEvent(
         status: current.status === "closed" ? "running" : current.status,
         error: null,
         version: current.version + 1,
+        streamOffset: current.streamOffset + event.data.length,
       };
     case "cleared":
       return {
@@ -145,6 +173,8 @@ export function applyTerminalAttachStreamEvent(
         buffer: "",
         error: null,
         version: current.version + 1,
+        streamOffset: 0,
+        resetGeneration: current.resetGeneration + 1,
       };
     case "exited":
       return {
