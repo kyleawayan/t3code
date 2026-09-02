@@ -37,6 +37,7 @@ import {
   resolveDiffThemeName,
   resolveFileDiffPath,
 } from "../lib/diffRendering";
+import { diffChangeStatusFromType } from "../lib/diffChangesTree";
 import { areAllDiffFilesCollapsed, toggleAllDiffFiles } from "../lib/diffCollapse";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
 import { useWorkspaceMutationRefresh } from "../hooks/useWorkspaceMutationRefresh";
@@ -46,7 +47,10 @@ import { useClientSettings } from "../hooks/useSettings";
 import { formatShortTimestamp } from "../timestampFormat";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
 import { DiffStatLabel } from "./chat/DiffStatLabel";
+import { useResizableWidth } from "../hooks/useResizableWidth";
 import { AnnotatableCodeView, type AnnotatableCodeViewHandle } from "./diffs/AnnotatableCodeView";
+import { DiffChangesTree } from "./diffs/DiffChangesTree";
+import { RightPanelResizeHandle } from "./preview/RightPanelResizeHandle";
 import { Button } from "./ui/button";
 import { ToggleGroup, Toggle } from "./ui/toggle-group";
 import { Switch } from "./ui/switch";
@@ -427,6 +431,30 @@ export default function DiffPanel({
     if (!selectedDiffFileKey) return;
     codeViewRef.current?.scrollTo({ type: "item", id: selectedDiffFileKey, align: "start" });
   }, [codeViewMountKey, selectedDiffFileKey, selectedFileRevealRequestId]);
+
+  // Right-side Changes list: one entry per file with its scroll key and line
+  // stats. Shown in every mode except the width-capped inline one, where it
+  // would crowd the diff.
+  const changesEntries = useMemo(
+    () =>
+      codeViewFiles.map(({ fileDiff, filePath, fileKey }) => ({
+        path: filePath,
+        fileKey,
+        status: diffChangeStatusFromType(fileDiff.type),
+      })),
+    [codeViewFiles],
+  );
+  const showChangesList = mode !== "inline";
+  const scrollToFileKey = useCallback((fileKey: string) => {
+    codeViewRef.current?.scrollTo({ type: "item", id: fileKey, align: "start" });
+  }, []);
+  const changesPanel = useResizableWidth({
+    storageKey: "t3code:diff-changes-width",
+    defaultWidth: 150,
+    minWidth: 150,
+    maxWidth: 460,
+    edge: "left",
+  });
 
   const openDiffFile = useCallback(
     (filePath: string) => {
@@ -832,7 +860,7 @@ export default function DiffPanel({
           No completed turns yet.
         </div>
       ) : (
-        <>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
             {isSelectedPatchTruncated && (
               <p className="shrink-0 border-b border-border/70 bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
@@ -945,7 +973,7 @@ export default function DiffPanel({
                   }}
                   options={{
                     diffStyle: diffRenderMode === "split" ? "split" : "unified",
-                    lineDiffType: "none",
+                    lineDiffType: "word",
                     overflow: wordWrap ? "wrap" : "scroll",
                     theme: resolveDiffThemeName(resolvedTheme),
                     themeType: resolvedTheme as DiffThemeType,
@@ -972,7 +1000,25 @@ export default function DiffPanel({
               </div>
             )}
           </div>
-        </>
+          {showChangesList && renderablePatch?.kind === "files" && codeViewFiles.length > 0 ? (
+            <aside
+              className="relative flex shrink-0 flex-col border-l border-border/60 bg-background"
+              style={{ width: `${changesPanel.width}px` }}
+            >
+              <RightPanelResizeHandle handlers={changesPanel.handlers} />
+              {/* Scroll on an inner element so the aside's overflow does not clip the
+                  resize handle's negative-inset grab strip. */}
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <DiffChangesTree
+                  entries={changesEntries}
+                  resolvedTheme={resolvedTheme}
+                  selectedFileKey={selectedDiffFileKey}
+                  onSelectFileKey={scrollToFileKey}
+                />
+              </div>
+            </aside>
+          ) : null}
+        </div>
       )}
     </DiffPanelShell>
   );

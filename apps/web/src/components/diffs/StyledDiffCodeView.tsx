@@ -256,6 +256,16 @@ const DIFF_VIEW_UNSAFE_CSS = `${DIFF_SURFACE_THEME_UNSAFE_CSS}
     transition: none;
   }
 }
+
+/* The changed-word emphasis reads as a square block filling the full line rather
+   than Pierre's rounded inline chip. Vertical padding is the line's half-leading,
+   derived from the diff font vars, so the fill tracks the code size. */
+[data-diff-span] {
+  border-radius: 0 !important;
+  padding-block: calc((var(--diffs-line-height, 20px) - var(--diffs-font-size, 13px)) / 2) !important;
+  -webkit-box-decoration-break: clone !important;
+  box-decoration-break: clone !important;
+}
 `;
 
 export type StyledDiffCodeViewOptions<LAnnotation> = Omit<
