@@ -16,7 +16,7 @@ import { PREFERRED_HIGHLIGHTER } from "../lib/syntaxHighlighting";
 
 export class DiffWorkerError extends Schema.TaggedErrorClass<DiffWorkerError>()("DiffWorkerError", {
   operation: Schema.Literals(["create-worker", "get-render-options", "set-render-options"]),
-  themeName: Schema.Literals(["pierre-light", "pierre-dark"]),
+  themeName: Schema.Literals(["xcode-hc-light", "xcode-hc-dark"]),
   cause: Schema.Defect(),
 }) {
   override get message(): string {
