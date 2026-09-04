@@ -1,0 +1,34 @@
+{
+  "name": "@t3tools/glasses",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "preview": "vp preview",
+    "simulate": "evenhub-simulator http://localhost:5741",
+    "pack": "vp build && node scripts/pack.mjs",
+    "typecheck": "tsgo --noEmit",
+    "test": "vp test run --passWithNoTests"
+  },
+  "dependencies": {
+    "@effect/atom-react": "catalog:",
+    "@evenrealities/even_hub_sdk": "^0.0.14",
+    "@evenrealities/pretext": "^0.1.4",
+    "@t3tools/client-runtime": "workspace:*",
+    "@t3tools/contracts": "workspace:*",
+    "@t3tools/shared": "workspace:*",
+    "effect": "catalog:",
+    "jsqr": "^1.4.0",
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.14",
+    "@types/react-dom": "~19.2.3",
+    "@vitejs/plugin-react": "^6.0.0",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
