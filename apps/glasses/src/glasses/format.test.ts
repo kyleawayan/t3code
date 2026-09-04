@@ -14,6 +14,7 @@ import {
   STATUS_INNER_WIDTH,
   threadListLabel,
   threadStatusKind,
+  toolStepLabel,
   transcriptLines,
   visibleThreads,
   windowEndingAt,
@@ -387,6 +388,76 @@ describe("skipInstantLines", () => {
 
   it("jumps past a trailing approval line to the end", () => {
     expect(skipInstantLines(layout, 30)).toBe(transcriptLength(layout.lines));
+  });
+
+  it("snaps to the end once the reader has replied below the cursor", () => {
+    const replied = {
+      lines: ["> reply one", "  reply two", "/ next ask"],
+      origins: ["agent", "agent", "user"] as const,
+    };
+    expect(skipInstantLines(replied, 3)).toBe(transcriptLength(replied.lines));
+  });
+});
+
+describe("toolStepLabel", () => {
+  const tool = (payload: unknown) => ({
+    ...activity("tool.updated", "Command run", "2026-01-01T00:00:00Z"),
+    payload,
+  });
+
+  it("words a running command like the work log", () => {
+    expect(
+      toolStepLabel(
+        tool({
+          itemType: "command_execution",
+          status: "inProgress",
+          detail: "Bash: cd apps && vp test run\nsecond line",
+          data: { toolName: "Bash", input: {} },
+        }),
+      ),
+    ).toBe("Running cd");
+  });
+
+  it("uses the past tense and the file name once an edit completes", () => {
+    expect(
+      toolStepLabel(
+        tool({
+          itemType: "file_change",
+          status: "completed",
+          detail: 'Edit: {"file_path":"/repo/apps/glasses/src/phone/App.tsx","old_string":"x"}',
+          data: { toolName: "Edit", input: {} },
+        }),
+      ),
+    ).toBe("Edited App.tsx");
+  });
+
+  it("reads and searches by tool name", () => {
+    expect(
+      toolStepLabel(
+        tool({
+          itemType: "dynamic_tool_call",
+          status: "inProgress",
+          data: { toolName: "Read", input: { file_path: "/repo/README.md" } },
+        }),
+      ),
+    ).toBe("Reading README.md");
+    expect(
+      toolStepLabel(
+        tool({
+          itemType: "dynamic_tool_call",
+          status: "completed",
+          data: { toolName: "Grep", input: { pattern: "toolStepLabel" } },
+        }),
+      ),
+    ).toBe("Searched toolStepLabel");
+  });
+
+  it("falls back to the server summary when nothing is recognised", () => {
+    expect(
+      toolStepLabel(
+        tool({ itemType: "command_execution", status: "inProgress", detail: "Bash: {}" }),
+      ),
+    ).toBe("Command run");
   });
 });
 

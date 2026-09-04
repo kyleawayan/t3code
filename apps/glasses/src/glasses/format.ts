@@ -1,4 +1,5 @@
 import { getTextWidth, pxTruncate } from "@evenrealities/pretext";
+import { commandProgramName } from "@t3tools/client-runtime/work-log/command-label";
 import type {
   OrchestrationMessage,
   OrchestrationThread,
@@ -373,6 +374,7 @@ function layoutEntries(
  * jump past that line so it appears whole and at once.
  */
 export function skipInstantLines(layout: TranscriptLayout, revealChars: number): number {
+  const total = transcriptLength(layout.lines);
   let cursor = Math.max(0, revealChars);
   let lineStart = 0;
   for (let index = 0; index < layout.lines.length; index += 1) {
@@ -380,23 +382,117 @@ export function skipInstantLines(layout: TranscriptLayout, revealChars: number):
     const lineEnd = lineStart + length;
     if (cursor < lineEnd) {
       if (layout.origins[index] === "agent") {
-        return cursor;
+        // The reader has already replied below the text still being typed:
+        // finish it at once and land on their new message.
+        return layout.origins.slice(index + 1).includes("user") ? total : cursor;
       }
       cursor = lineEnd + 1;
     }
     lineStart = lineEnd + 1;
   }
-  return Math.min(cursor, transcriptLength(layout.lines));
+  return Math.min(cursor, total);
 }
 
 // Progress and update events restate a tool line that is already on screen.
 const SKIPPED_ACTIVITY_KINDS = new Set([
   "tool.progress",
-  "tool.updated",
   // Bookkeeping after every reply; noise on a glasses-sized page.
   "context-window.updated",
   "checkpoint.captured",
 ]);
+
+type ToolPayload = {
+  readonly itemType?: unknown;
+  readonly status?: unknown;
+  readonly detail?: unknown;
+  readonly data?: { readonly toolName?: unknown; readonly input?: Record<string, unknown> };
+};
+
+const STEP_LABEL_MAX_CHARS = 56;
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+/** `"Bash: ls -la"` and `"Edit: {json}"` both carry the tool's input after the tool name. */
+function detailBody(detail: string | null): string | null {
+  if (detail === null) {
+    return null;
+  }
+  const separator = detail.indexOf(": ");
+  return separator === -1 ? detail : detail.slice(separator + 2).trim();
+}
+
+function detailInput(detail: string | null): Record<string, unknown> | null {
+  const body = detailBody(detail);
+  if (body === null || !body.startsWith("{")) {
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(body);
+    return typeof parsed === "object" && parsed !== null
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function baseName(path: string): string {
+  const trimmed = path.replace(/[\\/]+$/, "");
+  const slash = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return slash === -1 ? trimmed : trimmed.slice(slash + 1);
+}
+
+function firstLine(text: string): string {
+  return text.split(/\r?\n/)[0]?.trim() ?? "";
+}
+
+/**
+ * One line per tool call, worded like T3 Code's work log: "Running <cmd>",
+ * "Editing <file>", "Reading <file>", with the past tense once it finished.
+ * Falls back to the server's summary for tools this does not recognise.
+ */
+export function toolStepLabel(activity: OrchestrationThread["activities"][number]): string {
+  const payload = (activity.payload ?? {}) as ToolPayload;
+  const input: Record<string, unknown> = {
+    ...detailInput(asString(payload.detail)),
+    ...payload.data?.input,
+  };
+  const toolName = asString(payload.data?.toolName) ?? "";
+  const status = asString(payload.status);
+  const done = status === "completed";
+  const failed = status === "failed" || status === "declined";
+  const tense = (active: string, past: string) =>
+    failed ? `Failed: ${active}` : done ? past : active;
+  const itemType = asString(payload.itemType);
+
+  const command =
+    asString(input.command) ??
+    (itemType === "command_execution" ? detailBody(asString(payload.detail)) : null);
+  const path = asString(input.file_path) ?? asString(input.path) ?? asString(input.notebook_path);
+  const pattern = asString(input.pattern) ?? asString(input.query);
+
+  let label: string | null = null;
+  if (itemType === "command_execution" && command !== null && !command.startsWith("{")) {
+    // Program name only, as T3 Code's work log shows it: "Running cd".
+    const program = commandProgramName(firstLine(command)) ?? firstLine(command).split(" ")[0];
+    label = `${tense("Running", "Ran")} ${program}`;
+  } else if (itemType === "file_change" && path !== null) {
+    label = `${tense(toolName === "Write" ? "Writing" : "Editing", toolName === "Write" ? "Wrote" : "Edited")} ${baseName(path)}`;
+  } else if (toolName === "Read" && path !== null) {
+    label = `${tense("Reading", "Read")} ${baseName(path)}`;
+  } else if ((toolName === "Grep" || toolName === "Glob") && pattern !== null) {
+    label = `${tense("Searching", "Searched")} ${pattern}`;
+  } else if (itemType === "web_search" && pattern !== null) {
+    label = `${tense("Searching web:", "Searched web:")} ${pattern}`;
+  } else if (toolName === "WebFetch" && asString(input.url) !== null) {
+    label = `${tense("Fetching", "Fetched")} ${asString(input.url)}`;
+  } else if (toolName.length > 0 && !/^tool$/i.test(toolName)) {
+    label = `${toolName}${done ? "" : "..."}`;
+  }
+  return truncateEnd(label ?? activity.summary, STEP_LABEL_MAX_CHARS);
+}
 
 function activityOrigin(activity: OrchestrationThread["activities"][number]): TranscriptOrigin {
   if (activity.kind === "approval.resolved") {
@@ -451,7 +547,10 @@ function transcriptEntries(thread: TranscriptSource): Array<TranscriptEntry> {
     .filter((activity) => !SKIPPED_ACTIVITY_KINDS.has(activity.kind))
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   for (const activity of activities) {
-    const text = truncateEnd(activity.summary, ACTIVITY_MAX_CHARS);
+    const text =
+      activity.tone === "tool"
+        ? toolStepLabel(activity)
+        : truncateEnd(activity.summary, ACTIVITY_MAX_CHARS);
     const toolCallId = toolCallIdOf(activity.payload);
     const existing = toolCallId === null ? undefined : byToolCall.get(toolCallId);
     if (existing !== undefined) {
