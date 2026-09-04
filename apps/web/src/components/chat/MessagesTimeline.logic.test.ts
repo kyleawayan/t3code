@@ -826,11 +826,10 @@ describe("deriveMessagesTimelineRows", () => {
       "assistant-final-entry",
       "user-followup-entry",
       "working-indicator-row",
-      "thinking-indicator-row",
     ]);
     const finalRow = rows.find((row) => row.id === "assistant-final-entry");
     expect(finalRow?.kind === "message" && finalRow.showAssistantMeta).toBe(true);
-    expect(rows.at(-1)).toMatchObject({ kind: "thinking" });
+    expect(rows.at(-1)).toMatchObject({ kind: "working" });
   });
 
   it("does not fold the active in-progress turn", () => {
@@ -877,9 +876,9 @@ describe("deriveMessagesTimelineRows", () => {
 
     expect(rows.some((row) => row.kind === "turn-fold")).toBe(false);
     expect(rows.map((row) => row.id)).toEqual([
-      "working-indicator-row",
       "assistant-thought-entry",
       "work-live:work-entry-1",
+      "working-indicator-row",
     ]);
   });
 
@@ -944,7 +943,7 @@ describe("deriveMessagesTimelineRows", () => {
       revertTurnCountByUserMessageId: new Map(),
     });
 
-    expect(rows.map((row) => row.kind)).toEqual(["working", "work-live"]);
+    expect(rows.map((row) => row.kind)).toEqual(["work-live", "working"]);
     expect(rows.some((row) => row.kind === "thinking")).toBe(false);
     expect(rows.find((row) => row.kind === "work-live")).toMatchObject({
       entry: { id: "running-command" },
@@ -1016,7 +1015,7 @@ describe("deriveMessagesTimelineRows", () => {
       revertTurnCountByUserMessageId: new Map(),
     });
 
-    expect(rows.map((row) => row.kind)).toEqual(["working", "work-toggle", "message", "work-live"]);
+    expect(rows.map((row) => row.kind)).toEqual(["work-toggle", "message", "work-live", "working"]);
     expect(rows.find((row) => row.kind === "work-toggle")).toMatchObject({
       hiddenCount: 1,
       summary: "Ran 1 command",
@@ -1083,7 +1082,7 @@ describe("deriveMessagesTimelineRows", () => {
       revertTurnCountByUserMessageId: new Map(),
     });
 
-    expect(rows.map((row) => row.kind)).toEqual(["working", "work-live", "message", "work-live"]);
+    expect(rows.map((row) => row.kind)).toEqual(["work-live", "message", "work-live", "working"]);
     expect(rows.filter((row) => row.kind === "work-live").map((row) => row.entry.id)).toEqual([
       "first-running",
       "second-running",
@@ -1227,9 +1226,9 @@ describe("deriveMessagesTimelineRows", () => {
       revertTurnCountByUserMessageId: new Map(),
     });
 
-    expect(rows.map((row) => row.kind)).toEqual(["working", "work-live", "thinking"]);
+    expect(rows.map((row) => row.kind)).toEqual(["work-live", "working"]);
     expect(rows.find((row) => row.kind === "work-live")).toMatchObject({ active: false });
-    expect(rows.at(-1)).toMatchObject({ kind: "thinking" });
+    expect(rows.at(-1)).toMatchObject({ kind: "working" });
   });
 
   it("does not fold the session's running turn when latestTurn regresses", () => {
@@ -1377,7 +1376,7 @@ describe("deriveMessagesTimelineRows", () => {
 
     expect(assistantRow?.showAssistantMeta).toBe(false);
     expect(assistantRow?.showAssistantCopyButton).toBe(false);
-    expect(rows.at(-1)).toMatchObject({ kind: "thinking" });
+    expect(rows.at(-1)).toMatchObject({ kind: "working" });
   });
 
   it.each([
@@ -1587,9 +1586,9 @@ describe("computeStableMessagesTimelineRows", () => {
       initial,
     );
 
-    const initialThinking = initial.byId.get("thinking-indicator-row");
-    const updatedThinking = updated.byId.get("thinking-indicator-row");
-    expect(initialThinking).toMatchObject({ kind: "thinking" });
+    const initialThinking = initial.byId.get("working-indicator-row");
+    const updatedThinking = updated.byId.get("working-indicator-row");
+    expect(initialThinking).toMatchObject({ kind: "working" });
     expect(updatedThinking).toBe(initialThinking);
     expect(updated.result.at(-1)).toBe(updatedThinking);
   });
