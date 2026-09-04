@@ -21,6 +21,7 @@ import {
 } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -36,6 +37,7 @@ import { isGitRepository } from "../../git/Utils.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ThreadBackgroundLivenessService } from "../ThreadBackgroundLiveness.ts";
 import { ThreadPlanProgressService } from "../ThreadPlanProgress.ts";
+import { CHARS_PER_TOKEN, ThreadTurnActivityService } from "../ThreadTurnActivity.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import {
   ProviderRuntimeIngestionService,
@@ -890,6 +892,11 @@ export function runtimeEventToActivities(
 
 const make = Effect.gen(function* () {
   const threadBackgroundLiveness = yield* ThreadBackgroundLivenessService;
+  const threadTurnActivity = yield* ThreadTurnActivityService;
+  // Open tool-lifecycle items per thread, so a turn's liveness only returns to
+  // "should be producing" once the last parallel tool call has closed. Feeds
+  // the liveness pulse alone; nothing here is persisted.
+  const openToolItemsByThread = new Map<string, Set<string>>();
   const threadPlanProgress = yield* ThreadPlanProgressService;
   const crypto = yield* Crypto.Crypto;
   const orchestrationEngine = yield* OrchestrationEngineService;
@@ -1499,12 +1506,58 @@ const make = Effect.gen(function* () {
 
   const processRuntimeEvent = (event: ProviderRuntimeEvent) =>
     Effect.gen(function* () {
+      const thread = yield* resolveThreadShell(event.threadId);
+      if (!thread) return;
+
+      // Live liveness for the open thread: whether tokens are arriving right
+      // now, at a granularity the durable log does not keep. Runs before the
+      // assistant-text filter below so reasoning deltas — which the storage
+      // path drops — still move the pulse through a silent thinking phase.
+      const activityAtMs = yield* Clock.currentTimeMillis;
+      if (
+        (event.type === "item.started" || event.type === "item.completed") &&
+        event.itemId !== undefined &&
+        isToolLifecycleItemType(event.payload.itemType)
+      ) {
+        const openItems = openToolItemsByThread.get(thread.id) ?? new Set<string>();
+        if (event.type === "item.started") {
+          openItems.add(event.itemId);
+        } else {
+          openItems.delete(event.itemId);
+        }
+        if (openItems.size > 0) openToolItemsByThread.set(thread.id, openItems);
+        else openToolItemsByThread.delete(thread.id);
+      }
+      const turnActivity = threadTurnActivity.observe({
+        threadId: thread.id,
+        event,
+        streamKind: event.type === "content.delta" ? event.payload.streamKind : undefined,
+        // Real text length when the delta carries text; the provider's token
+        // estimate (normalized to the same char unit) when it is a silent
+        // thinking tick. Same accumulator either way, so the bar climbs
+        // continuously through thinking and answering.
+        deltaLength:
+          event.type === "content.delta"
+            ? event.payload.delta.length || (event.payload.tokenEstimate ?? 0) * CHARS_PER_TOKEN
+            : undefined,
+        // Only "should be producing" once every parallel tool call has closed.
+        openToolCount: openToolItemsByThread.get(thread.id)?.size ?? 0,
+        nowMs: activityAtMs,
+      });
+      if (turnActivity) {
+        yield* threadTurnActivity.publish(turnActivity);
+      }
+      if (event.type === "session.exited" || event.type === "turn.completed") {
+        // A tool left open (interrupted mid-call, or a torn-down session) must
+        // not pin the pulse to "tool" on the next turn.
+        openToolItemsByThread.delete(thread.id);
+      }
+
+      // The storage path below only handles assistant-text content deltas;
+      // reasoning deltas exist solely to feed the liveness pulse above.
       if (event.type === "content.delta" && event.payload.streamKind !== "assistant_text") {
         return;
       }
-
-      const thread = yield* resolveThreadShell(event.threadId);
-      if (!thread) return;
 
       let loadedThreadDetail: OrchestrationThread | null | undefined;
       const getLoadedThreadDetail = () =>

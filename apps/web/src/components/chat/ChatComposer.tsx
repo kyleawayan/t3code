@@ -733,6 +733,11 @@ export interface ChatComposerProps {
 // Component
 // --------------------------------------------------------------------------
 
+/** Escape arms the stop; a second press inside this window confirms it. */
+const ESCAPE_STOP_CONFIRM_MS = 2_000;
+/** `keyCode` browsers report while an IME composition is being cancelled. */
+const IME_COMPOSITION_KEY_CODE = 229;
+
 export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps) {
   const {
     composerDraftTarget,
@@ -3208,6 +3213,50 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const handleInterruptPrimaryAction = useCallback(() => {
     void onInterrupt();
   }, [onInterrupt]);
+
+  // Escape stops a running turn — the keyboard equivalent of the stop button.
+  //
+  // Deliberately narrow. An earlier version listened on `window` and fired on
+  // any unclaimed Escape, so a reflexive Esc with nothing open ended the turn.
+  // Three guards make it an intentional act: focus must already be inside the
+  // composer, it takes two presses inside a short window, and an IME
+  // composition cancel never counts. The arming press does not preventDefault,
+  // so anything else that wanted that Escape still gets it.
+  const escapeArmedAtRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (phase !== "running") return;
+    const handler = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || event.repeat) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      // Cancelling an IME composition sends Escape. That is not a stop.
+      if (event.isComposing || event.keyCode === IME_COMPOSITION_KEY_CODE) return;
+      const active = document.activeElement;
+      const focusedInComposer =
+        active instanceof Node && (composerFormRef.current?.contains(active) ?? false);
+      if (!focusedInComposer) return;
+
+      const armedAt = escapeArmedAtRef.current;
+      const now = Date.now();
+      if (armedAt !== null && now - armedAt <= ESCAPE_STOP_CONFIRM_MS) {
+        escapeArmedAtRef.current = null;
+        event.preventDefault();
+        void onInterrupt();
+        return;
+      }
+      escapeArmedAtRef.current = now;
+      toastManager.add({
+        type: "info",
+        title: "Press Esc again to stop",
+        timeout: ESCAPE_STOP_CONFIRM_MS,
+      });
+    };
+    window.addEventListener("keydown", handler);
+    return () => {
+      window.removeEventListener("keydown", handler);
+      escapeArmedAtRef.current = null;
+    };
+  }, [phase, onInterrupt]);
+
   const handleImplementPlanInNewThreadPrimaryAction = useCallback(() => {
     void onImplementPlanInNewThread();
   }, [onImplementPlanInNewThread]);

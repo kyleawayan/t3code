@@ -138,6 +138,10 @@ import {
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
+import { TurnPulse } from "./TurnPulse";
+import type { TurnPulseVerdict } from "./turnPulse.logic";
+
+const HIDDEN_TURN_PULSE: TurnPulseVerdict = { kind: "hidden" };
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import {
   buildReviewCommentRenderablePatch,
@@ -179,6 +183,10 @@ interface TimelineRowActivityState {
   isPreparingWorktree: boolean;
   isRevertingCheckpoint: boolean;
   latestTurnId: TurnId | null;
+  /** Live token-driven liveness for the working row. */
+  turnPulse: TurnPulseVerdict;
+  /** Perch the Claude mascot on the working bar (Claude threads only). */
+  showTurnMascot: boolean;
 }
 
 const TimelineRowCtx = createContext<TimelineRowSharedState>(null!);
@@ -234,6 +242,8 @@ interface MessagesTimelineProps {
   onOpenAgents?: () => void;
   isWorking: boolean;
   isPreparingWorktree?: boolean;
+  turnPulse?: TurnPulseVerdict;
+  showTurnMascot?: boolean;
   activeTurnStartedAt: string | null;
   listRef: React.RefObject<LegendListRef | null>;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
@@ -280,6 +290,8 @@ interface MessagesTimelineProps {
 export const MessagesTimeline = memo(function MessagesTimeline({
   isWorking,
   isPreparingWorktree = false,
+  turnPulse = HIDDEN_TURN_PULSE,
+  showTurnMascot = false,
   activeTurnStartedAt,
   agentPanelModel = EMPTY_AGENT_PANEL_MODEL,
   onOpenAgents = NOOP_OPEN_AGENTS,
@@ -593,8 +605,17 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isPreparingWorktree,
       isRevertingCheckpoint,
       latestTurnId: latestTurn?.turnId ?? null,
+      turnPulse,
+      showTurnMascot,
     }),
-    [isRevertingCheckpoint, isWorking, isPreparingWorktree, latestTurn?.turnId],
+    [
+      isRevertingCheckpoint,
+      isWorking,
+      isPreparingWorktree,
+      latestTurn?.turnId,
+      turnPulse,
+      showTurnMascot,
+    ],
   );
 
   // Stable renderItem — no closure deps. Row components read shared state
@@ -1333,10 +1354,23 @@ function ProposedPlanTimelineRow({
 }
 
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
-  const { isPreparingWorktree } = use(TimelineRowActivityCtx);
+  const { isPreparingWorktree, turnPulse, showTurnMascot } = use(TimelineRowActivityCtx);
   return (
-    <div className="border-b border-border/60 pb-2 pt-1">
-      <div className="flex h-6 min-w-0 items-baseline px-1 text-sm leading-relaxed text-muted-foreground tabular-nums">
+    <div className="py-0.5 pl-1.5">
+      <div className="flex min-w-0 items-center gap-2 pt-1 text-secondary-label text-[11px] tabular-nums">
+        {/* The dots animated on a timer, so they looked identical whether the
+            agent was working or wedged. The pulse only moves on real output;
+            the dots stay as the fallback for providers that stream nothing we
+            can count. */}
+        {turnPulse.kind === "hidden" ? (
+          <span className="inline-flex items-center gap-[3px]">
+            <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-status-pulse" />
+            <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-status-pulse [animation-delay:200ms]" />
+            <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-status-pulse [animation-delay:400ms]" />
+          </span>
+        ) : (
+          <TurnPulse verdict={turnPulse} mascot={showTurnMascot} />
+        )}
         <span
           key={isPreparingWorktree ? "setup" : "working"}
           className="relative shrink-0 overflow-hidden whitespace-nowrap transition-opacity duration-150 starting:opacity-0 motion-reduce:transition-none"

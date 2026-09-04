@@ -389,6 +389,58 @@ export const OrchestrationThreadActivityTone = Schema.Literals([
 ]);
 export type OrchestrationThreadActivityTone = typeof OrchestrationThreadActivityTone.Type;
 
+/**
+ * What a running turn is doing *right now*, at a granularity the durable
+ * activity log deliberately does not keep.
+ *
+ * The transcript records what happened; this records whether anything is
+ * happening. It exists because "Working" is indistinguishable from "wedged" —
+ * both render a spinner — and the difference is worth knowing in seconds, not
+ * minutes.
+ *
+ * Derived entirely from provider events every adapter already emits (content
+ * deltas, tool item lifecycle, request lifecycle), so a provider that streams
+ * reasoning gets a live pulse and one that does not still gets accurate tool
+ * and waiting states.
+ */
+export const TurnActivityState = Schema.Literals([
+  /** Tokens are arriving — reasoning or assistant text. */
+  "generating",
+  /** The turn should be producing tokens and none are arriving. */
+  "quiet",
+  /** A tool call is open; silence is expected until it returns. */
+  "tool",
+  /** Blocked on a person: an approval or a question. */
+  "waiting",
+  /** No turn is running. */
+  "idle",
+]);
+export type TurnActivityState = typeof TurnActivityState.Type;
+
+export const ThreadTurnActivity = Schema.Struct({
+  threadId: ThreadId,
+  state: TurnActivityState,
+  /**
+   * Monotonic count of token chunks streamed during this turn. Clients advance
+   * the liveness pulse by its delta, so the pulse can only ever move on a token
+   * that actually arrived — a frozen pulse is a real stall, not a dropped
+   * frame.
+   */
+  tokenChunks: NonNegativeInt,
+  /**
+   * Provider's own running count of tokens generated this turn, when it
+   * reports one.
+   *
+   * Optional by design rather than by lowest common denominator: Claude sends
+   * it, the others do not, and a client that has it can move the pulse by real
+   * output volume instead of by frame count. Absent means fall back to
+   * `tokenChunks`, so nothing here is provider-specific.
+   */
+  generatedTokens: Schema.optional(NonNegativeInt),
+  updatedAt: IsoDateTime,
+});
+export type ThreadTurnActivity = typeof ThreadTurnActivity.Type;
+
 export const OrchestrationThreadActivity = Schema.Struct({
   id: EventId,
   tone: OrchestrationThreadActivityTone,
