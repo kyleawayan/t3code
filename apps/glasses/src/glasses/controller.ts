@@ -182,7 +182,9 @@ function threadsView(environmentId: EnvironmentId, spinnerFrame: number): View {
     const status = connectionStatusText(connectionPhase(environmentId));
     return { kind: "text", content: `Loading threads...\n\n${status}` };
   }
-  const threads = visibleThreads(shell.snapshot.value.threads);
+  const threads = visibleThreads(shell.snapshot.value.threads, {
+    now: new Date().toISOString(),
+  });
   if (threads.length === 0) {
     return { kind: "text", content: "No threads yet." };
   }

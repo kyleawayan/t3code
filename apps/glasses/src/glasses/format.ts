@@ -1,4 +1,9 @@
 import { getTextWidth, pxTruncate } from "@evenrealities/pretext";
+import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
+import {
+  activeThreadAnchorTimestampMs,
+  sortPinnedThreadsByOrderKey,
+} from "@t3tools/client-runtime/state/thread-sort";
 import { commandProgramName } from "@t3tools/client-runtime/work-log/command-label";
 import type {
   OrchestrationMessage,
@@ -219,14 +224,34 @@ export function statusBar(
   return `${left}${" ".repeat(spaces)}${title}`;
 }
 
-/** Sort newest activity first; archived and deleted threads are hidden. */
+/**
+ * The sidebar's inbox, as the web and mobile clients show it: archived,
+ * snoozed, and settled threads are left out entirely (the glasses have no
+ * shelf to put them on), pinned threads come first in their arranged order,
+ * then active threads newest first.
+ */
 export function visibleThreads(
   threads: ReadonlyArray<OrchestrationThreadShell>,
+  options: { readonly now: string },
 ): Array<OrchestrationThreadShell> {
-  return threads
-    .filter((thread) => thread.archivedAt === null)
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-    .slice(0, LIST_MAX_ITEMS);
+  const pinned: Array<OrchestrationThreadShell> = [];
+  const active: Array<OrchestrationThreadShell> = [];
+  for (const thread of threads) {
+    if (
+      thread.archivedAt !== null ||
+      thread.settledOverride === "settled" ||
+      effectiveSnoozed(thread, options)
+    ) {
+      continue;
+    }
+    (thread.pinnedAt != null ? pinned : active).push(thread);
+  }
+  active.sort(
+    (left, right) =>
+      activeThreadAnchorTimestampMs(right) - activeThreadAnchorTimestampMs(left) ||
+      left.id.localeCompare(right.id),
+  );
+  return [...sortPinnedThreadsByOrderKey(pinned), ...active].slice(0, LIST_MAX_ITEMS);
 }
 
 /**

@@ -1,6 +1,12 @@
 import { getTextWidth, measureTextWrap } from "@evenrealities/pretext";
 import { describe, expect, it } from "vite-plus/test";
-import type { EventId, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
+import type {
+  EventId,
+  MessageId,
+  OrchestrationThreadShell,
+  ThreadId,
+  TurnId,
+} from "@t3tools/contracts";
 
 import {
   BODY_INNER_WIDTH,
@@ -487,14 +493,63 @@ describe("statusBar browsing cue", () => {
 });
 
 describe("visibleThreads", () => {
-  it("hides archived threads and sorts newest first", () => {
-    const thread = (id: string, updatedAt: string, archivedAt: string | null) =>
-      ({ ...baseShell, id, updatedAt, archivedAt }) as never;
-    const result = visibleThreads([
-      thread("old", "2026-01-01T00:00:00.000Z", null),
-      thread("archived", "2026-01-03T00:00:00.000Z", "2026-01-03T00:00:00.000Z"),
-      thread("new", "2026-01-02T00:00:00.000Z", null),
-    ]);
-    expect(result.map((entry) => entry.id)).toEqual(["new", "old"]);
+  const now = "2026-01-10T00:00:00.000Z";
+  const thread = (
+    id: string,
+    createdAt: string,
+    overrides: Record<string, unknown> = {},
+  ): OrchestrationThreadShell =>
+    ({
+      ...baseShell,
+      id,
+      createdAt,
+      updatedAt: createdAt,
+      archivedAt: null,
+      settledOverride: null,
+      ...overrides,
+    }) as never;
+
+  it("hides archived, settled, and snoozed threads", () => {
+    const result = visibleThreads(
+      [
+        thread("active", "2026-01-01T00:00:00.000Z"),
+        thread("archived", "2026-01-02T00:00:00.000Z", { archivedAt: "2026-01-03T00:00:00.000Z" }),
+        thread("settled", "2026-01-03T00:00:00.000Z", { settledOverride: "settled" }),
+        thread("snoozed", "2026-01-04T00:00:00.000Z", {
+          snoozedAt: "2026-01-09T00:00:00.000Z",
+          snoozedUntil: "2026-01-11T00:00:00.000Z",
+        }),
+      ],
+      { now },
+    );
+    expect(result.map((entry) => entry.id)).toEqual(["active"]);
+  });
+
+  it("shows a snoozed thread again once its wake time passes", () => {
+    const result = visibleThreads(
+      [
+        thread("woke", "2026-01-01T00:00:00.000Z", {
+          snoozedAt: "2026-01-08T00:00:00.000Z",
+          snoozedUntil: "2026-01-09T00:00:00.000Z",
+        }),
+      ],
+      { now },
+    );
+    expect(result.map((entry) => entry.id)).toEqual(["woke"]);
+  });
+
+  it("lists pinned threads first, then active threads newest first", () => {
+    const result = visibleThreads(
+      [
+        thread("old", "2026-01-01T00:00:00.000Z"),
+        thread("new", "2026-01-02T00:00:00.000Z"),
+        thread("unsettled", "2025-12-01T00:00:00.000Z", {
+          unsettledAt: "2026-01-05T00:00:00.000Z",
+        }),
+        thread("pinned", "2025-11-01T00:00:00.000Z", { pinnedAt: "2026-01-03T00:00:00.000Z" }),
+      ],
+      { now },
+    );
+    expect(result.map((entry) => entry.id)).toEqual(["pinned", "unsettled", "new", "old"]);
   });
 });
