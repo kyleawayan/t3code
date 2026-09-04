@@ -31,7 +31,11 @@ export function TurnPulse({
   // tool pauses, which are still the turn working. The frozen fine bar already
   // signals a pause, so colour need not; only a stall changes it, to red.
   const barColor = stalled ? "bg-red-500" : "bg-[#d97757]";
-  const trackBg = stalled ? "bg-red-500/25" : "bg-muted-foreground/15";
+  // Track is a dim tint of the fill's own colour, not grey: a mid-tone grey sits
+  // at nearly the same luminance as the orange fill and the two blend. A faint
+  // orange track keeps the solid fill clearly readable against it in both themes
+  // and reads as the bar filling its own colour.
+  const trackBg = stalled ? "bg-red-500/25" : "bg-[#d97757]/25";
   // A floor on each so a starting turn shows a sliver rather than nothing.
   const coarsePercent = Math.max(2, Math.min(100, verdict.fill.coarse * 100));
   return (
@@ -79,7 +83,7 @@ export function TurnPulse({
           the loop cuts instantly back to empty and repeats. Runs only while
           generating; holding or stalled freezes it where it is, so it still
           reads as liveness rather than decoration. */}
-      <span className="relative block h-[2px] overflow-hidden rounded-full bg-muted-foreground/10">
+      <span className="relative block h-[2px] overflow-hidden rounded-full bg-[#d97757]/20">
         <span
           className={cn(
             "absolute inset-y-0 left-0 w-1 rounded-full opacity-80 animate-turn-fine-fill",

@@ -952,11 +952,9 @@ export function deriveMessagesTimelineRows(input: {
       createdAt: visualResponseStartedAt,
     });
   };
-  let hasActivityRow = false;
   const appendActiveWorkRows = () => {
     if (activeWorkRow === null) return;
     nextRows.push(activeWorkRow);
-    hasActivityRow ||= activeWorkRow.active;
     if (!activeWorkRow.expanded) return;
     nextRows.push(
       expandedWorkGroupRow(
@@ -971,10 +969,6 @@ export function deriveMessagesTimelineRows(input: {
     const timelineEntry = input.timelineEntries[index];
     if (!timelineEntry) {
       continue;
-    }
-
-    if (input.isWorking && index === activeTurnHeaderIndex) {
-      appendWorkingRow();
     }
 
     if (timelineEntry.id === activeWorkPlacementEntryId) {
@@ -1066,7 +1060,6 @@ export function deriveMessagesTimelineRows(input: {
             expanded,
             active: true,
           });
-          hasActivityRow = true;
           if (expanded) {
             nextRows.push(
               expandedWorkGroupRow(groupId, timelineEntry.createdAt, visibleGroupedEntries),
@@ -1197,15 +1190,12 @@ export function deriveMessagesTimelineRows(input: {
     });
   }
 
-  if (input.isWorking && activeTurnHeaderIndex === input.timelineEntries.length) {
+  // The working row carries the liveness gauge; it sits at the very bottom,
+  // below the active turn's streaming output and any live tool rows, rather than
+  // at the turn header. Its own pulse/fallback covers the silent-thinking state,
+  // so there is no separate thinking indicator.
+  if (input.isWorking) {
     appendWorkingRow();
-  }
-  if (input.isWorking && (!hasActivityRow || latestToolFailed)) {
-    nextRows.push({
-      kind: "thinking",
-      id: LIVE_ACTIVITY_ROW_ID,
-      createdAt: input.activeTurnStartedAt,
-    });
   }
 
   return attachTrailingToolGroupsToAssistant(nextRows);
