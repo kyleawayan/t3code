@@ -2,7 +2,7 @@
   "package_id": "com.example.t3codeglasses",
   "edition": "202601",
   "name": "T3 Code",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "min_sdk_version": "0.0.14",
   "entrypoint": "index.html",
   "permissions": [
