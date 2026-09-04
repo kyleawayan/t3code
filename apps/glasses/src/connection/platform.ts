@@ -8,7 +8,10 @@ import {
   RelayDeviceIdentity,
   SshEnvironmentGateway,
 } from "@t3tools/client-runtime/platform";
-import { AuthStandardClientScopes, type AuthClientPresentationMetadata } from "@t3tools/contracts";
+import {
+  AuthOrchestrationReadScope,
+  type AuthClientPresentationMetadata,
+} from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -86,7 +89,9 @@ const unsupported = (detail: string) =>
 const capabilitiesLayer = Layer.succeedContext(
   Context.make(
     ClientPresentation,
-    ClientPresentation.of({ metadata: clientMetadata(), scopes: AuthStandardClientScopes }),
+    // Read-only client: asking for more than the pairing link grants makes the
+    // token exchange fail, and read-only links are what this app is paired with.
+    ClientPresentation.of({ metadata: clientMetadata(), scopes: [AuthOrchestrationReadScope] }),
   ).pipe(
     Context.add(
       CloudSession,
