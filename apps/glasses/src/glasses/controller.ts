@@ -32,6 +32,7 @@ import {
 
 import { appAtomRegistry } from "../connection/runtime";
 import { environmentCatalog, environmentShell, environmentThreads } from "../state";
+import { revealCharsPerTick, revealSpeedAtom } from "./revealSpeed";
 import {
   BODY_HEIGHT,
   BODY_INNER_WIDTH,
@@ -75,10 +76,9 @@ const ELAPSED_TICK_MS = 1_000;
 // list page, where every frame is a full page rebuild and so ticks slower.
 const SPINNER_TICK_MS = 500;
 const LIST_SPINNER_TICK_MS = 1_000;
-// About 25 characters per second, close to reading speed; renders still
-// coalesce to the bridge throttle so the glasses see a few characters at a time.
+// Characters per second come from the phone page (revealSpeedAtom); renders
+// still coalesce to the bridge throttle so the glasses see a few characters at a time.
 const REVEAL_TICK_MS = 200;
-const REVEAL_CHARS_PER_TICK = 5;
 // Edge events can repeat for one physical swipe; ignore the echoes.
 const SCROLL_COOLDOWN_MS = 300;
 const OLDER_FETCH_TIMEOUT_MS = 15_000;
@@ -516,7 +516,12 @@ class GlassesController {
             this.lastThread !== null &&
             this.revealChars < transcriptLength(this.lastThread.lines)
           ) {
-            this.revealChars += REVEAL_CHARS_PER_TICK;
+            const speed = appAtomRegistry.get(revealSpeedAtom);
+            const total = transcriptLength(this.lastThread.lines);
+            this.revealChars =
+              speed === null
+                ? total
+                : Math.min(total, this.revealChars + revealCharsPerTick(speed, REVEAL_TICK_MS));
             this.scheduleRender();
           }
         }, REVEAL_TICK_MS);

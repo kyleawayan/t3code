@@ -13,6 +13,14 @@ import { type CSSProperties, useEffect, useState } from "react";
 import { connectPairing } from "../connection/onboarding";
 import { appAtomRegistry } from "../connection/runtime";
 import { evenAppBridge, glassesStatusAtom } from "../glasses/controller";
+import {
+  DEFAULT_REVEAL_SPEED,
+  REVEAL_SPEED_MAX,
+  REVEAL_SPEED_MIN,
+  REVEAL_SPEED_STEP,
+  revealSpeedAtom,
+  setRevealSpeed,
+} from "../glasses/revealSpeed";
 import { decodeQrFromBase64, pairingUrlFromQrPayload } from "../pairing/qr";
 import { environmentCatalog } from "../state";
 
@@ -40,6 +48,51 @@ function EnvironmentRow({ environmentId, label }: { environmentId: EnvironmentId
         Forget
       </button>
     </li>
+  );
+}
+
+function TypingSpeedSection() {
+  const speed = useAtomValue(revealSpeedAtom);
+  // The slider keeps its last position while "instant" is on so switching
+  // back lands on the speed the reader had before.
+  const [sliderSpeed, setSliderSpeed] = useState(speed ?? DEFAULT_REVEAL_SPEED);
+  const instant = speed === null;
+  return (
+    <section>
+      <h2 style={styles.h2}>Typing speed</h2>
+      <p style={styles.muted}>How fast agent replies type out on the glasses.</p>
+      <label style={styles.label}>
+        <span style={styles.sliderCaption}>
+          <span>Slower</span>
+          <span style={instant ? styles.mutedInline : undefined}>
+            {instant ? "Instant" : `${speed} characters per second`}
+          </span>
+          <span>Faster</span>
+        </span>
+        <input
+          style={styles.slider}
+          type="range"
+          min={REVEAL_SPEED_MIN}
+          max={REVEAL_SPEED_MAX}
+          step={REVEAL_SPEED_STEP}
+          value={sliderSpeed}
+          disabled={instant}
+          onChange={(event) => {
+            const next = Number(event.target.value);
+            setSliderSpeed(next);
+            setRevealSpeed(next);
+          }}
+        />
+      </label>
+      <label style={styles.checkbox}>
+        <input
+          type="checkbox"
+          checked={instant}
+          onChange={(event) => setRevealSpeed(event.target.checked ? null : sliderSpeed)}
+        />
+        Show new text at once
+      </label>
+    </section>
   );
 }
 
@@ -139,6 +192,8 @@ export function App() {
         )}
       </section>
 
+      <TypingSpeedSection />
+
       <section>
         <h2 style={styles.h2}>Pair a server</h2>
         <p style={styles.muted}>
@@ -197,6 +252,17 @@ const styles = {
   },
   rowTitle: { fontWeight: 600 },
   label: { display: "grid", gap: 6, marginTop: 12, fontSize: 14, color: "#a3a3a3" },
+  sliderCaption: { display: "flex", justifyContent: "space-between", fontSize: 13 },
+  mutedInline: { color: "#737373" },
+  slider: { width: "100%", margin: 0, accentColor: "#e5e5e5" },
+  checkbox: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+    fontSize: 14,
+    color: "#e5e5e5",
+  },
   input: {
     width: "100%",
     boxSizing: "border-box",
