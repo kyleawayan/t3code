@@ -9,7 +9,6 @@ import {
   StartUpPageCreateResult,
   TextContainerProperty,
   TextContainerUpgrade,
-  waitForEvenAppBridge,
 } from "@evenrealities/even_hub_sdk";
 import {
   AVAILABLE_CONNECTION_STATE,
@@ -32,6 +31,7 @@ import {
 
 import { appAtomRegistry } from "../connection/runtime";
 import { environmentCatalog, environmentShell, environmentThreads } from "../state";
+import { bridgeCall, bridgeIdle, evenAppBridge } from "./bridge";
 import { revealCharsPerTick, revealSpeedAtom } from "./revealSpeed";
 import {
   BODY_HEIGHT,
@@ -65,12 +65,9 @@ export const glassesStatusAtom = Atom.make("Waiting for the Even App bridge...")
   Atom.withLabel("glasses-status"),
 );
 
-const BRIDGE_WAIT_MS = 5_000;
 // BLE round trips are slow and the firmware redraws the whole container on
 // every update; coalescing bursts of stream events keeps the page readable.
 const RENDER_THROTTLE_MS = 400;
-// A flaky BLE hop can hang a bridge call for ~30s; cap it so the queue moves.
-const BRIDGE_CALL_TIMEOUT_MS = 8_000;
 const ELAPSED_TICK_MS = 1_000;
 // Spinner cadence on the thread page (a flicker-free text update) and on the
 // list page, where every frame is a full page rebuild and so ticks slower.
@@ -123,17 +120,6 @@ type View =
     }
   | { readonly kind: "text"; readonly content: string }
   | { readonly kind: "thread"; readonly body: string; readonly status: string };
-
-let bridgeResolution: Promise<EvenAppBridge | null> | null = null;
-
-/** Resolves null when the page runs outside the Even App (plain browser). */
-export function evenAppBridge(): Promise<EvenAppBridge | null> {
-  bridgeResolution ??= Promise.race([
-    waitForEvenAppBridge(),
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), BRIDGE_WAIT_MS)),
-  ]);
-  return bridgeResolution;
-}
 
 function eventTypeOf(envelope: { eventType?: OsEventTypeList } | undefined) {
   if (!envelope) {
@@ -390,7 +376,6 @@ class GlassesController {
   private rendered: View | null = null;
   private subscriptions: Array<() => void> = [];
   private renderTimer: ReturnType<typeof setTimeout> | null = null;
-  private bridgeQueue: Promise<unknown> = Promise.resolve();
   // Longest in-place text update the host is known to accept. Starts at the
   // documented 2000 and drops to the size of any refused update, so a host
   // with a lower ceiling (the simulator) gets rebuilds instead of failed calls.
@@ -434,34 +419,8 @@ class GlassesController {
     this.enter({ kind: "environments" });
   }
 
-  /**
-   * Bridge calls share one BLE link; overlapping render and storage calls can
-   * drop the connection, so every call waits for the previous one.
-   */
   private call<T>(label: string, run: () => Promise<T>): Promise<T | undefined> {
-    const settled = this.bridgeQueue
-      .then(() =>
-        Promise.race([
-          run(),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`${label} timed out`)), BRIDGE_CALL_TIMEOUT_MS),
-          ),
-        ]),
-      )
-      .then(
-        (result) => {
-          if (import.meta.env.DEV) {
-            console.log(`[glasses] ${label} -> ${String(result)}`);
-          }
-          return result;
-        },
-        (cause: unknown) => {
-          console.warn(`[glasses] ${label} failed`, cause);
-          return undefined;
-        },
-      );
-    this.bridgeQueue = settled;
-    return settled;
+    return bridgeCall(label, run);
   }
 
   private enter(page: Page) {
@@ -669,7 +628,7 @@ class GlassesController {
     this.sliding = true;
     // Runs after the render below has queued its status and body updates.
     queueMicrotask(() => {
-      void this.bridgeQueue.then(() => {
+      void bridgeIdle().then(() => {
         this.sliding = false;
         if (!this.disposed) {
           this.render(false);

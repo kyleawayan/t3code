@@ -1,11 +1,12 @@
 import { Atom } from "effect/unstable/reactivity";
 
+import { hostStorage } from "../connection/hostStorage";
 import { appAtomRegistry } from "../connection/runtime";
 
 /**
  * How fast agent replies type out on the glasses, in characters per second.
  * `null` shows new text at once. Adjusted from the phone page and kept in
- * localStorage so it survives Even App relaunches like the pairing catalog.
+ * the Even App's storage so it survives relaunches like the pairing catalog.
  */
 export type RevealSpeed = number | null;
 
@@ -37,25 +38,36 @@ export function parseStoredRevealSpeed(raw: string | null): RevealSpeed {
   return Number.isFinite(parsed) ? clampRevealSpeed(parsed) : DEFAULT_REVEAL_SPEED;
 }
 
-function loadRevealSpeed(): RevealSpeed {
-  try {
-    return parseStoredRevealSpeed(window.localStorage.getItem(STORAGE_KEY));
-  } catch {
-    return DEFAULT_REVEAL_SPEED;
-  }
-}
-
-export const revealSpeedAtom = Atom.make<RevealSpeed>(loadRevealSpeed()).pipe(
+export const revealSpeedAtom = Atom.make<RevealSpeed>(DEFAULT_REVEAL_SPEED).pipe(
   Atom.keepAlive,
   Atom.withLabel("glasses-reveal-speed"),
 );
 
+// Storage answers asynchronously (a bridge round trip inside the Even App);
+// a slider move that lands first wins over the stored value.
+let touched = false;
+void hostStorage.getItem(STORAGE_KEY).then((raw) => {
+  if (!touched && raw !== null) {
+    appAtomRegistry.set(revealSpeedAtom, parseStoredRevealSpeed(raw));
+  }
+});
+
+// The slider fires on every pixel and bridge writes share the BLE link with
+// rendering, so only the settled value is written.
+const PERSIST_DEBOUNCE_MS = 400;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
 export function setRevealSpeed(speed: RevealSpeed) {
   const next = speed === null ? null : clampRevealSpeed(speed);
+  touched = true;
   appAtomRegistry.set(revealSpeedAtom, next);
-  try {
-    window.localStorage.setItem(STORAGE_KEY, next === null ? "instant" : String(next));
-  } catch {
-    // Storage can be unavailable in the simulator; the in-memory value still applies.
+  if (persistTimer !== null) {
+    clearTimeout(persistTimer);
   }
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    void hostStorage
+      .setItem(STORAGE_KEY, next === null ? "instant" : String(next))
+      .catch((cause: unknown) => console.warn("[glasses] typing speed not saved", cause));
+  }, PERSIST_DEBOUNCE_MS);
 }

@@ -12,7 +12,8 @@ import { type CSSProperties, useEffect, useState } from "react";
 
 import { connectPairing } from "../connection/onboarding";
 import { appAtomRegistry } from "../connection/runtime";
-import { evenAppBridge, glassesStatusAtom } from "../glasses/controller";
+import { evenAppBridge } from "../glasses/bridge";
+import { glassesStatusAtom } from "../glasses/controller";
 import {
   DEFAULT_REVEAL_SPEED,
   REVEAL_SPEED_MAX,

@@ -25,9 +25,11 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 
-// localStorage survives Even App background suspension on both platforms; the
-// catalog (targets + bearer credentials) is the only state worth keeping. Shell
-// and thread snapshots are re-fetched on every launch instead of cached.
+import { hostStorage } from "./hostStorage";
+
+// The catalog (targets + bearer credentials) is the only state worth keeping;
+// it lives in the Even App's own storage (see hostStorage). Shell and thread
+// snapshots are re-fetched on every launch instead of cached.
 const CATALOG_STORAGE_KEY = "t3code-glasses:connection-catalog:v1";
 
 const ConnectionCatalogDocumentJson = Schema.fromJsonString(ConnectionCatalogDocument);
@@ -60,8 +62,8 @@ const makeCatalogStore = Effect.fn("glasses.storage.makeCatalogStore")(function*
     if (Option.isSome(cached)) {
       return cached.value;
     }
-    const raw = yield* Effect.try({
-      try: () => window.localStorage.getItem(CATALOG_STORAGE_KEY),
+    const raw = yield* Effect.tryPromise({
+      try: () => hostStorage.getItem(CATALOG_STORAGE_KEY),
       catch: (cause) => catalogError("read", cause),
     });
     let catalog = EMPTY_CONNECTION_CATALOG_DOCUMENT;
@@ -88,8 +90,8 @@ const makeCatalogStore = Effect.fn("glasses.storage.makeCatalogStore")(function*
         const encoded = yield* encodeCatalog(next).pipe(
           Effect.mapError((cause) => catalogError("encode", cause)),
         );
-        yield* Effect.try({
-          try: () => window.localStorage.setItem(CATALOG_STORAGE_KEY, encoded),
+        yield* Effect.tryPromise({
+          try: () => hostStorage.setItem(CATALOG_STORAGE_KEY, encoded),
           catch: (cause) => catalogError("write", cause),
         });
         yield* Ref.set(state, Option.some(next));
