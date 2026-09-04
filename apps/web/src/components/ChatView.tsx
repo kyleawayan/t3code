@@ -156,6 +156,8 @@ import {
 } from "../types";
 import { useTheme } from "../hooks/useTheme";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
+import { useTurnPulse } from "../hooks/useTurnPulse";
+import { formatQuietFor } from "./chat/turnPulse.logic";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -203,6 +205,7 @@ import {
   AlarmClockIcon,
   CheckCircle2Icon,
   ChevronDownIcon,
+  CircleAlertIcon,
   GitBranchIcon,
   Minimize2Icon,
   PaperclipIcon,
@@ -2638,6 +2641,9 @@ export default function ChatView(props: ChatViewProps) {
     () => deriveActivePlanState(threadActivities, activeLatestTurn?.turnId ?? undefined),
     [activeLatestTurn?.turnId, threadActivities],
   );
+  // Live liveness for the open thread: whether output is arriving right now,
+  // which is the one thing a spinner cannot tell you.
+  const turnPulse = useTurnPulse(activeThreadRef);
   const showPlanFollowUpPrompt = shouldShowPlanFollowUpPrompt({
     pendingUserInputCount: pendingUserInputs.length,
     interactionMode,
@@ -5735,6 +5741,43 @@ export default function ChatView(props: ChatViewProps) {
       }),
     [feedbackSubmissions, routeThreadKey],
   );
+  /**
+   * The turn has produced nothing for long enough that no running tool,
+   * compaction, or pending question explains it.
+   *
+   * Sits above the composer because that is where your eyes are while you wait
+   * — the sidebar pill is for the threads you are not looking at. Stop is
+   * offered inline: by the time this appears, that is the decision.
+   */
+  const stalledTurnBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
+    if (turnPulse.kind !== "stalled") return null;
+    return {
+      id: "turn-stalled",
+      variant: "warning",
+      urgent: true,
+      icon: <CircleAlertIcon />,
+      title: (
+        <span className="flex min-w-0 items-baseline gap-1.5">
+          <span className="shrink-0 font-medium text-foreground">
+            No output for {formatQuietFor(turnPulse.quietForMs)}
+          </span>
+          <span className="min-w-0 truncate text-muted-foreground">the agent may be stuck</span>
+        </span>
+      ),
+      actions: (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            void onInterrupt();
+          }}
+        >
+          Stop
+        </Button>
+      ),
+    };
+  }, [turnPulse, onInterrupt]);
+
   const composerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const backgroundLivenessItems =
       backgroundLivenessBannerItem === null ? [] : [backgroundLivenessBannerItem];
@@ -5744,10 +5787,12 @@ export default function ChatView(props: ChatViewProps) {
     const parkedThreadItems = parkedThreadBannerItem === null ? [] : [parkedThreadBannerItem];
     // The user asked for this one, so it leads the notice tier instead of trailing it.
     const usageLimitsItems = usageLimitsBanner === null ? [] : [usageLimitsBanner];
+    const stalledTurnItems = stalledTurnBannerItem === null ? [] : [stalledTurnBannerItem];
     if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
       return [
         ...feedbackBannerItems,
         ...usageLimitsItems,
+        ...stalledTurnItems,
         ...systemComposerBannerItems,
         ...backgroundLivenessItems,
         ...resumeCompactionItems,
@@ -5758,6 +5803,7 @@ export default function ChatView(props: ChatViewProps) {
     return [
       ...feedbackBannerItems,
       ...usageLimitsItems,
+      ...stalledTurnItems,
       ...systemComposerBannerItems,
       ...backgroundLivenessItems,
       ...resumeCompactionItems,
@@ -5812,6 +5858,7 @@ export default function ChatView(props: ChatViewProps) {
     parkedThreadBannerItem,
     resumeCompactionBannerItem,
     showBranchMismatchBanner,
+    stalledTurnBannerItem,
     systemComposerBannerItems,
     usageLimitsBanner,
     wokeThreadBannerItem,
@@ -7981,6 +8028,8 @@ export default function ChatView(props: ChatViewProps) {
                 isWorking={isWorking}
                 isPreparingWorktree={isPreparingWorktree}
                 isCompacting={isCompacting}
+                turnPulse={turnPulse}
+                showTurnMascot={activeThread.session?.providerName === "claudeAgent"}
                 activeTurnStartedAt={activeWorkStartedAt}
                 listRef={legendListRef}
                 timelineEntries={timelineEntries}
