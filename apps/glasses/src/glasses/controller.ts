@@ -69,10 +69,9 @@ export const glassesStatusAtom = Atom.make("Waiting for the Even App bridge...")
 // every update; coalescing bursts of stream events keeps the page readable.
 const RENDER_THROTTLE_MS = 400;
 const ELAPSED_TICK_MS = 1_000;
-// Spinner cadence on the thread page (a flicker-free text update) and on the
-// list page, where every frame is a full page rebuild and so ticks slower.
+// Spinner cadence on the thread page, where it is a flicker-free text update.
+// The list page has no spinner: list rebuilds reset the cursor to the top.
 const SPINNER_TICK_MS = 500;
-const LIST_SPINNER_TICK_MS = 1_000;
 // Characters per second come from the phone page (revealSpeedAtom); renders
 // still coalesce to the bridge throttle so the glasses see a few characters at a time.
 const REVEAL_TICK_MS = 200;
@@ -162,7 +161,7 @@ function environmentsView(): View {
   };
 }
 
-function threadsView(environmentId: EnvironmentId, spinnerFrame: number): View {
+function threadsView(environmentId: EnvironmentId): View {
   const shell = appAtomRegistry.get(environmentShell.stateValueAtom(environmentId));
   if (Option.isNone(shell.snapshot)) {
     const status = connectionStatusText(connectionPhase(environmentId));
@@ -178,9 +177,7 @@ function threadsView(environmentId: EnvironmentId, spinnerFrame: number): View {
   return {
     kind: "list",
     ids: threads.map((thread) => thread.id),
-    items: threads.map((thread) =>
-      threadListLabel(thread, projects.get(thread.projectId), spinnerFrame),
-    ),
+    items: threads.map((thread) => threadListLabel(thread, projects.get(thread.projectId))),
   };
 }
 
@@ -447,13 +444,6 @@ class GlassesController {
       case "threads": {
         subscribe(environmentCatalog.stateAtom(page.environmentId));
         subscribe(environmentShell.stateAtom(page.environmentId));
-        // Rows that are working spin; unchanged rows are deduplicated before
-        // the bridge, so an idle list costs nothing per tick.
-        const ticker = setInterval(() => {
-          this.spinnerFrame += 1;
-          this.scheduleRender();
-        }, LIST_SPINNER_TICK_MS);
-        this.subscriptions.push(() => clearInterval(ticker));
         setStatus("Glasses: showing threads.");
         break;
       }
@@ -516,7 +506,7 @@ class GlassesController {
       case "environments":
         return environmentsView();
       case "threads":
-        return threadsView(this.page.environmentId, this.spinnerFrame);
+        return threadsView(this.page.environmentId);
       case "thread": {
         const { environmentId, threadId } = this.page;
         // A fetch that never lands must not spin forever.

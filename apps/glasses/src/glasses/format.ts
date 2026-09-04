@@ -140,10 +140,12 @@ export function truncateBytes(text: string, maxBytes: number): string {
 export function threadListLabel(
   shell: StatusShell & Pick<OrchestrationThreadShell, "title">,
   projectTitle?: string,
-  spinnerFrame = 0,
 ): string {
-  // Status first: the firmware truncates long rows on the right.
-  const icon = statusIcon(threadStatusKind(shell), spinnerFrame);
+  // Status first: the firmware truncates long rows on the right. Working
+  // rows get a fixed arrow, not the spinner: a list cannot update in place,
+  // and every rebuild drops the reader's cursor back to the first row.
+  const kind = threadStatusKind(shell);
+  const icon = kind === "working" ? SPINNER_FRAMES[0] : statusIcon(kind, 0);
   return truncateBytes(`${icon} ${displayTitle(projectTitle, shell.title)}`, LIST_ITEM_MAX_BYTES);
 }
 
