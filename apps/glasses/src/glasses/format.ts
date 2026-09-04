@@ -40,11 +40,11 @@ const ACTIVITY_MAX_CHARS = 96;
 const STATUS_SAFETY_PX = 12;
 const STATUS_GAP_PX = 24;
 
-export type ThreadStatusKind = "working" | "needs-you" | "error" | "done" | "idle";
+export type ThreadStatusKind = "working" | "monitoring" | "needs-you" | "error" | "done" | "idle";
 
 type StatusShell = Pick<
   OrchestrationThreadShell,
-  "session" | "latestTurn" | "hasPendingApprovals" | "hasPendingUserInput"
+  "session" | "latestTurn" | "hasPendingApprovals" | "hasPendingUserInput" | "backgroundLiveness"
 >;
 
 export function threadStatusKind(shell: StatusShell): ThreadStatusKind {
@@ -58,7 +58,19 @@ export function threadStatusKind(shell: StatusShell): ThreadStatusKind {
   if (shell.latestTurn?.state === "running") {
     return "working";
   }
-  if (sessionStatus === "error" || shell.latestTurn?.state === "error") {
+  // A failed session outranks lingering background work, as in the sidebar.
+  if (sessionStatus === "error") {
+    return "error";
+  }
+  // Background work outliving the turn: fleets read as working; watch loops
+  // (CI babysitting) as monitoring, alive but calm.
+  if (shell.backgroundLiveness === "working") {
+    return "working";
+  }
+  if (shell.backgroundLiveness === "monitoring") {
+    return "monitoring";
+  }
+  if (shell.latestTurn?.state === "error") {
     return "error";
   }
   if (shell.latestTurn?.state === "completed") {
@@ -76,6 +88,7 @@ export const SPINNER_FRAMES = ["▶", "▼", "◀", "▲"] as const;
 // The real check mark (U+2713) is not in the firmware font; the square root
 // sign is, and reads as one. Letters and punctuation are always safe.
 const STATUS_ICON: Record<Exclude<ThreadStatusKind, "working">, string> = {
+  monitoring: "M",
   "needs-you": "?",
   error: "E",
   done: "√",
@@ -135,6 +148,146 @@ export function truncateBytes(text: string, maxBytes: number): string {
     kept += char;
   }
   return `${kept}...`;
+}
+
+// A full-screen text panel holds nine lines; one is kept spare so the content
+// never overflows. If it did, the firmware would scroll instead of reporting
+// the swipe, and swipes are what move the dashboard cursor.
+export const DASHBOARD_ROWS = Math.floor((SCREEN_HEIGHT - PANEL_PADDING * 2) / LINE_HEIGHT_PX) - 1;
+const DASHBOARD_CURSOR = ">";
+// Marker cell: the ">" plus a gap, padded with spaces on unmarked rows so
+// the status column starts at the same place whether or not the row is marked.
+const DASHBOARD_CURSOR_COLUMN_PX = 20;
+// Status glyphs differ in width (the arrow is 20px, a letter about 12); a
+// fixed column keeps the titles in line.
+const DASHBOARD_ICON_COLUMN_PX = 30;
+const DASHBOARD_COLUMN_GAP_PX = 18;
+// The project name sits at the right edge, capped at this share of the row
+// so a long project name cannot squeeze every title.
+const DASHBOARD_PROJECT_MAX_SHARE = 0.35;
+// Title, preview, blank: three lines per thread, no blank after the last.
+const DASHBOARD_LINES_PER_ENTRY = 3;
+
+export interface DashboardRow {
+  readonly id: string;
+  readonly icon: string;
+  readonly project: string;
+  readonly title: string;
+}
+
+export interface DashboardLayout {
+  readonly content: string;
+  /** Index into `rows` of the marked thread; 0 when the id is gone. */
+  readonly cursor: number;
+  readonly windowStart: number;
+  /** Ids of the threads on screen, in order. */
+  readonly visibleIds: ReadonlyArray<string>;
+}
+
+/** Pads `text` with spaces up to `widthPx`, to the nearest space. */
+function padToWidth(text: string, widthPx: number): string {
+  const spaces = Math.max(0, Math.round((widthPx - getTextWidth(text)) / spaceWidth()));
+  return `${text}${" ".repeat(spaces)}`;
+}
+
+/** Threads that fit in `lines` at three lines each, the last without its blank. */
+function dashboardCapacity(lines: number): number {
+  return Math.max(1, Math.floor((lines + 1) / DASHBOARD_LINES_PER_ENTRY));
+}
+
+/**
+ * The threads dashboard: per thread a title row (cursor, status, title, and
+ * the project name at the right edge, in aligned columns), an indented
+ * preview line, and a blank line. Drawn as plain text so updates land in
+ * place and never move the marker. When the threads do not fit, a footer
+ * counts what is above and below and the window follows the cursor one
+ * thread at a time. `preview` is asked only for the threads on screen; null
+ * shows a placeholder while it loads.
+ */
+export function dashboardLayout(
+  rows: ReadonlyArray<DashboardRow>,
+  cursorId: string | null,
+  windowStart: number,
+  preview: (id: string) => string | null,
+  maxRows = DASHBOARD_ROWS,
+): DashboardLayout {
+  const cursor = Math.max(
+    0,
+    rows.findIndex((row) => row.id === cursorId),
+  );
+  const paged = rows.length > dashboardCapacity(maxRows);
+  const visible = dashboardCapacity(paged ? maxRows - 1 : maxRows);
+  let start = Math.min(Math.max(0, windowStart), Math.max(0, rows.length - visible));
+  if (cursor < start) {
+    start = cursor;
+  } else if (cursor >= start + visible) {
+    start = cursor - visible + 1;
+  }
+  const shown = rows.slice(start, start + visible);
+
+  const rowWidth = BODY_INNER_WIDTH - WRAP_SAFETY_PX;
+  const leftPx = DASHBOARD_CURSOR_COLUMN_PX + DASHBOARD_ICON_COLUMN_PX;
+  const projectMaxPx = Math.floor(rowWidth * DASHBOARD_PROJECT_MAX_SHARE);
+  const projects = shown.map((row) => pxTruncate(row.project, projectMaxPx));
+  const projectPx = Math.max(0, ...projects.map((project) => getTextWidth(project)));
+  const titlePx = rowWidth - leftPx - (projectPx === 0 ? 0 : projectPx + DASHBOARD_COLUMN_GAP_PX);
+  const previewIndent = padToWidth("", leftPx);
+  const previewPx = rowWidth - getTextWidth(previewIndent);
+
+  const lines: Array<string> = [];
+  shown.forEach((row, offset) => {
+    const marker = padToWidth(
+      start + offset === cursor ? DASHBOARD_CURSOR : "",
+      DASHBOARD_CURSOR_COLUMN_PX,
+    );
+    const icon = padToWidth(row.icon, DASHBOARD_ICON_COLUMN_PX);
+    const project = projects[offset]!;
+    // The title is padded out to where the project column starts, so the
+    // project names line up at the right edge across rows.
+    const title =
+      project.length === 0
+        ? pxTruncate(row.title, titlePx)
+        : padToWidth(pxTruncate(row.title, titlePx), titlePx + DASHBOARD_COLUMN_GAP_PX);
+    lines.push(`${marker}${icon}${title}${project}`);
+    const text = preview(row.id);
+    lines.push(`${previewIndent}${pxTruncate(text === null ? "..." : text, previewPx)}`);
+    if (offset < shown.length - 1) {
+      lines.push("");
+    }
+  });
+  if (paged) {
+    const above = start;
+    const below = rows.length - (start + visible);
+    const parts = [
+      above > 0 ? `^ ${above} above` : null,
+      below > 0 ? `v ${below} below` : null,
+    ].filter((part) => part !== null);
+    lines.push("", `${padToWidth("", DASHBOARD_CURSOR_COLUMN_PX)}${parts.join("   ")}`);
+  }
+  return {
+    content: lines.join("\n"),
+    cursor,
+    windowStart: start,
+    visibleIds: shown.map((row) => row.id),
+  };
+}
+
+/**
+ * One line summing up where a thread is. While the agent works it is the
+ * newest transcript entry (the current tool step); a question or failure is
+ * shown as is; otherwise it is the latest reply, or the reader's own last
+ * message, as on the thread page.
+ */
+export function threadPreview(thread: TranscriptSource, working: boolean): string {
+  const last = transcriptEntries(thread).at(-1);
+  if (last === undefined) {
+    return "No reply yet.";
+  }
+  if (working || last.origin === "approval" || last.origin === "error") {
+    const line = firstLine(last.text).trim();
+    return last.origin === "user" ? `You: ${line}` : line;
+  }
+  return firstLine(latestReply(thread.messages)).trim();
 }
 
 export function threadListLabel(

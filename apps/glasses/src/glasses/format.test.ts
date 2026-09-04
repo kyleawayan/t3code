@@ -10,12 +10,14 @@ import type {
 
 import {
   BODY_INNER_WIDTH,
+  dashboardLayout,
   displayTitle,
   latestReply,
   LIST_ITEM_MAX_BYTES,
   revealedLines,
   skipInstantLines,
   statusBar,
+  threadPreview,
   transcriptLength,
   STATUS_INNER_WIDTH,
   threadListLabel,
@@ -104,6 +106,23 @@ describe("threadStatusKind", () => {
 });
 
 describe("threadListLabel", () => {
+  it("marks a thread with only watch loops alive as monitoring", () => {
+    expect(
+      threadListLabel({
+        ...baseShell,
+        latestTurn: turn("completed", { completedAt: "2026-01-01T00:01:00.000Z" }),
+        backgroundLiveness: "monitoring",
+      }),
+    ).toBe("M Fix login redirect");
+    expect(
+      threadListLabel({
+        ...baseShell,
+        hasPendingApprovals: true,
+        backgroundLiveness: "monitoring",
+      }),
+    ).toBe("? Fix login redirect");
+  });
+
   it("leads with the status icon and truncates to the row budget", () => {
     const label = threadListLabel({
       ...baseShell,
@@ -551,5 +570,103 @@ describe("visibleThreads", () => {
       { now },
     );
     expect(result.map((entry) => entry.id)).toEqual(["pinned", "unsettled", "new", "old"]);
+  });
+});
+
+describe("dashboardLayout", () => {
+  const rows = Array.from({ length: 12 }, (_, index) => ({
+    id: `t${index}`,
+    icon: index % 2 === 0 ? "▶" : "M",
+    project: index % 3 === 0 ? "t3code" : "biohub-chatbot",
+    title: `Thread ${index}`,
+  }));
+  const preview = (id: string) => (id === "t1" ? null : `Preview for ${id}`);
+  const columnPx = (line: string, text: string) => getTextWidth(line.slice(0, line.indexOf(text)));
+  const space = getTextWidth(" ");
+
+  it("lays out title, indented preview, and a blank line per thread", () => {
+    const layout = dashboardLayout(rows.slice(0, 2), "t1", 0, preview, 8);
+    const lines = layout.content.split("\n");
+    expect(lines).toHaveLength(5);
+    expect(lines[0]).toMatch(/^\s+▶\s+Thread 0\s+t3code$/);
+    expect(lines[1]).toMatch(/^\s+Preview for t0$/);
+    expect(lines[2]).toBe("");
+    expect(lines[3]).toMatch(/^>\s+M\s+Thread 1\s+biohub-chatbot$/);
+    expect(lines[4]).toMatch(/^\s+\.\.\.$/);
+    expect(layout.cursor).toBe(1);
+    expect(layout.visibleIds).toEqual(["t0", "t1"]);
+  });
+
+  it("aligns status, title, and project columns across rows to within a space", () => {
+    const [first, , , second] = dashboardLayout(
+      rows.slice(0, 2),
+      "t0",
+      0,
+      preview,
+      8,
+    ).content.split("\n");
+    // The marked row's ">" must not push its status icon out of the column.
+    expect(Math.abs(columnPx(first!, "▶") - columnPx(second!, "M"))).toBeLessThan(space);
+    expect(Math.abs(columnPx(first!, "Thread 0") - columnPx(second!, "Thread 1"))).toBeLessThan(
+      space,
+    );
+    expect(Math.abs(columnPx(first!, "t3code") - columnPx(second!, "biohub-chatbot"))).toBeLessThan(
+      space,
+    );
+  });
+
+  it("follows the cursor to the thread, not the row, when the list reorders", () => {
+    const reordered = [rows[2]!, rows[0]!, rows[1]!];
+    expect(dashboardLayout(reordered, "t1", 0, preview, 8).cursor).toBe(2);
+    expect(dashboardLayout(reordered, "gone", 0, preview, 8).cursor).toBe(0);
+  });
+
+  it("shows two threads plus a footer when paged and shifts one at a time", () => {
+    const first = dashboardLayout(rows, "t0", 0, preview, 8);
+    const lines = first.content.split("\n");
+    expect(lines).toHaveLength(7);
+    expect(lines.at(-1)).toMatch(/^\s+v 10 below$/);
+    expect(first.visibleIds).toEqual(["t0", "t1"]);
+
+    const pastBottom = dashboardLayout(rows, "t2", first.windowStart, preview, 8);
+    expect(pastBottom.windowStart).toBe(1);
+    expect(pastBottom.content.split("\n").at(-1)).toMatch(/^\s+\^ 1 above   v 9 below$/);
+
+    const backUp = dashboardLayout(rows, "t0", pastBottom.windowStart, preview, 8);
+    expect(backUp.windowStart).toBe(0);
+  });
+
+  it("fits three threads without a footer when that is all there is", () => {
+    const layout = dashboardLayout(rows.slice(0, 3), "t0", 0, preview, 8);
+    expect(layout.content.split("\n")).toHaveLength(8);
+    expect(layout.visibleIds).toEqual(["t0", "t1", "t2"]);
+  });
+});
+
+describe("threadPreview", () => {
+  it("shows the current step while working, the reply when done, or the user's line", () => {
+    const messages = [message("user", "Build it", "2026-01-01T00:00:00Z")];
+    expect(threadPreview({ messages, activities: [] }, false)).toBe("You: Build it");
+    const step = activity("tool.started", "Read package.json", "2026-01-01T00:00:02Z");
+    expect(threadPreview({ messages, activities: [step] }, true)).toBe("Read package.json");
+    const replied = {
+      messages: [...messages, message("assistant", "Done.\nAll green.", "2026-01-01T00:00:03Z")],
+      activities: [activity("turn.completed", "Task completed", "2026-01-01T00:00:04Z")],
+    };
+    expect(threadPreview(replied, false)).toBe("Done.");
+    expect(
+      threadPreview(
+        {
+          ...replied,
+          activities: [
+            activity("approval.requested", "Allow grep?", "2026-01-01T00:00:05Z", {
+              tone: "approval",
+            }),
+          ],
+        },
+        false,
+      ),
+    ).toBe("Allow grep?");
+    expect(threadPreview({ messages: [], activities: [] }, false)).toBe("No reply yet.");
   });
 });
