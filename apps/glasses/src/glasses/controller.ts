@@ -36,6 +36,11 @@ import { revealCharsPerTick, revealSpeedAtom } from "./revealSpeed";
 import {
   BODY_HEIGHT,
   BODY_INNER_WIDTH,
+  dashboardLayout,
+  flattenTitle,
+  statusIcon,
+  threadPreview,
+  threadStatusKind,
   BODY_MAX_LINES,
   displayTitle,
   DIVIDER_HEIGHT,
@@ -48,9 +53,9 @@ import {
   STATUS_PADDING,
   type LineWindow,
   statusBar,
-  threadListLabel,
   revealedLines,
   skipInstantLines,
+  SPINNER_FRAMES,
   transcriptLayout,
   type TranscriptLayout,
   transcriptLength,
@@ -161,23 +166,74 @@ function environmentsView(): View {
   };
 }
 
-function threadsView(environmentId: EnvironmentId): View {
+type Dashboard = {
+  readonly view: View;
+  readonly ids: ReadonlyArray<ThreadId>;
+  readonly visibleIds: ReadonlyArray<ThreadId>;
+  readonly cursor: ThreadId | null;
+  readonly windowStart: number;
+};
+
+/**
+ * The threads page is a text dashboard, not a native list: a list cannot be
+ * updated in place and every rebuild drops the firmware cursor to the top.
+ * The marker here is ours, follows the thread it was on, and moves with
+ * swipes as in-place text updates.
+ */
+function threadsDashboard(
+  environmentId: EnvironmentId,
+  cursor: ThreadId | null,
+  windowStart: number,
+): Dashboard {
+  const empty = (content: string): Dashboard => ({
+    view: { kind: "text", content },
+    ids: [],
+    visibleIds: [],
+    cursor: null,
+    windowStart: 0,
+  });
   const shell = appAtomRegistry.get(environmentShell.stateValueAtom(environmentId));
   if (Option.isNone(shell.snapshot)) {
     const status = connectionStatusText(connectionPhase(environmentId));
-    return { kind: "text", content: `Loading threads...\n\n${status}` };
+    return empty(`Loading threads...\n\n${status}`);
   }
   const threads = visibleThreads(shell.snapshot.value.threads, {
     now: new Date().toISOString(),
   });
   if (threads.length === 0) {
-    return { kind: "text", content: "No threads yet." };
+    return empty("No threads yet.");
   }
   const projects = projectTitles(shell.snapshot.value.projects);
+  const rows = threads.map((thread) => {
+    const kind = threadStatusKind(thread);
+    return {
+      id: thread.id,
+      // Working rows get a fixed arrow, not the spinner; see threadListLabel.
+      icon: kind === "working" ? SPINNER_FRAMES[0] : statusIcon(kind, 0),
+      project: flattenTitle(projects.get(thread.projectId) ?? ""),
+      title: flattenTitle(thread.title),
+      working: kind === "working",
+    };
+  });
+  const preview = (id: string) => {
+    const detail = Option.getOrNull(
+      AsyncResult.value(
+        appAtomRegistry.get(environmentThreads.stateAtom(environmentId, id as ThreadId)),
+      ),
+    );
+    const row = rows.find((candidate) => candidate.id === id);
+    return detail !== null && Option.isSome(detail.data)
+      ? threadPreview(detail.data.value, row?.working ?? false)
+      : null;
+  };
+  const layout = dashboardLayout(rows, cursor, windowStart, preview);
+  const ids = threads.map((thread) => thread.id);
   return {
-    kind: "list",
-    ids: threads.map((thread) => thread.id),
-    items: threads.map((thread) => threadListLabel(thread, projects.get(thread.projectId))),
+    view: { kind: "text", content: layout.content },
+    ids,
+    visibleIds: layout.visibleIds as ReadonlyArray<ThreadId>,
+    cursor: ids[layout.cursor] ?? null,
+    windowStart: layout.windowStart,
   };
 }
 
@@ -383,6 +439,13 @@ class GlassesController {
   // the growth once they arrive so the reader stays on the same lines.
   private olderRequest: { readonly total: number; readonly requestedAt: number } | null = null;
   private lastScrollAt = 0;
+  // Dashboard marker: the thread it sits on and the first visible row.
+  private dashboardCursor: ThreadId | null = null;
+  private dashboardStart = 0;
+  private dashboardIds: ReadonlyArray<ThreadId> = [];
+  // Preview lines need each visible thread's transcript; only the threads on
+  // screen stay subscribed, and they drop off as the window moves.
+  private dashboardWatches = new Map<ThreadId, () => void>();
   // Advanced by the page ticker; only rows and strips that are "working" read it.
   private spinnerFrame = 0;
   private sliding = false;
@@ -426,6 +489,10 @@ class GlassesController {
     this.lastThread = null;
     this.olderRequest = null;
     this.revealChars = null;
+    this.dashboardCursor = null;
+    this.dashboardStart = 0;
+    this.dashboardIds = [];
+    this.watchDashboardThreads([]);
     this.unsubscribeAll();
     const subscribe = (atom: Atom.Atom<unknown>) => {
       this.subscriptions.push(appAtomRegistry.subscribe(atom, () => this.scheduleRender()));
@@ -505,8 +572,18 @@ class GlassesController {
     switch (this.page.kind) {
       case "environments":
         return environmentsView();
-      case "threads":
-        return threadsView(this.page.environmentId);
+      case "threads": {
+        const dashboard = threadsDashboard(
+          this.page.environmentId,
+          this.dashboardCursor,
+          this.dashboardStart,
+        );
+        this.dashboardIds = dashboard.ids;
+        this.dashboardCursor = dashboard.cursor;
+        this.dashboardStart = dashboard.windowStart;
+        this.watchDashboardThreads(dashboard.visibleIds);
+        return dashboard.view;
+      }
       case "thread": {
         const { environmentId, threadId } = this.page;
         // A fetch that never lands must not spin forever.
@@ -628,11 +705,16 @@ class GlassesController {
   }
 
   private onScrollEdge(edge: "top" | "bottom") {
-    if (this.page.kind !== "thread" || this.lastThread === null) {
-      return;
-    }
     const now = Date.now();
     if (now - this.lastScrollAt < SCROLL_COOLDOWN_MS) {
+      return;
+    }
+    if (this.page.kind === "threads") {
+      this.lastScrollAt = now;
+      this.moveDashboardCursor(edge === "bottom" ? 1 : -1);
+      return;
+    }
+    if (this.page.kind !== "thread" || this.lastThread === null) {
       return;
     }
     this.lastScrollAt = now;
@@ -686,6 +768,63 @@ class GlassesController {
     this.olderRequest = { total: rendered.lines.length, requestedAt: Date.now() };
     requestOlderThreadTurns(this.page.environmentId, this.page.threadId);
     this.scheduleRender();
+  }
+
+  private watchDashboardThreads(visible: ReadonlyArray<ThreadId>) {
+    if (this.page.kind !== "threads" && visible.length > 0) {
+      return;
+    }
+    const environmentId = this.page.kind === "threads" ? this.page.environmentId : null;
+    for (const [threadId, unsubscribe] of this.dashboardWatches) {
+      if (!visible.includes(threadId)) {
+        unsubscribe();
+        this.dashboardWatches.delete(threadId);
+      }
+    }
+    if (environmentId === null) {
+      return;
+    }
+    for (const threadId of visible) {
+      if (!this.dashboardWatches.has(threadId)) {
+        this.dashboardWatches.set(
+          threadId,
+          appAtomRegistry.subscribe(environmentThreads.stateAtom(environmentId, threadId), () =>
+            this.scheduleRender(),
+          ),
+        );
+      }
+    }
+  }
+
+  /**
+   * The dashboard fits on one screen, so a swipe reports an edge at once and
+   * reads as one step of the marker. Steps clamp at both ends.
+   */
+  private moveDashboardCursor(step: 1 | -1) {
+    if (this.page.kind !== "threads" || this.dashboardIds.length === 0) {
+      return;
+    }
+    const current = Math.max(
+      0,
+      this.dashboardIds.findIndex((id) => id === this.dashboardCursor),
+    );
+    const next = Math.min(this.dashboardIds.length - 1, Math.max(0, current + step));
+    if (next === current) {
+      return;
+    }
+    this.dashboardCursor = this.dashboardIds[next] ?? null;
+    this.render(false);
+  }
+
+  private openDashboardCursor() {
+    if (this.page.kind !== "threads" || this.dashboardCursor === null) {
+      return;
+    }
+    this.enter({
+      kind: "thread",
+      environmentId: this.page.environmentId,
+      threadId: this.dashboardCursor,
+    });
   }
 
   private jumpToLatest() {
@@ -821,9 +960,14 @@ class GlassesController {
       this.onScrollEdge("bottom");
       return;
     }
-    // A tap on the transcript jumps back to the live tail.
+    // A tap on the dashboard opens the marked thread; on the transcript it
+    // jumps back to the live tail.
     if (!event.listEvent && sysType === OsEventTypeList.CLICK_EVENT) {
-      this.jumpToLatest();
+      if (this.page.kind === "threads") {
+        this.openDashboardCursor();
+      } else {
+        this.jumpToLatest();
+      }
       return;
     }
     if (sysType === OsEventTypeList.FOREGROUND_ENTER_EVENT) {
@@ -899,6 +1043,7 @@ class GlassesController {
       clearTimeout(this.renderTimer);
       this.renderTimer = null;
     }
+    this.watchDashboardThreads([]);
     this.unsubscribeAll();
     setStatus("Glasses page closed.");
   }
