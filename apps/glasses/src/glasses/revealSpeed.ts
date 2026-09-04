@@ -12,7 +12,7 @@ export type RevealSpeed = number | null;
 export const REVEAL_SPEED_MIN = 10;
 export const REVEAL_SPEED_MAX = 120;
 export const REVEAL_SPEED_STEP = 5;
-export const DEFAULT_REVEAL_SPEED = 25;
+export const DEFAULT_REVEAL_SPEED = 50;
 
 const STORAGE_KEY = "t3code-glasses:reveal-speed:v1";
 
