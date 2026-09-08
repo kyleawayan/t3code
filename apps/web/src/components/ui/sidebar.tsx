@@ -168,8 +168,10 @@ function SidebarProvider({
           {
             "--sidebar-width": SIDEBAR_WIDTH,
             "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
-            "--workspace-titlebar-content-left":
-              "calc(var(--workspace-controls-left) + var(--workspace-titlebar-control-size) + var(--workspace-titlebar-control-gap))",
+            // Clears the native window controls only. The sidebar trigger used
+            // to sit here too; it moved to the window's right edge with the
+            // sidebar, so reserving room for it would read as a gap.
+            "--workspace-titlebar-content-left": "var(--workspace-controls-left)",
             ...style,
           } as React.CSSProperties
         }
