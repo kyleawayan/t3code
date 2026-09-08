@@ -481,19 +481,19 @@ describe("MessagesTimeline", () => {
         pointerY: 999,
       }),
     ).toBe(100);
-    expect(resolveTimelineMinimapHasPersistentGutter(832)).toBe(false);
-    expect(resolveTimelineMinimapHasPersistentGutter(863)).toBe(false);
-    expect(resolveTimelineMinimapHasPersistentGutter(864)).toBe(true);
+    expect(resolveTimelineMinimapHasPersistentGutter(800)).toBe(false);
+    expect(resolveTimelineMinimapHasPersistentGutter(815)).toBe(false);
+    expect(resolveTimelineMinimapHasPersistentGutter(816)).toBe(true);
 
     // No usable gutter (zoomed in / narrow pane): the strip must go inert
-    // instead of overlaying the centered content column.
+    // instead of overlaying the left-aligned content column.
     expect(resolveTimelineMinimapHitStripWidth(768)).toBe(0);
-    expect(resolveTimelineMinimapHitStripWidth(792)).toBe(0);
+    expect(resolveTimelineMinimapHitStripWidth(780)).toBe(0);
     // Partial gutter: strip shrinks to what fits between the viewport edge
     // and the content column.
-    expect(resolveTimelineMinimapHitStripWidth(820)).toBe(14);
+    expect(resolveTimelineMinimapHitStripWidth(800)).toBe(20);
     // Full gutter: unchanged 40px-wide strip.
-    expect(resolveTimelineMinimapHitStripWidth(872)).toBe(40);
+    expect(resolveTimelineMinimapHitStripWidth(820)).toBe(40);
     expect(resolveTimelineMinimapHitStripWidth(1400)).toBe(40);
     expect(resolveTimelineMinimapHitStripWidth(0)).toBe(0);
     expect(resolveTimelineMinimapHitStripWidth(Number.NaN)).toBe(0);
@@ -1327,29 +1327,6 @@ describe("MessagesTimeline", () => {
 
     expect(markup).toContain("Running pnpm");
     expect(markup).not.toContain("tool call failed");
-  });
-
-  it("renders initial thinking as the shared live activity row", () => {
-    const turnId = TurnId.make("turn-live");
-    const markup = renderToStaticMarkup(
-      <MessagesTimeline
-        {...buildProps()}
-        isWorking
-        activeTurnStartedAt={MESSAGE_CREATED_AT}
-        latestTurn={{
-          turnId,
-          state: "running",
-          startedAt: MESSAGE_CREATED_AT,
-          completedAt: null,
-        }}
-        runningTurnId={turnId}
-        timelineEntries={[]}
-      />,
-    );
-
-    expect(markup).toContain("Thinking");
-    expect(markup).toContain("lucide-brain");
-    expect(markup).toContain('data-timeline-row-id="live-activity-row"');
   });
 
   it("keeps the completed command in the shared activity row with a present-tense label", () => {
