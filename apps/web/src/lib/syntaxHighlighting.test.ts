@@ -1,12 +1,16 @@
 import type { DiffsHighlighter } from "@pierre/diffs";
 import { expect, it, vi } from "vite-plus/test";
 
-const { getSharedHighlighter } = vi.hoisted(() => ({
+const { getSharedHighlighter, registerCustomTheme } = vi.hoisted(() => ({
   getSharedHighlighter: vi.fn(),
+  // diffRendering registers the bundled Xcode themes on import, and this module
+  // pulls that import in transitively.
+  registerCustomTheme: vi.fn(),
 }));
 
 vi.mock("@pierre/diffs", () => ({
   getSharedHighlighter,
+  registerCustomTheme,
 }));
 
 import { getSyntaxHighlighterPromise } from "./syntaxHighlighting";
