@@ -177,6 +177,7 @@ import {
   ComposerControl,
   ComposerControlIcon,
   ComposerControlSeparator,
+  composerCompactControlClassName,
   ComposerSelectControl,
 } from "./ComposerControl";
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
@@ -831,25 +832,32 @@ const WORKSPACE_SNAPSHOT_RETRY_COOLDOWN_MS = 10_000;
 
 const runtimeModeConfig: Record<
   RuntimeMode,
-  { label: string; description: string; icon: LucideIcon }
+  { label: string; compactLabel: string; description: string; icon: LucideIcon }
 > = {
+  // compactLabel is what the narrow footer shows instead of collapsing the
+  // control away. Short enough that the access level usually still reads as a
+  // whole word; below that it clips to its first letter beside the icon.
   "approval-required": {
     label: "Supervised",
+    compactLabel: "Ask",
     description: "Ask before commands and file changes.",
     icon: LockIcon,
   },
   "auto-accept-edits": {
     label: "Auto-accept edits",
+    compactLabel: "Edits",
     description: "Auto-approve edits, ask before other actions.",
     icon: PenLineIcon,
   },
   auto: {
     label: "Auto",
+    compactLabel: "Auto",
     description: "Supported providers approve routine actions; others still ask.",
     icon: SparklesIcon,
   },
   "full-access": {
     label: "Full access",
+    compactLabel: "Full",
     description: "Allow commands and edits without prompts.",
     icon: LockOpenIcon,
   },
@@ -933,11 +941,17 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
   interactionMode: ProviderInteractionMode;
   runtimeMode: RuntimeMode;
   size?: "sm" | "xs";
+  /**
+   * Narrow footers keep every control but tighten it: short mode labels, no
+   * separators, icon-only build/plan toggle, and less horizontal padding.
+   */
+  compact?: boolean;
   hidden?: boolean;
   onToggleInteractionMode: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
   const size = props.size ?? "sm";
+  const compact = props.compact === true;
   const [open, setOpen] = useComposerMenuState(props.hidden);
   const runtimeModeOption = runtimeModeConfig[props.runtimeMode];
   const RuntimeModeIcon = runtimeModeOption.icon;
@@ -948,7 +962,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
 
   const interactionModeToggle = props.showInteractionModeToggle ? (
     <>
-      <ComposerControlSeparator size={size} />
+      {compact ? null : <ComposerControlSeparator size={size} />}
       <Tooltip>
         <TooltipTrigger
           render={
@@ -956,6 +970,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
               size={size}
               className={cn(
                 "shrink-0 whitespace-nowrap",
+                compact && composerCompactControlClassName,
                 props.interactionMode === "plan"
                   ? "bg-accent text-accent-foreground hover:bg-accent/80"
                   : size === "xs"
@@ -981,7 +996,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
               opticalSize={size === "xs" ? "default" : "large"}
             />
           )}
-          <span className="sr-only sm:not-sr-only">
+          <span className={compact ? "sr-only" : "sr-only sm:not-sr-only"}>
             {props.interactionMode === "plan" ? "Plan" : "Build"}
           </span>
         </TooltipTrigger>
@@ -992,7 +1007,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
 
   return (
     <>
-      <ComposerControlSeparator size={size} />
+      {compact ? null : <ComposerControlSeparator size={size} />}
 
       <Tooltip>
         <Select
@@ -1005,13 +1020,28 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
             render={
               <ComposerSelectControl
                 size={size}
-                className={size === "xs" ? undefined : "font-medium"}
+                className={cn(
+                  size === "xs" ? undefined : "font-medium",
+                  // Floor is the icon plus one letter. The icon and tooltip
+                  // carry the access level once the word stops fitting.
+                  compact && cn("min-w-11 shrink", composerCompactControlClassName),
+                )}
                 aria-label="Runtime mode"
               />
             }
           >
             <ComposerControlIcon icon={RuntimeModeIcon} size={size} />
-            <SelectValue>{runtimeModeOption.label}</SelectValue>
+            {/* Clipped rather than ellipsised: at the floor "A" says more
+                than "A…" in the same space. */}
+            <SelectValue
+              className={
+                // Spelled out because `text-clip` alone would merge away the
+                // base `truncate` and with it the overflow clipping.
+                compact ? "min-w-0 overflow-hidden text-clip whitespace-nowrap" : undefined
+              }
+            >
+              {compact ? runtimeModeOption.compactLabel : runtimeModeOption.label}
+            </SelectValue>
           </TooltipTrigger>
           <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
             {runtimeModeOptions.map((mode) => {
@@ -3924,6 +3954,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     size: "xs",
     hidden: composerControlsHidden || restingHiddenBlockCount > 1,
   });
+  const compactProviderTraitsPicker = composerControlsCompact
+    ? renderProviderTraitsPicker({ ...providerTraitsPickerInput, compact: true })
+    : providerTraitsPicker;
   const restingBlockDefs = [
     ...(providerTraitsPicker
       ? [
@@ -3931,8 +3964,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             id: "traits",
             content: (
               <>
-                <ComposerControlSeparator size={composerControlsInStrip ? "xs" : "sm"} />
-                {composerControlsInStrip ? restingProviderTraitsPicker : providerTraitsPicker}
+                {composerControlsCompact ? null : (
+                  <ComposerControlSeparator size={composerControlsInStrip ? "xs" : "sm"} />
+                )}
+                {composerControlsInStrip
+                  ? restingProviderTraitsPicker
+                  : compactProviderTraitsPicker}
               </>
             ),
           },
@@ -3946,6 +3983,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           interactionMode={interactionMode}
           runtimeMode={runtimeMode}
           size={composerControlsInStrip ? "xs" : "sm"}
+          compact={composerControlsCompact}
           hidden={composerControlsHidden || restingHiddenBlockCount > 0}
           onToggleInteractionMode={toggleInteractionMode}
           onRuntimeModeChange={handleRuntimeModeChange}
@@ -3996,7 +4034,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         triggerClassName={
           composerControlsInStrip
             ? "min-w-13 shrink text-xs! @max-[640px]/composer-surface:[&_[data-chat-provider-model-picker-label]]:w-0 @max-[640px]/composer-surface:[&_[data-chat-provider-model-picker-label]]:flex-none"
-            : "-ms-2.5"
+            : composerControlsCompact
+              ? cn("-ms-1.5", composerCompactControlClassName)
+              : "-ms-2.5"
         }
         terminalOpen={terminalOpen}
         open={isComposerModelPickerOpen}
@@ -4020,65 +4060,50 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         onOpenProviderSetup={onOpenProviderSetup}
       />
 
-      {composerControlsCompact ? (
-        <CompactComposerControlsMenu
-          interactionMode={interactionMode}
-          runtimeMode={runtimeMode}
-          showInteractionModeToggle={planModeUiEnabled}
-          traitsMenuContent={providerTraitsMenuContent}
-          onToggleInteractionMode={toggleInteractionMode}
-          onRuntimeModeChange={handleRuntimeModeChange}
-        />
-      ) : (
-        <>
-          {restingBlockDefs.map((def, index) => {
-            if (!composerControlsInStrip) {
-              return <Fragment key={def.id}>{def.content}</Fragment>;
+      {restingBlockDefs.map((def, index) => {
+        if (!composerControlsInStrip) {
+          return <Fragment key={def.id}>{def.content}</Fragment>;
+        }
+        const hidden = index >= restingBlockDefs.length - restingHiddenBlockCount;
+        return (
+          <div
+            key={def.id}
+            data-resting-block={def.id}
+            aria-hidden={hidden || undefined}
+            inert={hidden || undefined}
+            className={cn(
+              "flex w-max min-w-max shrink-0 items-center gap-1",
+              hidden && "pointer-events-none invisible absolute",
+            )}
+          >
+            {def.content}
+          </div>
+        );
+      })}
+      {composerControlsInStrip ? (
+        <div
+          data-resting-controls-overflow
+          aria-hidden={hiddenRestingBlockIds.length === 0 || undefined}
+          inert={hiddenRestingBlockIds.length === 0 || undefined}
+          className={cn(
+            "min-w-0 shrink-0",
+            hiddenRestingBlockIds.length === 0 && "pointer-events-none invisible absolute",
+          )}
+        >
+          <CompactComposerControlsMenu
+            interactionMode={interactionMode}
+            runtimeMode={runtimeMode}
+            size="xs"
+            hidden={composerControlsHidden || hiddenRestingBlockIds.length === 0}
+            showInteractionModeToggle={planModeUiEnabled && hiddenRestingBlockIds.includes("mode")}
+            traitsMenuContent={
+              hiddenRestingBlockIds.includes("traits") ? providerTraitsMenuContent : undefined
             }
-            const hidden = index >= restingBlockDefs.length - restingHiddenBlockCount;
-            return (
-              <div
-                key={def.id}
-                data-resting-block={def.id}
-                aria-hidden={hidden || undefined}
-                inert={hidden || undefined}
-                className={cn(
-                  "flex w-max min-w-max shrink-0 items-center gap-1",
-                  hidden && "pointer-events-none invisible absolute",
-                )}
-              >
-                {def.content}
-              </div>
-            );
-          })}
-          {composerControlsInStrip ? (
-            <div
-              data-resting-controls-overflow
-              aria-hidden={hiddenRestingBlockIds.length === 0 || undefined}
-              inert={hiddenRestingBlockIds.length === 0 || undefined}
-              className={cn(
-                "min-w-0 shrink-0",
-                hiddenRestingBlockIds.length === 0 && "pointer-events-none invisible absolute",
-              )}
-            >
-              <CompactComposerControlsMenu
-                interactionMode={interactionMode}
-                runtimeMode={runtimeMode}
-                size="xs"
-                hidden={composerControlsHidden || hiddenRestingBlockIds.length === 0}
-                showInteractionModeToggle={
-                  planModeUiEnabled && hiddenRestingBlockIds.includes("mode")
-                }
-                traitsMenuContent={
-                  hiddenRestingBlockIds.includes("traits") ? providerTraitsMenuContent : undefined
-                }
-                onToggleInteractionMode={toggleInteractionMode}
-                onRuntimeModeChange={handleRuntimeModeChange}
-              />
-            </div>
-          ) : null}
-        </>
-      )}
+            onToggleInteractionMode={toggleInteractionMode}
+            onRuntimeModeChange={handleRuntimeModeChange}
+          />
+        </div>
+      ) : null}
     </>
   );
   const showTasksTab =
@@ -5559,6 +5584,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   data-chat-composer-footer-controls="true"
                   className={cn(
                     "-m-1 -ms-3.5 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 ps-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                    // Below this width the three labels and their chevrons no
+                    // longer fit together. The chevrons are pure affordance
+                    // and identical on all three, so they go first and the
+                    // labels keep their characters. The threshold is in rem so
+                    // it tracks the user's UI font size.
+                    "@max-[20rem]/composer-surface:[&_svg[data-composer-control-chevron]]:hidden",
                     isComposerResting && "hidden",
                   )}
                 >

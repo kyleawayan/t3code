@@ -32,10 +32,12 @@ import { useComposerDraftStore, DraftId } from "../../composerDraftStore";
 import { getProviderModelCapabilities } from "../../providerModels";
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   ComposerControl,
   ComposerControlChevron,
   ComposerControlIcon,
+  composerCompactControlClassName,
   type ComposerControlSize,
 } from "./ComposerControl";
 import { composerFloatingLayerProps } from "./composerEventScope";
@@ -550,11 +552,17 @@ export const TraitsPicker = memo(function TraitsPicker({
   triggerClassName,
   isComposerOwned,
   size = "sm",
+  compact = false,
   hidden = false,
   ...persistence
 }: TraitsMenuContentProps &
   TraitsPersistence & {
     size?: ComposerControlSize;
+    /**
+     * Narrow footers trim the trigger's padding and let its label truncate so
+     * the traits stay visible next to the model picker.
+     */
+    compact?: boolean;
     hidden?: boolean;
   }) {
   const [isMenuOpen, setIsMenuOpen] = useComposerMenuState(hidden);
@@ -621,22 +629,33 @@ export const TraitsPicker = memo(function TraitsPicker({
             variant={triggerVariant ?? "ghost"}
             size={size}
             className={cn(
-              isCodexStyle
+              isCodexStyle || compact
                 ? "min-w-0 max-w-40 shrink justify-start overflow-hidden whitespace-nowrap sm:max-w-48"
                 : "shrink-0 whitespace-nowrap",
+              // Enough room for the first few characters of the effort level,
+              // so "Extra High" still reads as "Extr…" rather than "E…".
+              compact && cn("min-w-11", composerCompactControlClassName),
               triggerClassName,
             )}
           />
         }
       >
-        {isCodexStyle ? (
+        {isCodexStyle || compact ? (
           // The label truncates itself; clipping the wrapper too would cut off
           // the chevron, whose negative end margin overhangs the wrapper edge.
           <span
-            className={cn("flex min-w-0 w-full items-center", size === "xs" ? "gap-1" : "gap-1.5")}
+            className={cn(
+              "flex min-w-0 w-full items-center",
+              size === "xs" || compact ? "gap-1" : "gap-1.5",
+            )}
           >
             {fastModeIcon}
-            <span className="min-w-0 truncate">{triggerLabel}</span>
+            <Tooltip>
+              <TooltipTrigger render={<span className="min-w-0 truncate" />}>
+                {triggerLabel}
+              </TooltipTrigger>
+              <TooltipPopup side="top">{triggerLabel}</TooltipPopup>
+            </Tooltip>
             <ComposerControlChevron size={size} />
           </span>
         ) : (
