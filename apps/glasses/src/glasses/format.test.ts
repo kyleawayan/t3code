@@ -120,7 +120,7 @@ describe("threadListLabel", () => {
         hasPendingApprovals: true,
         backgroundLiveness: "monitoring",
       }),
-    ).toBe("? Fix login redirect");
+    ).toBe("◆ Fix login redirect");
   });
 
   it("leads with the status icon and truncates to the row budget", () => {
@@ -134,9 +134,9 @@ describe("threadListLabel", () => {
     expect(label.endsWith("...")).toBe(true);
   });
 
-  it("uses a question mark when the thread needs the user", () => {
+  it("flags a thread needing input with the diamond icon", () => {
     expect(threadListLabel({ ...baseShell, hasPendingUserInput: true })).toBe(
-      "? Fix login redirect",
+      "◆ Fix login redirect",
     );
   });
 
@@ -180,8 +180,8 @@ describe("statusBar", () => {
     ).toBe("√");
   });
 
-  it("asks for input with the terminal app's wording", () => {
-    expect(statusBar({ ...baseShell, hasPendingApprovals: true }, 0)).toBe("?");
+  it("flags needed input with the diamond icon", () => {
+    expect(statusBar({ ...baseShell, hasPendingApprovals: true }, 0)).toBe("◆");
   });
 
   it("right-aligns the title within the strip on one line", () => {

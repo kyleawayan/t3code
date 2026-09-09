@@ -85,11 +85,14 @@ export function threadStatusKind(shell: StatusShell): ThreadStatusKind {
  */
 export const SPINNER_FRAMES = ["▶", "▼", "◀", "▲"] as const;
 
-// The real check mark (U+2713) is not in the firmware font; the square root
-// sign is, and reads as one. Letters and punctuation are always safe.
+// Shared status glyphs — the single source for both the list rows (statusCompact)
+// and the thread-view status bar (statusIcon), so the two never drift. Working
+// is excluded: it animates the spinner in the view and reads "○ Working" in the
+// list. The real check mark (U+2713) is missing from the firmware font; the
+// square root sign is present and reads as one.
 const STATUS_ICON: Record<Exclude<ThreadStatusKind, "working">, string> = {
   monitoring: "M",
-  "needs-you": "?",
+  "needs-you": "◆",
   error: "E",
   done: "√",
   idle: "·",
@@ -351,19 +354,23 @@ function formatElapsed(fromIso: string, toMs: number): string | null {
     : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
-/** Short elapsed for the compact status on a thread's title line: "45s", "2m",
- *  "1h". */
+/** Elapsed for the compact working status, quantized to 5-second steps so it
+ *  advances visibly (its ticking is the liveness cue) without a per-second
+ *  redraw: "30s", "4m30s", "1h05m". */
 function formatElapsedShort(fromIso: string, toMs: number): string | null {
   const from = Date.parse(fromIso);
   if (Number.isNaN(from)) {
     return null;
   }
-  const seconds = Math.max(0, Math.round((toMs - from) / 1000));
+  const seconds = Math.floor(Math.max(0, Math.round((toMs - from) / 1000)) / 5) * 5;
   if (seconds < 60) {
     return `${seconds}s`;
   }
   const minutes = Math.floor(seconds / 60);
-  return minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h`;
+  if (minutes < 60) {
+    return `${minutes}m${String(seconds % 60).padStart(2, "0")}s`;
+  }
+  return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}m`;
 }
 
 /** Compact status for the right of a thread's title line while it is active
@@ -380,18 +387,41 @@ export function statusCompact(
   switch (kind) {
     case "working": {
       const elapsed = startedAtIso === null ? null : formatElapsedShort(startedAtIso, nowMs);
-      return elapsed === null ? "Working" : `Working ${elapsed}`;
+      return elapsed === null ? "○ Working" : `○ Working ${elapsed}`;
     }
+    case "needs-you":
+      return `${STATUS_ICON["needs-you"]} INPUT!`;
+    case "done":
+      return `${STATUS_ICON.done} Done`;
     case "monitoring":
       return "Monitoring";
-    case "needs-you":
-      return "Input";
     case "error":
       return "Error";
-    case "done":
     case "idle":
       return null;
   }
+}
+
+/** Wall clock for the thread-list strip: 12-hour, no AM/PM, no leading zero on
+ *  the hour (so 1:05, 12:47). Firmware font, so plain digits. */
+export function formatClock(nowMs: number): string {
+  const date = new Date(nowMs);
+  const hour12 = ((date.getHours() + 11) % 12) + 1;
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hour12}:${minutes}`;
+}
+
+/** Bottom strip on the thread list: the wall clock at the left, a liveness
+ *  spinner pinned to the right. Its own container, updated in place, so the
+ *  spinner animates without repainting the thread rows above it. */
+export function dashboardStrip(clock: string, spinner: string, maxWidth: number): string {
+  // Indent the clock past the cursor-marker column so it lines up with the
+  // thread titles/previews above it, not with the ">" marker.
+  const indent = " ".repeat(Math.max(0, Math.round(DASHBOARD_CURSOR_COLUMN_PX / spaceWidth())));
+  const clockPart = `${indent}${clock}`;
+  const gap = maxWidth - STATUS_SAFETY_PX - getTextWidth(clockPart) - getTextWidth(spinner);
+  const spaces = Math.max(1, Math.floor(gap / Math.max(1, spaceWidth())));
+  return `${clockPart}${" ".repeat(spaces)}${spinner}`;
 }
 
 export interface StatusBarLayout {

@@ -37,7 +37,9 @@ import {
   BODY_HEIGHT,
   BODY_INNER_WIDTH,
   dashboardLayout,
+  dashboardStrip,
   flattenTitle,
+  formatClock,
   isThinking,
   statusCompact,
   threadPreview,
@@ -77,6 +79,10 @@ const ELAPSED_TICK_MS = 1_000;
 // Spinner cadence on the thread page, where it is a flicker-free text update.
 // The list page has no spinner: list rebuilds reset the cursor to the top.
 const SPINNER_TICK_MS = 500;
+// The list strip (clock, liveness slash, working timer) refreshes far slower:
+// BLE is the bottleneck, and a fast loop lags and drains battery. 5s steps keep
+// the timer/slash advancing as a liveness cue without a multi-FPS redraw loop.
+const DASHBOARD_TICK_MS = 5_000;
 // Characters per second come from the phone page (revealSpeedAtom); renders
 // still coalesce to the bridge throttle so the glasses see a few characters at a time.
 const REVEAL_TICK_MS = 200;
@@ -106,6 +112,13 @@ const TEXT_CONTAINER = { containerID: 2, containerName: "body" } as const;
 const FRAME_CONTAINER = { containerID: 3, containerName: "frame" } as const;
 const DIVIDER_CONTAINER = { containerID: 4, containerName: "divider" } as const;
 const STATUS_CONTAINER = { containerID: 5, containerName: "status" } as const;
+const STRIP_CONTAINER = { containerID: 6, containerName: "strip" } as const;
+// One line pinned to the bottom of the thread list for the clock + liveness
+// slash. Tall enough that a 27px line clears its padding, else the firmware
+// treats the strip as overflowing and draws a scrollbar.
+const STRIP_HEIGHT = 48;
+// Classic ASCII spinner; advanced only while the server link is live.
+const SLASH_FRAMES = ["|", "/", "-", "\\"] as const;
 
 type Page =
   | { readonly kind: "environments" }
@@ -123,6 +136,7 @@ type View =
       readonly ids: ReadonlyArray<string>;
     }
   | { readonly kind: "text"; readonly content: string }
+  | { readonly kind: "dashboard"; readonly body: string; readonly strip: string }
   | { readonly kind: "thread"; readonly body: string; readonly status: string };
 
 function eventTypeOf(envelope: { eventType?: OsEventTypeList } | undefined) {
@@ -184,6 +198,7 @@ function threadsDashboard(
   environmentId: EnvironmentId,
   cursor: ThreadId | null,
   windowStart: number,
+  slashFrame: number,
 ): Dashboard {
   const empty = (content: string): Dashboard => ({
     view: { kind: "text", content },
@@ -209,8 +224,8 @@ function threadsDashboard(
     const kind = threadStatusKind(thread);
     return {
       id: thread.id,
-      // Status rides at the right of the title line while active; otherwise the
-      // project name shows there.
+      // Status (with its icon) rides at the right of the title line while
+      // active; the project name shows there otherwise.
       right:
         statusCompact(
           kind,
@@ -235,7 +250,15 @@ function threadsDashboard(
   const layout = dashboardLayout(rows, cursor, windowStart, preview);
   const ids = threads.map((thread) => thread.id);
   return {
-    view: { kind: "text", content: layout.content },
+    view: {
+      kind: "dashboard",
+      body: layout.content,
+      strip: dashboardStrip(
+        formatClock(Date.now()),
+        SLASH_FRAMES[Math.abs(slashFrame) % SLASH_FRAMES.length]!,
+        BODY_INNER_WIDTH,
+      ),
+    },
     ids,
     visibleIds: layout.visibleIds as ReadonlyArray<ThreadId>,
     cursor: ids[layout.cursor] ?? null,
@@ -358,6 +381,9 @@ function sameView(left: View, right: View): boolean {
       left.items.every((item, index) => item === right.items[index])
     );
   }
+  if (left.kind === "dashboard" && right.kind === "dashboard") {
+    return left.body === right.body && left.strip === right.strip;
+  }
   return false;
 }
 
@@ -365,10 +391,41 @@ function textPanel(content: string) {
   return new TextContainerProperty({
     ...SCREEN,
     ...TEXT_CONTAINER,
-    ...FRAME,
     paddingLength: PANEL_PADDING,
     content,
     isEventCapture: 1,
+  });
+}
+
+// The list body when a strip shares the page. It needs an explicit zOrderIndex
+// because the firmware refuses a page where only some containers set one.
+// The thread list has no border (the frame is only on the thread view). It
+// still needs an explicit zOrderIndex because it shares the page with the strip.
+function dashboardBodyPanel(content: string) {
+  return new TextContainerProperty({
+    ...SCREEN,
+    ...TEXT_CONTAINER,
+    paddingLength: PANEL_PADDING,
+    content,
+    isEventCapture: 1,
+    zOrderIndex: 1,
+  });
+}
+
+// Bottom strip for the thread list (clock + liveness slash), overlaid in the
+// blank space below the rows so the list body never has to repaint for it. The
+// same padding as the body lines the clock and slash up with the list margins.
+function dashboardStripPanel(content: string) {
+  return new TextContainerProperty({
+    ...STRIP_CONTAINER,
+    xPosition: 0,
+    yPosition: SCREEN_HEIGHT - STRIP_HEIGHT,
+    width: SCREEN_WIDTH,
+    height: STRIP_HEIGHT,
+    paddingLength: PANEL_PADDING,
+    content,
+    isEventCapture: 0,
+    zOrderIndex: 2,
   });
 }
 
@@ -376,7 +433,6 @@ function listPanel(items: ReadonlyArray<string>) {
   return new ListContainerProperty({
     ...SCREEN,
     ...LIST_CONTAINER,
-    ...FRAME,
     paddingLength: PANEL_PADDING,
     isEventCapture: 1,
     itemContainer: new ListItemContainerProperty({
@@ -458,6 +514,8 @@ class GlassesController {
   private dashboardWatches = new Map<ThreadId, () => void>();
   // Advanced by the page ticker; only rows and strips that are "working" read it.
   private spinnerFrame = 0;
+  private slashFrame = 0;
+  private autoOpenScheduled = false;
   private sliding = false;
   // Reveal cursor for follow mode: lines below it are not shown yet. Null
   // until the thread has loaded, then advanced one line per tick so a long
@@ -521,6 +579,17 @@ class GlassesController {
       case "threads": {
         subscribe(environmentCatalog.stateAtom(page.environmentId));
         subscribe(environmentShell.stateAtom(page.environmentId));
+        // Drives the bottom strip: refresh the clock and spin the liveness
+        // slash while the server link is connected (a stalled stream freezes
+        // it). Only the small strip container upgrades; the rows are untouched.
+        const strip = setInterval(() => {
+          const phase = connectionPhase(page.environmentId).phase;
+          if (phase === "connected" || phase === "available") {
+            this.slashFrame += 1;
+          }
+          this.scheduleRender();
+        }, DASHBOARD_TICK_MS);
+        this.subscriptions.push(() => clearInterval(strip));
         setStatus("Glasses: showing threads.");
         break;
       }
@@ -580,13 +649,30 @@ class GlassesController {
 
   private currentView(): View {
     switch (this.page.kind) {
-      case "environments":
-        return environmentsView();
+      case "environments": {
+        const view = environmentsView();
+        // One laptop connected: skip the chooser and open its threads. Deferred
+        // so we navigate after this render, not mid-render. Only the chooser for
+        // two-plus connections.
+        const entries = [...appAtomRegistry.get(environmentCatalog.catalogValueAtom).entries];
+        if (entries.length === 1 && !this.autoOpenScheduled) {
+          const environmentId = entries[0]![0];
+          this.autoOpenScheduled = true;
+          queueMicrotask(() => {
+            this.autoOpenScheduled = false;
+            if (this.page.kind === "environments") {
+              this.enter({ kind: "threads", environmentId });
+            }
+          });
+        }
+        return view;
+      }
       case "threads": {
         const dashboard = threadsDashboard(
           this.page.environmentId,
           this.dashboardCursor,
           this.dashboardStart,
+          this.slashFrame,
         );
         this.dashboardIds = dashboard.ids;
         this.dashboardCursor = dashboard.cursor;
@@ -682,6 +768,8 @@ class GlassesController {
         return view.content.length < this.upgradeLimit;
       case "thread":
         return Math.max(view.body.length, view.status.length) < this.upgradeLimit;
+      case "dashboard":
+        return view.body.length < this.upgradeLimit;
       case "list":
         return false;
     }
@@ -884,6 +972,17 @@ class GlassesController {
       this.upgradeText(TEXT_CONTAINER, view.content);
       return;
     }
+    if (canUpgrade && view.kind === "dashboard" && previous?.kind === "dashboard") {
+      // Strip first (tiny): the clock/slash refresh lands even if the body
+      // update defers; the body re-sends only when the thread rows change.
+      if (view.strip !== previous.strip) {
+        this.upgradeText(STRIP_CONTAINER, view.strip);
+      }
+      if (view.body !== previous.body) {
+        this.upgradeText(TEXT_CONTAINER, view.body);
+      }
+      return;
+    }
     if (canUpgrade && view.kind === "thread" && previous?.kind === "thread") {
       // Status first: it is tiny, and during a page slide it carries the
       // Loading cue that should be visible while the body is in transit.
@@ -904,10 +1003,15 @@ class GlassesController {
               containerTotalNum: 1,
               textObject: [textPanel(view.content)],
             })
-          : new RebuildPageContainer({
-              containerTotalNum: 4,
-              textObject: threadPanels(view.body, view.status),
-            });
+          : view.kind === "dashboard"
+            ? new RebuildPageContainer({
+                containerTotalNum: 2,
+                textObject: [dashboardBodyPanel(view.body), dashboardStripPanel(view.strip)],
+              })
+            : new RebuildPageContainer({
+                containerTotalNum: 4,
+                textObject: threadPanels(view.body, view.status),
+              });
     void this.call("rebuildPageContainer", () => this.bridge.rebuildPageContainer(container)).then(
       (ok) => {
         // A refused rebuild leaves the previous page on the glasses; forget
