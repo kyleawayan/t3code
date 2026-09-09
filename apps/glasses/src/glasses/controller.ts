@@ -597,7 +597,10 @@ class GlassesController {
         // it). Only the small strip container upgrades; the rows are untouched.
         const strip = setInterval(() => {
           const phase = connectionPhase(page.environmentId).phase;
-          if (phase === "connected" || phase === "available") {
+          // Only "connected" is a live link. "available" is the idle/not-yet-
+          // connected state (and the fallback before the atom resolves), so
+          // spinning on it would animate liveness while disconnected.
+          if (phase === "connected") {
             this.slashFrame += 1;
           }
           this.scheduleRender();

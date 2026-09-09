@@ -393,9 +393,9 @@ function formatElapsedShort(fromIso: string, toMs: number): string | null {
   return clockElapsed(Math.floor(Math.max(0, Math.round((toMs - from) / 1000)) / 5) * 5);
 }
 
-/** Compact status for the right of a thread's title line while it is active
- *  ("Working 2m", "Monitoring", "Needs you", "Error"); null when idle or done
- *  so the row shows the project name instead. The elapsed is a render-time
+/** Compact status for the right of a thread's title line ("○ Working 02:05",
+ *  "◆ INPUT!", "★ Done", "Monitoring", "Error"); null only when idle, so an
+ *  idle row shows the project name instead. The elapsed is a render-time
  *  snapshot — the dashboard has no per-second tick (a ticking timer would
  *  repaint the whole panel over BLE every second, the cost that got the row
  *  spinner removed), so it advances as the thread's activity refreshes. */
