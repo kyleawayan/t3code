@@ -818,6 +818,8 @@ export function deriveWorkLogEntries(
     // collapse into the batch's single CTA row, never render standalone.
     if (activity.kind === "task.started" && !isAgentTaskStartedActivity(activity)) continue;
     if (activity.kind === "task.updated") continue;
+    if (isTaskUsageSnapshot(activity)) continue;
+    if (isUnattributedTaskCompletion(activity)) continue;
     if (activity.kind === "tool.progress") continue;
     if (activity.kind === "context-window.updated") continue;
     if (activity.kind === "turn.plan.updated") continue;
@@ -851,6 +853,32 @@ function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): bool
       ? (activity.payload as Record<string, unknown>)
       : null;
   return typeof payload?.detail === "string" && payload.detail.startsWith("ExitPlanMode:");
+}
+
+/** Subtask usage snapshots surface as a "Task usage updated" task.progress row
+ *  carrying a usageSnapshot flag. Real reasoning ticks share task.progress, so
+ *  match the flag rather than the kind. */
+function isTaskUsageSnapshot(activity: OrchestrationThreadActivity): boolean {
+  if (activity.kind !== "task.progress") return false;
+  const payload =
+    activity.payload && typeof activity.payload === "object"
+      ? (activity.payload as Record<string, unknown>)
+      : null;
+  return payload?.usageSnapshot === true;
+}
+
+/** Unattributed subtask lifecycle completions leak as standalone "Task
+ *  completed" rows mid-run. Agent-owned completions are kept by
+ *  isAgentInternalActivity so they can anchor and collapse into the spawn CTA,
+ *  so only the ones with no owning agent are dropped here. */
+function isUnattributedTaskCompletion(activity: OrchestrationThreadActivity): boolean {
+  if (activity.kind !== "task.completed") return false;
+  const payload =
+    activity.payload && typeof activity.payload === "object"
+      ? (activity.payload as Record<string, unknown>)
+      : null;
+  const ownedByAgent = typeof payload?.agentId === "string" && payload.agentId.trim().length > 0;
+  return !ownedByAgent && payload?.timelineBypass !== true;
 }
 
 function extractWorkLogToolLifecycleStatus(

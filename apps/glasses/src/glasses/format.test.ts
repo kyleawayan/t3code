@@ -576,8 +576,7 @@ describe("visibleThreads", () => {
 describe("dashboardLayout", () => {
   const rows = Array.from({ length: 12 }, (_, index) => ({
     id: `t${index}`,
-    icon: index % 2 === 0 ? "▶" : "M",
-    project: index % 3 === 0 ? "t3code" : "acme-project",
+    right: index % 3 === 0 ? "t3code" : "acme-project",
     title: `Thread ${index}`,
   }));
   const preview = (id: string) => (id === "t1" ? null : `Preview for ${id}`);
@@ -588,16 +587,16 @@ describe("dashboardLayout", () => {
     const layout = dashboardLayout(rows.slice(0, 2), "t1", 0, preview, 8);
     const lines = layout.content.split("\n");
     expect(lines).toHaveLength(5);
-    expect(lines[0]).toMatch(/^\s+▶\s+Thread 0\s+t3code$/);
+    expect(lines[0]).toMatch(/^\s+Thread 0\s+t3code$/);
     expect(lines[1]).toMatch(/^\s+Preview for t0$/);
     expect(lines[2]).toBe("");
-    expect(lines[3]).toMatch(/^>\s+M\s+Thread 1\s+acme-project$/);
+    expect(lines[3]).toMatch(/^>\s+Thread 1\s+acme-project$/);
     expect(lines[4]).toMatch(/^\s+\.\.\.$/);
     expect(layout.cursor).toBe(1);
     expect(layout.visibleIds).toEqual(["t0", "t1"]);
   });
 
-  it("aligns status, title, and project columns across rows to within a space", () => {
+  it("aligns title and right columns across rows to within a space", () => {
     const [first, , , second] = dashboardLayout(
       rows.slice(0, 2),
       "t0",
@@ -605,8 +604,7 @@ describe("dashboardLayout", () => {
       preview,
       8,
     ).content.split("\n");
-    // The marked row's ">" must not push its status icon out of the column.
-    expect(Math.abs(columnPx(first!, "▶") - columnPx(second!, "M"))).toBeLessThan(space);
+    // The marked row's ">" must not push its title out of the column.
     expect(Math.abs(columnPx(first!, "Thread 0") - columnPx(second!, "Thread 1"))).toBeLessThan(
       space,
     );

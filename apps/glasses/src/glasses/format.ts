@@ -158,9 +158,6 @@ const DASHBOARD_CURSOR = ">";
 // Marker cell: the ">" plus a gap, padded with spaces on unmarked rows so
 // the status column starts at the same place whether or not the row is marked.
 const DASHBOARD_CURSOR_COLUMN_PX = 20;
-// Status glyphs differ in width (the arrow is 20px, a letter about 12); a
-// fixed column keeps the titles in line.
-const DASHBOARD_ICON_COLUMN_PX = 30;
 const DASHBOARD_COLUMN_GAP_PX = 18;
 // The project name sits at the right edge, capped at this share of the row
 // so a long project name cannot squeeze every title.
@@ -170,8 +167,9 @@ const DASHBOARD_LINES_PER_ENTRY = 3;
 
 export interface DashboardRow {
   readonly id: string;
-  readonly icon: string;
-  readonly project: string;
+  /** Text at the right of the title line: the compact status while active,
+   *  otherwise the project name. */
+  readonly right: string;
   readonly title: string;
 }
 
@@ -226,11 +224,13 @@ export function dashboardLayout(
   const shown = rows.slice(start, start + visible);
 
   const rowWidth = BODY_INNER_WIDTH - WRAP_SAFETY_PX;
-  const leftPx = DASHBOARD_CURSOR_COLUMN_PX + DASHBOARD_ICON_COLUMN_PX;
-  const projectMaxPx = Math.floor(rowWidth * DASHBOARD_PROJECT_MAX_SHARE);
-  const projects = shown.map((row) => pxTruncate(row.project, projectMaxPx));
-  const projectPx = Math.max(0, ...projects.map((project) => getTextWidth(project)));
-  const titlePx = rowWidth - leftPx - (projectPx === 0 ? 0 : projectPx + DASHBOARD_COLUMN_GAP_PX);
+  // No status-glyph column now: the compact status rides at the right of the
+  // title (statusCompact), so only the cursor marker sits left of the title.
+  const leftPx = DASHBOARD_CURSOR_COLUMN_PX;
+  const rightMaxPx = Math.floor(rowWidth * DASHBOARD_PROJECT_MAX_SHARE);
+  const rights = shown.map((row) => pxTruncate(row.right, rightMaxPx));
+  const rightPx = Math.max(0, ...rights.map((right) => getTextWidth(right)));
+  const titlePx = rowWidth - leftPx - (rightPx === 0 ? 0 : rightPx + DASHBOARD_COLUMN_GAP_PX);
   const previewIndent = padToWidth("", leftPx);
   const previewPx = rowWidth - getTextWidth(previewIndent);
 
@@ -240,15 +240,14 @@ export function dashboardLayout(
       start + offset === cursor ? DASHBOARD_CURSOR : "",
       DASHBOARD_CURSOR_COLUMN_PX,
     );
-    const icon = padToWidth(row.icon, DASHBOARD_ICON_COLUMN_PX);
-    const project = projects[offset]!;
-    // The title is padded out to where the project column starts, so the
-    // project names line up at the right edge across rows.
+    const right = rights[offset]!;
+    // The title is padded out to where the right column starts, so the status
+    // (or project name) lines up at the right edge across rows.
     const title =
-      project.length === 0
+      right.length === 0
         ? pxTruncate(row.title, titlePx)
         : padToWidth(pxTruncate(row.title, titlePx), titlePx + DASHBOARD_COLUMN_GAP_PX);
-    lines.push(`${marker}${icon}${title}${project}`);
+    lines.push(`${marker}${title}${right}`);
     const text = preview(row.id);
     lines.push(`${previewIndent}${pxTruncate(text === null ? "..." : text, previewPx)}`);
     if (offset < shown.length - 1) {
@@ -272,13 +271,48 @@ export function dashboardLayout(
   };
 }
 
+// Capital T, ASCII "..." (the firmware font has no "…"). Mirrors the web
+// client's "Thinking" row: shown while the turn is live but not mid-tool.
+export const THINKING_LABEL = "Thinking...";
+
+/** A tool whose newest event has not reached a terminal status is running
+ *  right now — that is "mid-tool", not "thinking". */
+function hasLiveTool(activities: OrchestrationThread["activities"]): boolean {
+  let newest: OrchestrationThread["activities"][number] | null = null;
+  for (const activity of activities) {
+    if (activity.tone !== "tool") continue;
+    if (newest === null || activity.createdAt.localeCompare(newest.createdAt) > 0) {
+      newest = activity;
+    }
+  }
+  if (newest === null) return false;
+  const payload =
+    newest.payload && typeof newest.payload === "object" ? (newest.payload as ToolPayload) : null;
+  const status = asString(payload?.status);
+  return status !== "completed" && status !== "failed" && status !== "declined";
+}
+
+/** The gap the web client fills with a "Thinking" row: the turn is working, no
+ *  tool is mid-run, and no reply is streaming. */
+export function isThinking(thread: TranscriptSource, working: boolean): boolean {
+  if (!working) return false;
+  if (thread.messages.some((message) => message.role === "assistant" && message.streaming)) {
+    return false;
+  }
+  return !hasLiveTool(thread.activities);
+}
+
 /**
  * One line summing up where a thread is. While the agent works it is the
  * newest transcript entry (the current tool step); a question or failure is
  * shown as is; otherwise it is the latest reply, or the reader's own last
- * message, as on the thread page.
+ * message, as on the thread page. While it is thinking (working, not mid-tool)
+ * the slot reads "Thinking...".
  */
 export function threadPreview(thread: TranscriptSource, working: boolean): string {
+  if (isThinking(thread, working)) {
+    return THINKING_LABEL;
+  }
   const last = transcriptEntries(thread).at(-1);
   if (last === undefined) {
     return "No reply yet.";
@@ -315,6 +349,49 @@ function formatElapsed(fromIso: string, toMs: number): string | null {
   return minutes < 60
     ? `${minutes}m ${seconds % 60}s`
     : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+/** Short elapsed for the compact status on a thread's title line: "45s", "2m",
+ *  "1h". */
+function formatElapsedShort(fromIso: string, toMs: number): string | null {
+  const from = Date.parse(fromIso);
+  if (Number.isNaN(from)) {
+    return null;
+  }
+  const seconds = Math.max(0, Math.round((toMs - from) / 1000));
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  return minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h`;
+}
+
+/** Compact status for the right of a thread's title line while it is active
+ *  ("Working 2m", "Monitoring", "Needs you", "Error"); null when idle or done
+ *  so the row shows the project name instead. The elapsed is a render-time
+ *  snapshot — the dashboard has no per-second tick (a ticking timer would
+ *  repaint the whole panel over BLE every second, the cost that got the row
+ *  spinner removed), so it advances as the thread's activity refreshes. */
+export function statusCompact(
+  kind: ThreadStatusKind,
+  startedAtIso: string | null,
+  nowMs: number,
+): string | null {
+  switch (kind) {
+    case "working": {
+      const elapsed = startedAtIso === null ? null : formatElapsedShort(startedAtIso, nowMs);
+      return elapsed === null ? "Working" : `Working ${elapsed}`;
+    }
+    case "monitoring":
+      return "Monitoring";
+    case "needs-you":
+      return "Input";
+    case "error":
+      return "Error";
+    case "done":
+    case "idle":
+      return null;
+  }
 }
 
 export interface StatusBarLayout {
@@ -579,6 +656,9 @@ const SKIPPED_ACTIVITY_KINDS = new Set([
   // Bookkeeping after every reply; noise on a glasses-sized page.
   "context-window.updated",
   "checkpoint.captured",
+  // Subtask lifecycle completions ("Task completed"/"Task stopped"/"Task
+  // failed") restate work already shown; drop them on the glasses page.
+  "task.completed",
 ]);
 
 type ToolPayload = {
@@ -714,7 +794,7 @@ function messageEntry(message: OrchestrationMessage): TranscriptEntry | null {
  * and the assistant's text in time order. A tool's later events replace its
  * first line in place, so "started" becomes "completed" without a second row.
  */
-function transcriptEntries(thread: TranscriptSource): Array<TranscriptEntry> {
+function transcriptEntries(thread: TranscriptSource, thinking = false): Array<TranscriptEntry> {
   const entries: Array<TranscriptEntry> = [];
   for (const message of thread.messages) {
     const entry = messageEntry(message);
@@ -724,7 +804,19 @@ function transcriptEntries(thread: TranscriptSource): Array<TranscriptEntry> {
   }
   const byToolCall = new Map<string, TranscriptEntry>();
   const activities = thread.activities
-    .filter((activity) => !SKIPPED_ACTIVITY_KINDS.has(activity.kind))
+    .filter((activity) => {
+      if (SKIPPED_ACTIVITY_KINDS.has(activity.kind)) return false;
+      // "Task usage updated" is a task.progress row flagged as a usage
+      // snapshot; real progress ticks share the kind, so match the flag.
+      if (activity.kind === "task.progress") {
+        const payload =
+          activity.payload && typeof activity.payload === "object"
+            ? (activity.payload as Record<string, unknown>)
+            : null;
+        if (payload?.usageSnapshot === true) return false;
+      }
+      return true;
+    })
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   for (const activity of activities) {
     const text =
@@ -749,12 +841,29 @@ function transcriptEntries(thread: TranscriptSource): Array<TranscriptEntry> {
     }
   }
   entries.sort((left, right) => left.at.localeCompare(right.at));
-  return entries.filter((entry, index) => index === 0 || entries[index - 1]!.text !== entry.text);
+  const deduped = entries.filter(
+    (entry, index) => index === 0 || entries[index - 1]!.text !== entry.text,
+  );
+  if (thinking) {
+    // Transient tool-call-style line while the model reasons; it drops off as
+    // soon as a tool line arrives or the turn ends. Not persisted.
+    deduped.push({
+      at: deduped.at(-1)?.at ?? new Date().toISOString(),
+      text: THINKING_LABEL,
+      origin: "agent",
+      alwaysMarked: true,
+    });
+  }
+  return deduped;
 }
 
 /** Every loaded turn, wrapped to the body width, oldest first. */
-export function transcriptLayout(thread: TranscriptSource, maxWidth: number): TranscriptLayout {
-  const entries = transcriptEntries(thread);
+export function transcriptLayout(
+  thread: TranscriptSource,
+  maxWidth: number,
+  thinking = false,
+): TranscriptLayout {
+  const entries = transcriptEntries(thread, thinking);
   return entries.length === 0
     ? { lines: ["No reply yet."], origins: ["agent"] }
     : layoutEntries(entries, maxWidth);

@@ -38,7 +38,8 @@ import {
   BODY_INNER_WIDTH,
   dashboardLayout,
   flattenTitle,
-  statusIcon,
+  isThinking,
+  statusCompact,
   threadPreview,
   threadStatusKind,
   BODY_MAX_LINES,
@@ -55,7 +56,6 @@ import {
   statusBar,
   revealedLines,
   skipInstantLines,
-  SPINNER_FRAMES,
   transcriptLayout,
   type TranscriptLayout,
   transcriptLength,
@@ -204,13 +204,19 @@ function threadsDashboard(
     return empty("No threads yet.");
   }
   const projects = projectTitles(shell.snapshot.value.projects);
+  const nowMs = Date.now();
   const rows = threads.map((thread) => {
     const kind = threadStatusKind(thread);
     return {
       id: thread.id,
-      // Working rows get a fixed arrow, not the spinner; see threadListLabel.
-      icon: kind === "working" ? SPINNER_FRAMES[0] : statusIcon(kind, 0),
-      project: flattenTitle(projects.get(thread.projectId) ?? ""),
+      // Status rides at the right of the title line while active; otherwise the
+      // project name shows there.
+      right:
+        statusCompact(
+          kind,
+          thread.latestTurn?.startedAt ?? thread.latestTurn?.requestedAt ?? null,
+          nowMs,
+        ) ?? flattenTitle(projects.get(thread.projectId) ?? ""),
       title: flattenTitle(thread.title),
       working: kind === "working",
     };
@@ -302,7 +308,11 @@ function threadRender(
   const layout: TranscriptLayout =
     thread === null
       ? { lines: ["Loading..."], origins: ["agent"] }
-      : transcriptLayout(thread, BODY_INNER_WIDTH);
+      : transcriptLayout(
+          thread,
+          BODY_INNER_WIDTH,
+          isThinking(thread, threadStatusKind(status) === "working"),
+        );
   const lines = layout.lines;
   const shown =
     mode.kind === "follow" && revealChars !== null ? revealedLines(lines, revealChars) : lines;
