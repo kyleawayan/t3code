@@ -10,7 +10,7 @@ import * as Option from "effect/Option";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { type CSSProperties, useEffect, useState } from "react";
 
-import { connectPairing } from "../connection/onboarding";
+import { connectPairing, reconnect } from "../connection/onboarding";
 import { appAtomRegistry } from "../connection/runtime";
 import { evenAppBridge } from "../glasses/bridge";
 import { glassesStatusAtom } from "../glasses/controller";
@@ -41,6 +41,13 @@ function EnvironmentRow({ environmentId, label }: { environmentId: EnvironmentId
         <div style={styles.rowTitle}>{label}</div>
         <div style={styles.muted}>{connectionStatusText(presentConnectionState(state))}</div>
       </div>
+      <button
+        type="button"
+        style={styles.secondaryButton}
+        onClick={() => void reconnect.run(appAtomRegistry, environmentId)}
+      >
+        Refresh
+      </button>
       <button
         type="button"
         style={styles.secondaryButton}

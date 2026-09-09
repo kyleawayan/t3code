@@ -99,6 +99,10 @@ function exitUnlessInterrupted<A, E, R>(
 
 export interface EnvironmentSupervisorOptions {
   readonly initiallyDesired?: boolean;
+  /** Stop auto-retrying after this many consecutive failed attempts and wait
+   *  for a manual `retryNow` instead. Default: retry forever with backoff. The
+   *  glasses set 1 so a dead server is tried once, not hammered on battery. */
+  readonly maxAutoAttempts?: number;
 }
 
 function retryDelayMs(failureCount: number): number {
@@ -208,6 +212,18 @@ export class EnvironmentSupervisor extends Context.Service<
   }
 >()("@t3tools/client-runtime/connection/supervisor/EnvironmentSupervisor") {}
 
+/** Optional per-client retry cap, read by the registry when it spawns each
+ *  supervisor. Absent (web, mobile) means retry forever; the glasses provide
+ *  { maxAutoAttempts: 1 } so a dead server is tried once, then waits for a
+ *  manual refresh instead of draining the phone battery. */
+export class ConnectionRetryPolicy extends Context.Service<
+  ConnectionRetryPolicy,
+  { readonly maxAutoAttempts: number }
+>()("@t3tools/client-runtime/connection/supervisor/ConnectionRetryPolicy") {}
+
+export const retryPolicyLayer = (value: { readonly maxAutoAttempts: number }) =>
+  Layer.succeed(ConnectionRetryPolicy, ConnectionRetryPolicy.of(value));
+
 export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   entry: ConnectionCatalogEntry,
   options?: EnvironmentSupervisorOptions,
@@ -225,6 +241,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   const connectivity = yield* Connectivity.Connectivity;
   const driver = yield* ConnectionDriver.ConnectionDriver;
   const wakeups = yield* ConnectionWakeups.ConnectionWakeups;
+  const maxAutoAttempts = options?.maxAutoAttempts ?? Number.POSITIVE_INFINITY;
   const initialIntent: SupervisorIntent = {
     desired: options?.initiallyDesired ?? false,
     network: yield* connectivity.status,
@@ -730,6 +747,18 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       }
 
       failureCount += 1;
+      const failedIntent = yield* Ref.get(intent);
+      if (failureCount >= maxAutoAttempts) {
+        // Auto-retry budget spent: stop hammering a dead server and wait for a
+        // manual retryNow (glasses refresh button) instead of draining battery.
+        // retryNow resets the ladder, so the next attempt starts fresh.
+        yield* setState(offlineState(failedIntent, generation, attempt, error));
+        const applicationActivated = yield* waitForSignal;
+        if (applicationActivated) {
+          resetRetryLadder();
+        }
+        continue;
+      }
       const delayMs = retryDelayMs(failureCount - 1);
       pendingRetry = Option.map(attemptSpan, (previousAttempt) => ({
         previousAttempt,
@@ -737,7 +766,6 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         delayMs,
         reason: error.reason,
       }));
-      const failedIntent = yield* Ref.get(intent);
       yield* setState({
         desired: failedIntent.desired,
         network: failedIntent.network,

@@ -371,6 +371,39 @@ describe("EnvironmentSupervisor", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
+  it.effect("stops after one attempt with a retry cap and reconnects only on retryNow", () =>
+    Effect.gen(function* () {
+      const shouldFail = yield* Ref.make(true);
+      const harness = yield* makeHarness({
+        prepare: () =>
+          Effect.flatMap(Ref.get(shouldFail), (fail) =>
+            fail ? Effect.fail(transient()) : Effect.succeed(PREPARED_CONNECTION),
+          ),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+        maxAutoAttempts: 1,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      // One failed attempt, then parked — no backoff countdown to a retry.
+      yield* awaitState(
+        supervisor.state,
+        (state) => state.phase === "offline" && state.attempt === 1,
+      );
+      expect(yield* Ref.get(harness.prepareCount)).toBe(1);
+
+      // Time passing must not trigger another attempt on its own.
+      yield* TestClock.adjust("60 seconds");
+      expect(yield* Ref.get(harness.prepareCount)).toBe(1);
+
+      // A manual retry (the phone refresh button) starts one fresh attempt.
+      yield* Ref.set(shouldFail, false);
+      yield* supervisor.retryNow;
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      expect(yield* Ref.get(harness.prepareCount)).toBe(2);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   it.effect("keeps the latest failure visible throughout the next connection attempt", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({

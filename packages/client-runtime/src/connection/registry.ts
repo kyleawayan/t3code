@@ -251,8 +251,17 @@ export const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const environmentId = entry.target.environmentId;
           const scope = yield* Scope.fork(registryScope);
+          // Optional: absent means retry forever (web, mobile); the glasses
+          // provide a cap so a dead server is not hammered on battery.
+          const retryPolicy = yield* Effect.serviceOption(
+            EnvironmentSupervisor.ConnectionRetryPolicy,
+          );
           const supervisor = yield* EnvironmentSupervisor.make(entry, {
             initiallyDesired: false,
+            maxAutoAttempts: Option.match(retryPolicy, {
+              onNone: () => Number.POSITIVE_INFINITY,
+              onSome: (policy) => policy.maxAutoAttempts,
+            }),
           }).pipe(
             Effect.provideService(Connectivity.Connectivity, connectivity),
             Effect.provideService(ConnectionDriver.ConnectionDriver, driver),
