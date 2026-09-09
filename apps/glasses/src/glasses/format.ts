@@ -88,15 +88,20 @@ export const SPINNER_FRAMES = ["▶", "▼", "◀", "▲"] as const;
 // Shared status glyphs — the single source for both the list rows (statusCompact)
 // and the thread-view status bar (statusIcon), so the two never drift. Working
 // is excluded: it animates the spinner in the view and reads "○ Working" in the
-// list. The real check mark (U+2713) is missing from the firmware font; the
-// square root sign is present and reads as one.
+// list. No check mark exists in the firmware font, so Done uses a filled star —
+// distinct from the circle (Working) and diamond (Input), and it sits on the
+// baseline, unlike the square-root sign, which rendered high and misaligned.
 const STATUS_ICON: Record<Exclude<ThreadStatusKind, "working">, string> = {
   monitoring: "M",
   "needs-you": "◆",
   error: "E",
-  done: "√",
+  done: "★",
   idle: "·",
 };
+// A fullwidth space stands in for the icon on statuses that have none, so their
+// label lines up with the icon'd ones: it is 20px, the exact width of a status
+// glyph (○/◆/★), so "　 Monitoring" aligns with "○ Working".
+const MONO_SPACE = "　";
 
 export function statusIcon(kind: ThreadStatusKind, spinnerFrame: number): string {
   if (kind === "working") {
@@ -161,10 +166,15 @@ const DASHBOARD_CURSOR = ">";
 // Marker cell: the ">" plus a gap, padded with spaces on unmarked rows so
 // the status column starts at the same place whether or not the row is marked.
 const DASHBOARD_CURSOR_COLUMN_PX = 20;
+// Left bearing inside a fullwidth glyph's cell; the clock is nudged left by this
+// so its first digit aligns with the ASCII titles (which have ~none).
+const CLOCK_FULLWIDTH_BEARING_PX = 5;
 const DASHBOARD_COLUMN_GAP_PX = 18;
-// The project name sits at the right edge, capped at this share of the row
-// so a long project name cannot squeeze every title.
-const DASHBOARD_PROJECT_MAX_SHARE = 0.35;
+// The compact status / project name sits at the right edge, capped at this
+// share of the row so it cannot squeeze every title. Wide enough for the
+// fullwidth working timer past an hour ("○ Working 9:59:55" ≈ 0.44 of the
+// row); a tighter cap clips it to an ellipsis.
+const DASHBOARD_PROJECT_MAX_SHARE = 0.45;
 // Title, preview, blank: three lines per thread, no blank after the last.
 const DASHBOARD_LINES_PER_ENTRY = 3;
 
@@ -183,6 +193,9 @@ export interface DashboardLayout {
   readonly windowStart: number;
   /** Ids of the threads on screen, in order. */
   readonly visibleIds: ReadonlyArray<string>;
+  /** Threads hidden above / below the window — shown in the strip, not the body. */
+  readonly above: number;
+  readonly below: number;
 }
 
 /** Pads `text` with spaces up to `widthPx`, to the nearest space. */
@@ -216,8 +229,9 @@ export function dashboardLayout(
     0,
     rows.findIndex((row) => row.id === cursorId),
   );
-  const paged = rows.length > dashboardCapacity(maxRows);
-  const visible = dashboardCapacity(paged ? maxRows - 1 : maxRows);
+  // The paging counts ride in the strip now, so the body keeps its full row
+  // budget — no footer line to reserve.
+  const visible = dashboardCapacity(maxRows);
   let start = Math.min(Math.max(0, windowStart), Math.max(0, rows.length - visible));
   if (cursor < start) {
     start = cursor;
@@ -257,20 +271,13 @@ export function dashboardLayout(
       lines.push("");
     }
   });
-  if (paged) {
-    const above = start;
-    const below = rows.length - (start + visible);
-    const parts = [
-      above > 0 ? `^ ${above} above` : null,
-      below > 0 ? `v ${below} below` : null,
-    ].filter((part) => part !== null);
-    lines.push("", `${padToWidth("", DASHBOARD_CURSOR_COLUMN_PX)}${parts.join("   ")}`);
-  }
   return {
     content: lines.join("\n"),
     cursor,
     windowStart: start,
     visibleIds: shown.map((row) => row.id),
+    above: start,
+    below: Math.max(0, rows.length - (start + visible)),
   };
 }
 
@@ -339,38 +346,51 @@ export function threadListLabel(
   return truncateBytes(`${icon} ${displayTitle(projectTitle, shell.title)}`, LIST_ITEM_MAX_BYTES);
 }
 
+// The firmware font is proportional, so digits jitter as a timer ticks and the
+// clock shifts as the numbers change. Fullwidth forms (U+FF01–FF5E, space →
+// U+3000) are all one width, so timers and the clock stay put — the documented
+// monospace workaround for the G2's single proportional font. The colon is
+// fullwidth too, to match the clock face look.
+function toFullwidth(text: string): string {
+  return text.replace(/[\x20-\x7E]/g, (ch) =>
+    ch === " " ? "　" : String.fromCharCode(ch.charCodeAt(0) + 0xfee0),
+  );
+}
+
+/** Clock-style elapsed: "MM:SS", or "H:MM:SS" once past an hour. Fullwidth
+ *  digits (the monospace workaround) keep the ticking numbers a uniform width
+ *  so the display never shifts as the count advances. */
+function clockElapsed(totalSeconds: number): string {
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+  const minutes = Math.floor(totalSeconds / 60) % 60;
+  const hours = Math.floor(totalSeconds / 3600);
+  return toFullwidth(
+    hours > 0
+      ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}`
+      : `${String(minutes).padStart(2, "0")}:${seconds}`,
+  );
+}
+
+/** Elapsed for the thread-view status bar; ticks per second (one active thread,
+ *  so the per-second repaint is cheap). */
 function formatElapsed(fromIso: string, toMs: number): string | null {
   const from = Date.parse(fromIso);
   if (Number.isNaN(from)) {
     return null;
   }
-  const seconds = Math.max(0, Math.round((toMs - from) / 1000));
-  if (seconds < 60) {
-    return `${seconds}s`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  return minutes < 60
-    ? `${minutes}m ${seconds % 60}s`
-    : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  return clockElapsed(Math.max(0, Math.round((toMs - from) / 1000)));
 }
 
-/** Elapsed for the compact working status, quantized to 5-second steps so it
- *  advances visibly (its ticking is the liveness cue) without a per-second
- *  redraw: "30s", "4m30s", "1h05m". */
+/** Elapsed for the compact working status in the thread list, quantized to
+ *  5-second steps so it advances visibly (its ticking is the liveness cue)
+ *  without a per-second repaint of every row. The row's right column is sized
+ *  to fit the longest form (DASHBOARD_PROJECT_MAX_SHARE). */
 function formatElapsedShort(fromIso: string, toMs: number): string | null {
   const from = Date.parse(fromIso);
   if (Number.isNaN(from)) {
     return null;
   }
-  const seconds = Math.floor(Math.max(0, Math.round((toMs - from) / 1000)) / 5) * 5;
-  if (seconds < 60) {
-    return `${seconds}s`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) {
-    return `${minutes}m${String(seconds % 60).padStart(2, "0")}s`;
-  }
-  return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}m`;
+  return clockElapsed(Math.floor(Math.max(0, Math.round((toMs - from) / 1000)) / 5) * 5);
 }
 
 /** Compact status for the right of a thread's title line while it is active
@@ -394,34 +414,47 @@ export function statusCompact(
     case "done":
       return `${STATUS_ICON.done} Done`;
     case "monitoring":
-      return "Monitoring";
+      return `${MONO_SPACE} Monitoring`;
     case "error":
-      return "Error";
+      return `${MONO_SPACE} Error`;
     case "idle":
       return null;
   }
 }
 
 /** Wall clock for the thread-list strip: 12-hour, no AM/PM, no leading zero on
- *  the hour (so 1:05, 12:47). Firmware font, so plain digits. */
+ *  the hour (so 1:05, 12:47). Rendered in fullwidth digits (U+FF10–19) which are
+ *  all the same width, so the clock does not jitter as the numbers change and
+ *  reads like a digital clock — the closest to a dedicated clock face on the
+ *  G2's single proportional font. */
 export function formatClock(nowMs: number): string {
   const date = new Date(nowMs);
   const hour12 = ((date.getHours() + 11) % 12) + 1;
   const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${hour12}:${minutes}`;
+  return toFullwidth(`${hour12}:${minutes}`);
 }
 
 /** Bottom strip on the thread list: the wall clock at the left, a liveness
  *  spinner pinned to the right. Its own container, updated in place, so the
  *  spinner animates without repainting the thread rows above it. */
-export function dashboardStrip(clock: string, spinner: string, maxWidth: number): string {
+export function dashboardStrip(
+  clock: string,
+  spinner: string,
+  paging: string,
+  maxWidth: number,
+): string {
   // Indent the clock past the cursor-marker column so it lines up with the
-  // thread titles/previews above it, not with the ">" marker.
-  const indent = " ".repeat(Math.max(0, Math.round(DASHBOARD_CURSOR_COLUMN_PX / spaceWidth())));
-  const clockPart = `${indent}${clock}`;
-  const gap = maxWidth - STATUS_SAFETY_PX - getTextWidth(clockPart) - getTextWidth(spinner);
+  // thread titles/previews above it, not with the ">" marker. The up/down
+  // paging counts sit just right of the clock; the liveness slash stays pinned
+  // at the far right. The clock is fullwidth, whose glyphs carry left bearing
+  // inside their cell, so indent one space less than the title column or the
+  // first digit lands a few px right of the ASCII titles above.
+  const indentPx = Math.max(0, DASHBOARD_CURSOR_COLUMN_PX - CLOCK_FULLWIDTH_BEARING_PX);
+  const indent = " ".repeat(Math.round(indentPx / spaceWidth()));
+  const left = paging.length === 0 ? `${indent}${clock}` : `${indent}${clock}  ${paging}`;
+  const gap = maxWidth - STATUS_SAFETY_PX - getTextWidth(left) - getTextWidth(spinner);
   const spaces = Math.max(1, Math.floor(gap / Math.max(1, spaceWidth())));
-  return `${clockPart}${" ".repeat(spaces)}${spinner}`;
+  return `${left}${" ".repeat(spaces)}${spinner}`;
 }
 
 export interface StatusBarLayout {

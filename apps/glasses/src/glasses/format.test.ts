@@ -168,7 +168,7 @@ describe("statusBar", () => {
   it("shows elapsed time while working", () => {
     expect(
       statusBar({ ...baseShell, latestTurn: turn("running") }, Date.parse("2026-01-01T00:00:12Z")),
-    ).toBe("▶   12s");
+    ).toBe("▶   ００：１２");
   });
 
   it("shows the turn duration once done", () => {
@@ -177,7 +177,7 @@ describe("statusBar", () => {
         { ...baseShell, latestTurn: turn("completed", { completedAt: "2026-01-01T00:01:05Z" }) },
         Date.parse("2026-01-01T09:00:00Z"),
       ),
-    ).toBe("√");
+    ).toBe("★");
   });
 
   it("flags needed input with the diamond icon", () => {
@@ -193,7 +193,7 @@ describe("statusBar", () => {
         maxWidth: STATUS_INNER_WIDTH,
       },
     );
-    expect(line.startsWith("▶   5s")).toBe(true);
+    expect(line.startsWith("▶   ００：０５")).toBe(true);
     expect(line.endsWith("Fix login redirect")).toBe(true);
     expect(getTextWidth(line)).toBeLessThanOrEqual(STATUS_INNER_WIDTH);
     expect(getTextWidth(line)).toBeGreaterThan(STATUS_INNER_WIDTH - 40);
@@ -619,16 +619,18 @@ describe("dashboardLayout", () => {
     expect(dashboardLayout(reordered, "gone", 0, preview, 8).cursor).toBe(0);
   });
 
-  it("shows two threads plus a footer when paged and shifts one at a time", () => {
+  it("shows three threads when paged, with the counts as data, and shifts one at a time", () => {
     const first = dashboardLayout(rows, "t0", 0, preview, 8);
-    const lines = first.content.split("\n");
-    expect(lines).toHaveLength(7);
-    expect(lines.at(-1)).toMatch(/^\s+v 10 below$/);
-    expect(first.visibleIds).toEqual(["t0", "t1"]);
+    // No footer line in the body — the counts ride in the strip now.
+    expect(first.content.split("\n")).toHaveLength(8);
+    expect(first.visibleIds).toEqual(["t0", "t1", "t2"]);
+    expect(first.above).toBe(0);
+    expect(first.below).toBe(9);
 
-    const pastBottom = dashboardLayout(rows, "t2", first.windowStart, preview, 8);
+    const pastBottom = dashboardLayout(rows, "t3", first.windowStart, preview, 8);
     expect(pastBottom.windowStart).toBe(1);
-    expect(pastBottom.content.split("\n").at(-1)).toMatch(/^\s+\^ 1 above   v 9 below$/);
+    expect(pastBottom.above).toBe(1);
+    expect(pastBottom.below).toBe(8);
 
     const backUp = dashboardLayout(rows, "t0", pastBottom.windowStart, preview, 8);
     expect(backUp.windowStart).toBe(0);

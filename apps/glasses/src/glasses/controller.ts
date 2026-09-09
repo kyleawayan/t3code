@@ -77,8 +77,10 @@ export const glassesStatusAtom = Atom.make("Waiting for the Even App bridge...")
 const RENDER_THROTTLE_MS = 400;
 const ELAPSED_TICK_MS = 1_000;
 // Spinner cadence on the thread page, where it is a flicker-free text update.
-// The list page has no spinner: list rebuilds reset the cursor to the top.
-const SPINNER_TICK_MS = 500;
+// One per second: still reads as animated on a thread you are watching, at half
+// the BLE writes of a 2Hz spin. The list page has no spinner (rebuilds would
+// reset the cursor); its liveness lives in the bottom strip instead.
+const SPINNER_TICK_MS = 1_000;
 // The list strip (clock, liveness slash, working timer) refreshes far slower:
 // BLE is the bottleneck, and a fast loop lags and drains battery. 5s steps keep
 // the timer/slash advancing as a liveness cue without a multi-FPS redraw loop.
@@ -117,8 +119,10 @@ const STRIP_CONTAINER = { containerID: 6, containerName: "strip" } as const;
 // slash. Tall enough that a 27px line clears its padding, else the firmware
 // treats the strip as overflowing and draws a scrollbar.
 const STRIP_HEIGHT = 48;
-// Classic ASCII spinner; advanced only while the server link is live.
-const SLASH_FRAMES = ["|", "/", "-", "\\"] as const;
+// Liveness spinner, advanced only while the server link is live. Fullwidth
+// forms (the monospace workaround) so every frame is the same 20px width; the
+// ASCII "|/-\\" render at 4–10px and the slash jumps around as it spins.
+const SLASH_FRAMES = ["｜", "／", "－", "＼"] as const;
 
 type Page =
   | { readonly kind: "environments" }
@@ -249,6 +253,14 @@ function threadsDashboard(
   };
   const layout = dashboardLayout(rows, cursor, windowStart, preview);
   const ids = threads.map((thread) => thread.id);
+  // The "^N above / vN below" counts move into the strip so the body keeps the
+  // extra row for one more thread.
+  const paging = [
+    layout.above > 0 ? `▲  ${layout.above}` : null,
+    layout.below > 0 ? `▼  ${layout.below}` : null,
+  ]
+    .filter((part) => part !== null)
+    .join(" ");
   return {
     view: {
       kind: "dashboard",
@@ -256,6 +268,7 @@ function threadsDashboard(
       strip: dashboardStrip(
         formatClock(Date.now()),
         SLASH_FRAMES[Math.abs(slashFrame) % SLASH_FRAMES.length]!,
+        paging,
         BODY_INNER_WIDTH,
       ),
     },
