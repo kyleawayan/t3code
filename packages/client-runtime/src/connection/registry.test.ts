@@ -514,6 +514,43 @@ describe("EnvironmentRegistry", () => {
     }),
   );
 
+  it.effect("with single-active policy, only setActiveEnvironment dials a connection", () =>
+    Effect.gen(function* () {
+      const connectedEnvs = yield* Ref.make<ReadonlyArray<EnvironmentId>>([]);
+      const harness = yield* makeHarness([TARGET, SECOND_TARGET], [], [], {
+        beforeSessionConnect: (environmentId) =>
+          Ref.update(connectedEnvs, (current) => [...current, environmentId]),
+      });
+
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        yield* registry.start;
+
+        // Observing a row's status must create the scope without connecting it.
+        expect((yield* registry.state(TARGET.environmentId)).phase).toBe("available");
+        expect((yield* registry.state(SECOND_TARGET.environmentId)).phase).toBe("available");
+        expect(yield* Ref.get(connectedEnvs)).toEqual([]);
+
+        // Activating one dials exactly that environment.
+        yield* registry.setActiveEnvironment(TARGET.environmentId);
+        yield* awaitConnectionState(
+          registry,
+          TARGET.environmentId,
+          (state) => state.phase === "connected",
+        );
+        expect(yield* Ref.get(connectedEnvs)).toEqual([TARGET.environmentId]);
+        expect((yield* registry.state(SECOND_TARGET.environmentId)).phase).toBe("available");
+      }).pipe(
+        Effect.provide(
+          harness.layer.pipe(
+            Layer.provide(EnvironmentRegistry.activationPolicyLayer({ autoConnectAll: false })),
+          ),
+        ),
+        Effect.scoped,
+      );
+    }),
+  );
+
   it.effect("exposes the current RPC generation to late query subscribers", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness([TARGET]);

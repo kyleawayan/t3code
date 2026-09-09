@@ -90,6 +90,7 @@ export class EnvironmentRegistry extends Context.Service<
       | PlatformEnvironmentRemovalError
     >;
     readonly retryNow: (environmentId: EnvironmentId) => Effect.Effect<void>;
+    readonly setActiveEnvironment: (environmentId: EnvironmentId | null) => Effect.Effect<void>;
     readonly state: (
       environmentId: EnvironmentId,
     ) => Effect.Effect<SupervisorConnectionState, EnvironmentNotRegisteredError>;
@@ -119,6 +120,18 @@ export class EnvironmentRegistry extends Context.Service<
   }
 >()("@t3tools/client-runtime/connection/registry/EnvironmentRegistry") {}
 
+/** Optional per-client connection model. Absent (web, mobile) means every
+ *  paired environment is connected eagerly. The glasses provide
+ *  { autoConnectAll: false } so only the environment chosen via
+ *  setActiveEnvironment is dialed — one connection at a time on phone battery. */
+export class ConnectionActivationPolicy extends Context.Service<
+  ConnectionActivationPolicy,
+  { readonly autoConnectAll: boolean }
+>()("@t3tools/client-runtime/connection/registry/ConnectionActivationPolicy") {}
+
+export const activationPolicyLayer = (value: { readonly autoConnectAll: boolean }) =>
+  Layer.succeed(ConnectionActivationPolicy, ConnectionActivationPolicy.of(value));
+
 interface EnvironmentServiceScope {
   readonly entry: ConnectionCatalogEntry;
   readonly supervisor: EnvironmentSupervisor.EnvironmentSupervisor["Service"];
@@ -137,6 +150,13 @@ export const make = Effect.gen(function* () {
   const driver = yield* ConnectionDriver.ConnectionDriver;
   const wakeups = yield* ConnectionWakeups.ConnectionWakeups;
   const ssh = yield* ClientCapabilities.SshEnvironmentGateway;
+  // Absent (web, mobile) connects every paired environment; the glasses set
+  // { autoConnectAll: false } so only the active one is dialed.
+  const activationPolicy = yield* Effect.serviceOption(ConnectionActivationPolicy);
+  const autoConnectAll = Option.match(activationPolicy, {
+    onNone: () => true,
+    onSome: (policy) => policy.autoConnectAll,
+  });
   const persistedTargets = yield* storage.list;
   const initialEntries = new Map(
     yield* Effect.forEach(
@@ -269,7 +289,12 @@ export const make = Effect.gen(function* () {
             Scope.provide(scope),
             Effect.onError(() => Scope.close(scope, Exit.void)),
           );
-          yield* supervisor.connect;
+          // In single-active mode the scope exists so state is observable, but
+          // it stays disconnected until setActiveEnvironment dials it — reading
+          // a row's status must not silently connect it.
+          if (autoConnectAll) {
+            yield* supervisor.connect;
+          }
           yield* SubscriptionRef.update(serviceScopes, (current) => {
             const next = new Map(current);
             next.set(environmentId, { entry, supervisor, scope });
@@ -355,6 +380,12 @@ export const make = Effect.gen(function* () {
 
   const start = Effect.gen(function* () {
     if (yield* Ref.getAndSet(started, true)) {
+      return;
+    }
+    if (!autoConnectAll) {
+      // Single-active mode (glasses): connections are driven by
+      // setActiveEnvironment, not eager connect-all. Non-active scopes are
+      // created lazily (disconnected) when their status is observed.
       return;
     }
     yield* Effect.forEach(
@@ -638,6 +669,25 @@ export const make = Effect.gen(function* () {
       Effect.catchTag("EnvironmentNotRegisteredError", () => Effect.void),
       Effect.withSpan("EnvironmentRegistry.retryNow"),
     );
+  // Single-active mode: dial exactly one environment. Drop every other live
+  // scope's desire first, then connect the chosen one (null = disconnect all).
+  // Scopes that were never created were never connected, so there is nothing
+  // to disconnect for them.
+  const setActiveEnvironment = Effect.fn("EnvironmentRegistry.setActiveEnvironment")(
+    function* (environmentId: EnvironmentId | null) {
+      const scopes = yield* SubscriptionRef.get(serviceScopes);
+      yield* Effect.forEach(
+        [...scopes],
+        ([id, lease]) => (id === environmentId ? Effect.void : lease.supervisor.disconnect),
+        { concurrency: "unbounded", discard: true },
+      );
+      if (environmentId !== null) {
+        const supervisor = yield* acquireSupervisor(environmentId);
+        yield* supervisor.connect;
+      }
+    },
+    Effect.catchTag("EnvironmentNotRegisteredError", () => Effect.void),
+  );
   const state = Effect.fn("EnvironmentRegistry.state")(function* (environmentId: EnvironmentId) {
     const supervisor = yield* acquireSupervisor(environmentId);
     return yield* SubscriptionRef.get(supervisor.state);
@@ -677,6 +727,7 @@ export const make = Effect.gen(function* () {
     remove,
     removeRelayEnvironments,
     retryNow,
+    setActiveEnvironment,
     state,
     stateChanges,
     run,
