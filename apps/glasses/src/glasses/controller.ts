@@ -31,11 +31,13 @@ import {
 
 import { appAtomRegistry } from "../connection/runtime";
 import { environmentCatalog, environmentShell, environmentThreads } from "../state";
+import { activeEnvironmentAtom, setActiveEnvironment } from "./activeEnvironment";
 import { bridgeCall, bridgeIdle, evenAppBridge } from "./bridge";
 import { revealCharsPerTick, revealSpeedAtom } from "./revealSpeed";
 import {
   BODY_HEIGHT,
   BODY_INNER_WIDTH,
+  DASHBOARD_ROWS,
   dashboardLayout,
   dashboardStrip,
   flattenTitle,
@@ -47,7 +49,6 @@ import {
   BODY_MAX_LINES,
   displayTitle,
   DIVIDER_HEIGHT,
-  LIST_ITEM_MAX_BYTES,
   PANEL_PADDING,
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
@@ -61,7 +62,6 @@ import {
   transcriptLayout,
   type TranscriptLayout,
   transcriptLength,
-  truncateBytes,
   visibleThreads,
   windowEndingAt,
   windowStartingAt,
@@ -164,24 +164,23 @@ function connectionPhase(environmentId: EnvironmentId) {
   return presentConnectionState(state);
 }
 
+// The glasses no longer choose the server — the phone does. This page is only
+// the "nothing to show yet" states; a valid choice navigates to its threads.
 function environmentsView(): View {
-  const entries = [...appAtomRegistry.get(environmentCatalog.catalogValueAtom).entries];
-  if (entries.length === 0) {
+  const entries = appAtomRegistry.get(environmentCatalog.catalogValueAtom).entries;
+  if (entries.size === 0) {
     return {
       kind: "text",
       content:
         "No T3 Code server paired.\n\nOn your phone, open this app in the Even App and scan the QR from T3 Code Settings > Connections.",
     };
   }
-  return {
-    kind: "list",
-    ids: entries.map(([environmentId]) => environmentId),
-    items: entries.map(([environmentId, entry]) => {
-      const phase = connectionPhase(environmentId).phase;
-      const suffix = phase === "connected" ? "" : ` (${phase})`;
-      return truncateBytes(`${entry.target.label}${suffix}`, LIST_ITEM_MAX_BYTES);
-    }),
-  };
+  const active = appAtomRegistry.get(activeEnvironmentAtom);
+  if ((active === null || !entries.has(active)) && entries.size > 1) {
+    return { kind: "text", content: "Select a laptop on your phone." };
+  }
+  // One paired, or a still-paired choice: the reconcile opens its threads.
+  return { kind: "text", content: "Connecting..." };
 }
 
 type Dashboard = {
@@ -251,7 +250,18 @@ function threadsDashboard(
       ? threadPreview(detail.data.value, row?.working ?? false)
       : null;
   };
-  const layout = dashboardLayout(rows, cursor, windowStart, preview);
+  // A dropped server link mid-view is otherwise silent (stale rows, frozen
+  // slash); surface it as a one-line banner above the list. Reserve its row so
+  // the list does not overflow into a scrollbar.
+  const presented = connectionPhase(environmentId);
+  const bannerText = presented.phase === "connected" ? null : connectionStatusText(presented);
+  const layout = dashboardLayout(
+    rows,
+    cursor,
+    windowStart,
+    preview,
+    bannerText === null ? DASHBOARD_ROWS : DASHBOARD_ROWS - 1,
+  );
   const ids = threads.map((thread) => thread.id);
   // The "^N above / vN below" counts move into the strip so the body keeps the
   // extra row for one more thread.
@@ -264,7 +274,7 @@ function threadsDashboard(
   return {
     view: {
       kind: "dashboard",
-      body: layout.content,
+      body: bannerText === null ? layout.content : `${bannerText}\n${layout.content}`,
       strip: dashboardStrip(
         formatClock(Date.now()),
         SLASH_FRAMES[Math.abs(slashFrame) % SLASH_FRAMES.length]!,
@@ -528,7 +538,12 @@ class GlassesController {
   // Advanced by the page ticker; only rows and strips that are "working" read it.
   private spinnerFrame = 0;
   private slashFrame = 0;
-  private autoOpenScheduled = false;
+  // Guards the deferred navigation triggered when the phone changes the active
+  // environment (or on boot), so it never re-enters mid-render or loops.
+  private reconcileScheduled = false;
+  // Subscriptions (active environment + catalog) that outlive per-page
+  // navigation, so they are not cleared by enter()'s unsubscribeAll.
+  private rootSubscriptions: Array<() => void> = [];
   private sliding = false;
   // Reveal cursor for follow mode: lines below it are not shown yet. Null
   // until the thread has loaded, then advanced one line per tick so a long
@@ -558,6 +573,14 @@ class GlassesController {
     }
     this.rendered = { kind: "text", content };
     this.enter({ kind: "environments" });
+    // The phone chooses the active environment; the display follows it. These
+    // outlive per-page navigation, so they live outside the enter() cycle.
+    const onActiveChange = () => this.reconcile();
+    this.rootSubscriptions.push(
+      appAtomRegistry.subscribe(activeEnvironmentAtom, onActiveChange),
+      appAtomRegistry.subscribe(environmentCatalog.catalogValueAtom, onActiveChange),
+    );
+    this.reconcile();
   }
 
   private call<T>(label: string, run: () => Promise<T>): Promise<T | undefined> {
@@ -663,26 +686,56 @@ class GlassesController {
     }, RENDER_THROTTLE_MS);
   }
 
+  // Re-run when the phone changes the active environment or the catalog shifts:
+  // open the chosen environment's threads (auto-activating the only paired one
+  // if none is chosen), else fall back to the "select on phone" page. Deferred
+  // so it never navigates mid-render.
+  private reconcile() {
+    if (this.reconcileScheduled) {
+      return;
+    }
+    this.reconcileScheduled = true;
+    queueMicrotask(() => {
+      this.reconcileScheduled = false;
+      if (this.disposed) {
+        return;
+      }
+      const target = this.resolveActivePage();
+      if (target !== null) {
+        this.enter(target);
+      }
+    });
+  }
+
+  // The page the active environment implies, or null if the current page already
+  // matches. Points the single connection at whatever it returns.
+  private resolveActivePage(): Page | null {
+    const entries = appAtomRegistry.get(environmentCatalog.catalogValueAtom).entries;
+    const active = appAtomRegistry.get(activeEnvironmentAtom);
+    let target: EnvironmentId | null = active !== null && entries.has(active) ? active : null;
+    if (target === null && entries.size === 1) {
+      target = [...entries.keys()][0] ?? null;
+    }
+    if (target === null) {
+      // No pairing, or 2+ paired with no choice: the environments page carries
+      // the "select on phone" text.
+      return this.page.kind === "environments" ? null : { kind: "environments" };
+    }
+    // Keep the single connection pointed at what the display shows.
+    if (active !== target) {
+      setActiveEnvironment(target);
+    }
+    // Already inside this environment (its list or one of its threads): stay.
+    if (this.page.kind !== "environments" && this.page.environmentId === target) {
+      return null;
+    }
+    return { kind: "threads", environmentId: target };
+  }
+
   private currentView(): View {
     switch (this.page.kind) {
-      case "environments": {
-        const view = environmentsView();
-        // One laptop connected: skip the chooser and open its threads. Deferred
-        // so we navigate after this render, not mid-render. Only the chooser for
-        // two-plus connections.
-        const entries = [...appAtomRegistry.get(environmentCatalog.catalogValueAtom).entries];
-        if (entries.length === 1 && !this.autoOpenScheduled) {
-          const environmentId = entries[0]![0];
-          this.autoOpenScheduled = true;
-          queueMicrotask(() => {
-            this.autoOpenScheduled = false;
-            if (this.page.kind === "environments") {
-              this.enter({ kind: "threads", environmentId });
-            }
-          });
-        }
-        return view;
-      }
+      case "environments":
+        return environmentsView();
       case "threads": {
         const dashboard = threadsDashboard(
           this.page.environmentId,
@@ -1157,11 +1210,11 @@ class GlassesController {
         this.enter({ kind: "threads", environmentId: this.page.environmentId });
         return;
       case "threads":
-        this.enter({ kind: "environments" });
-        return;
       case "environments":
-        // Root exit goes through the system confirmation dialog (mode 1); the
-        // user can still cancel, so nothing is torn down until SYSTEM_EXIT.
+        // The phone drives environment selection now, so there is no chooser to
+        // return to: Back leaves the app. Root exit goes through the system
+        // confirmation dialog (mode 1); the user can still cancel, so nothing is
+        // torn down until SYSTEM_EXIT.
         this.call("shutDownPageContainer", () => this.bridge.shutDownPageContainer(1));
         return;
     }
@@ -1175,6 +1228,10 @@ class GlassesController {
     }
     this.watchDashboardThreads([]);
     this.unsubscribeAll();
+    for (const unsubscribe of this.rootSubscriptions) {
+      unsubscribe();
+    }
+    this.rootSubscriptions = [];
     setStatus("Glasses page closed.");
   }
 }

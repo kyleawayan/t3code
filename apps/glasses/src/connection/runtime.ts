@@ -1,4 +1,8 @@
-import { Connection, retryPolicyLayer } from "@t3tools/client-runtime/connection";
+import {
+  activationPolicyLayer,
+  Connection,
+  retryPolicyLayer,
+} from "@t3tools/client-runtime/connection";
 import { shellSnapshotLoaderLayer } from "@t3tools/client-runtime/state/shell";
 import { threadSnapshotLoaderLayer } from "@t3tools/client-runtime/state/threads";
 import * as Layer from "effect/Layer";
@@ -22,6 +26,9 @@ const connectionLayer = Layer.merge(Connection.layer, snapshotLoaderLayer).pipe(
       // ladder, so a transient blip auto-recovers while a dead server still
       // gives up.
       retryPolicyLayer({ maxAutoAttempts: 4 }),
+      // One connection at a time: the phone picks the active laptop and only
+      // that one is dialed, so an unused/asleep laptop is never connected.
+      activationPolicyLayer({ autoConnectAll: false }),
     ),
   ),
 );

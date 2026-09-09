@@ -12,6 +12,7 @@ import { type CSSProperties, useEffect, useState } from "react";
 
 import { connectPairing, reconnect } from "../connection/onboarding";
 import { appAtomRegistry } from "../connection/runtime";
+import { activeEnvironmentAtom, setActiveEnvironment } from "../glasses/activeEnvironment";
 import { evenAppBridge } from "../glasses/bridge";
 import { glassesStatusAtom } from "../glasses/controller";
 import {
@@ -30,7 +31,15 @@ function failureMessage(cause: Cause.Cause<unknown>): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function EnvironmentRow({ environmentId, label }: { environmentId: EnvironmentId; label: string }) {
+function EnvironmentRow({
+  environmentId,
+  label,
+  active,
+}: {
+  environmentId: EnvironmentId;
+  label: string;
+  active: boolean;
+}) {
   const state = Option.getOrElse(
     AsyncResult.value(useAtomValue(environmentCatalog.stateAtom(environmentId))),
     () => AVAILABLE_CONNECTION_STATE,
@@ -38,16 +47,31 @@ function EnvironmentRow({ environmentId, label }: { environmentId: EnvironmentId
   return (
     <li style={styles.row}>
       <div>
-        <div style={styles.rowTitle}>{label}</div>
-        <div style={styles.muted}>{connectionStatusText(presentConnectionState(state))}</div>
+        <div style={styles.rowTitle}>
+          {label}
+          {active ? " (on glasses)" : ""}
+        </div>
+        <div style={styles.muted}>
+          {active ? connectionStatusText(presentConnectionState(state)) : "Paired"}
+        </div>
       </div>
-      <button
-        type="button"
-        style={styles.secondaryButton}
-        onClick={() => void reconnect.run(appAtomRegistry, environmentId)}
-      >
-        Refresh
-      </button>
+      {active ? (
+        <button
+          type="button"
+          style={styles.secondaryButton}
+          onClick={() => void reconnect.run(appAtomRegistry, environmentId)}
+        >
+          Refresh
+        </button>
+      ) : (
+        <button
+          type="button"
+          style={styles.secondaryButton}
+          onClick={() => setActiveEnvironment(environmentId)}
+        >
+          Use on glasses
+        </button>
+      )}
       <button
         type="button"
         style={styles.secondaryButton}
@@ -106,6 +130,7 @@ function TypingSpeedSection() {
 
 export function App() {
   const catalog = useAtomValue(environmentCatalog.catalogValueAtom);
+  const activeEnvironment = useAtomValue(activeEnvironmentAtom);
   const glassesStatus = useAtomValue(glassesStatusAtom);
   const [pairingUrl, setPairingUrl] = useState("");
   const [busy, setBusy] = useState<"scan" | "paste" | null>(null);
@@ -194,6 +219,7 @@ export function App() {
                 key={environmentId}
                 environmentId={environmentId}
                 label={entry.target.label}
+                active={environmentId === activeEnvironment}
               />
             ))}
           </ul>
