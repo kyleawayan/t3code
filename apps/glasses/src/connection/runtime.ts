@@ -16,9 +16,12 @@ const connectionLayer = Layer.merge(Connection.layer, snapshotLoaderLayer).pipe(
     Layer.mergeAll(
       runtimeContextLayer,
       connectionPlatformLayer,
-      // Glasses run on phone battery: try a dead server once, then wait for a
-      // manual refresh instead of an endless reconnect loop.
-      retryPolicyLayer({ maxAutoAttempts: 1 }),
+      // Glasses run on phone battery: try a few times over ~15s (3s/4s/8s
+      // backoff), then park until a manual refresh instead of an endless
+      // reconnect loop. A connection that stayed up then dropped resets the
+      // ladder, so a transient blip auto-recovers while a dead server still
+      // gives up.
+      retryPolicyLayer({ maxAutoAttempts: 4 }),
     ),
   ),
 );
