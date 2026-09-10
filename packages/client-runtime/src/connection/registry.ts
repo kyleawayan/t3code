@@ -192,6 +192,10 @@ export const make = Effect.gen(function* () {
   const leaseLocks = yield* Ref.make<ReadonlyMap<EnvironmentId, LeaseLock>>(new Map());
   const leaseLocksGuard = yield* Semaphore.make(1);
   const started = yield* Ref.make(false);
+  // Single-active mode only: the environment setActiveEnvironment last chose.
+  // Remembered so a scope re-created afterwards (e.g. a re-pair, which rebuilds
+  // the supervisor) comes up connected instead of stuck disconnected.
+  const activeEnvironmentId = yield* Ref.make<EnvironmentId | null>(null);
 
   const withLeaseLock = <A, E, R>(
     environmentId: EnvironmentId,
@@ -289,10 +293,11 @@ export const make = Effect.gen(function* () {
             Scope.provide(scope),
             Effect.onError(() => Scope.close(scope, Exit.void)),
           );
-          // In single-active mode the scope exists so state is observable, but
-          // it stays disconnected until setActiveEnvironment dials it — reading
-          // a row's status must not silently connect it.
-          if (autoConnectAll) {
+          // In single-active mode the scope exists so state is observable but
+          // stays disconnected — reading a row's status must not dial it. The
+          // one exception is the active environment itself: re-creating its
+          // scope (a re-pair) must come back connected, not idle.
+          if (autoConnectAll || environmentId === (yield* Ref.get(activeEnvironmentId))) {
             yield* supervisor.connect;
           }
           yield* SubscriptionRef.update(serviceScopes, (current) => {
@@ -675,6 +680,7 @@ export const make = Effect.gen(function* () {
   // to disconnect for them.
   const setActiveEnvironment = Effect.fn("EnvironmentRegistry.setActiveEnvironment")(
     function* (environmentId: EnvironmentId | null) {
+      yield* Ref.set(activeEnvironmentId, environmentId);
       const scopes = yield* SubscriptionRef.get(serviceScopes);
       yield* Effect.forEach(
         [...scopes],

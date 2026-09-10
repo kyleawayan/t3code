@@ -551,6 +551,52 @@ describe("EnvironmentRegistry", () => {
     }),
   );
 
+  it.effect(
+    "with single-active policy, re-creating the active environment's scope reconnects it",
+    () =>
+      Effect.gen(function* () {
+        const replacement = new RelayConnectionTarget({
+          environmentId: RELAY_TARGET.environmentId,
+          label: "Replacement relay environment",
+        });
+        const connects = yield* Ref.make(0);
+        const secondConnect = yield* Deferred.make<void>();
+        const harness = yield* makeHarness([RELAY_TARGET], [], [], {
+          beforeSessionConnect: () =>
+            Ref.updateAndGet(connects, (count) => count + 1).pipe(
+              Effect.flatMap((count) =>
+                count === 2 ? Deferred.succeed(secondConnect, undefined) : Effect.void,
+              ),
+            ),
+        });
+
+        yield* Effect.gen(function* () {
+          const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+          yield* registry.start;
+          yield* registry.setActiveEnvironment(RELAY_TARGET.environmentId);
+          yield* awaitConnectionState(
+            registry,
+            RELAY_TARGET.environmentId,
+            (state) => state.phase === "connected",
+          );
+          expect(yield* Ref.get(connects)).toBe(1);
+
+          // A re-pair rebuilds the supervisor; because it is still the active
+          // environment it must come back connected, not idle at "available".
+          yield* registry.register(new RelayConnectionRegistration({ target: replacement }));
+          yield* Deferred.await(secondConnect).pipe(Effect.timeout("1 second"));
+          expect(yield* Ref.get(connects)).toBe(2);
+        }).pipe(
+          Effect.provide(
+            harness.layer.pipe(
+              Layer.provide(EnvironmentRegistry.activationPolicyLayer({ autoConnectAll: false })),
+            ),
+          ),
+          Effect.scoped,
+        );
+      }),
+  );
+
   it.effect("exposes the current RPC generation to late query subscribers", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness([TARGET]);
