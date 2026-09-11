@@ -16,6 +16,28 @@ const activity = (
   }) as NonNullable<Parameters<typeof resolveTurnPulse>[0]["activity"]>;
 
 describe("resolveTurnPulse", () => {
+  it("shows indeterminate thinking through silent reasoning without inventing volume", () => {
+    const thinking = activity({
+      state: "quiet",
+      isThinking: true,
+      updatedAt: "2026-08-21T00:00:00.000Z",
+    });
+    const early = resolveTurnPulse({ activity: thinking, nowMs: NOW });
+    const late = resolveTurnPulse({ activity: thinking, nowMs: NOW + 120_000 });
+    expect(early.kind).toBe("thinking");
+    expect(late).toEqual(early);
+    const resumed = resolveTurnPulse({ activity: activity({ isThinking: false }), nowMs: NOW });
+    expect(resumed.kind).toBe("moving");
+    expect(
+      resolveTurnPulse({ activity: activity({ state: "idle", isThinking: true }), nowMs: NOW })
+        .kind,
+    ).toBe("hidden");
+    expect(
+      resolveTurnPulse({ activity: activity({ state: "tool", isThinking: true }), nowMs: NOW })
+        .kind,
+    ).toBe("paused");
+  });
+
   it("shows nothing when no turn is running", () => {
     expect(resolveTurnPulse({ activity: undefined, nowMs: NOW })).toEqual({ kind: "hidden" });
   });

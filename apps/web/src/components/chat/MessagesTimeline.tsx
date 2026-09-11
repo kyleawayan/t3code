@@ -177,7 +177,7 @@ import {
 } from "./userMessageTerminalContexts";
 import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
 import { SkillInlineText } from "./SkillInlineText";
-import { TurnPulse } from "./TurnPulse";
+import { TurnPulse, type TurnMascot } from "./TurnPulse";
 import type { TurnPulseVerdict } from "./turnPulse.logic";
 
 const HIDDEN_TURN_PULSE: TurnPulseVerdict = { kind: "hidden" };
@@ -229,8 +229,8 @@ interface TimelineRowActivityState {
   latestTurnId: TurnId | null;
   /** Live token-driven liveness for the working row. */
   turnPulse: TurnPulseVerdict;
-  /** Perch the Claude mascot on the working bar (Claude threads only). */
-  showTurnMascot: boolean;
+  /** Provider mascot perched on the working bar. */
+  turnMascot: TurnMascot | undefined;
 }
 
 const TimelineRowCtx = createContext<TimelineRowSharedState>(null!);
@@ -315,7 +315,7 @@ interface MessagesTimelineProps {
   isPreparingWorktree?: boolean;
   isCompacting?: boolean;
   turnPulse?: TurnPulseVerdict;
-  showTurnMascot?: boolean;
+  turnMascot?: TurnMascot | undefined;
   activeTurnStartedAt: string | null;
   listRef: React.RefObject<LegendListRef | null>;
   timelineEntries: ReturnType<typeof deriveTimelineEntries>;
@@ -373,7 +373,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   isPreparingWorktree = false,
   isCompacting = false,
   turnPulse = HIDDEN_TURN_PULSE,
-  showTurnMascot = false,
+  turnMascot,
   activeTurnStartedAt,
   agentPanelModel = EMPTY_AGENT_PANEL_MODEL,
   onOpenAgents = NOOP_OPEN_AGENTS,
@@ -787,7 +787,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isRevertingCheckpoint,
       latestTurnId: latestTurn?.turnId ?? null,
       turnPulse,
-      showTurnMascot,
+      turnMascot,
     }),
     [
       isCompacting,
@@ -796,7 +796,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isPreparingWorktree,
       latestTurn?.turnId,
       turnPulse,
-      showTurnMascot,
+      turnMascot,
     ],
   );
 
@@ -1727,8 +1727,7 @@ function ProposedPlanTimelineRow({
 }
 
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
-  const { isCompacting, isPreparingWorktree, turnPulse, showTurnMascot } =
-    use(TimelineRowActivityCtx);
+  const { isCompacting, isPreparingWorktree, turnPulse, turnMascot } = use(TimelineRowActivityCtx);
   return (
     <div className="py-0.5 pl-1.5">
       <div className="flex min-w-0 items-center gap-2 pt-1 text-secondary-label text-[11px] tabular-nums">
@@ -1743,7 +1742,7 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
             <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-status-pulse [animation-delay:400ms]" />
           </span>
         ) : (
-          <TurnPulse verdict={turnPulse} mascot={showTurnMascot} />
+          <TurnPulse verdict={turnPulse} mascot={turnMascot} />
         )}
         <span
           key={isPreparingWorktree ? "setup" : isCompacting ? "compacting" : "working"}
@@ -1764,8 +1763,11 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
             </>
           ) : row.createdAt ? (
             <>
-              Working for <WorkingTimer createdAt={row.createdAt} />
+              {turnPulse.kind === "thinking" ? "Thinking · " : "Working for "}
+              <WorkingTimer createdAt={row.createdAt} />
             </>
+          ) : turnPulse.kind === "thinking" ? (
+            "Thinking..."
           ) : (
             "Working..."
           )}

@@ -21,6 +21,12 @@ describe("nextTurnActivityState", () => {
     expect(fold("content.delta", "reasoning_text")).toEqual({
       state: "generating",
       tokenArrived: true,
+      isThinking: true,
+    });
+    expect(fold("content.delta", "reasoning_summary_text")).toEqual({
+      state: "generating",
+      tokenArrived: true,
+      isThinking: true,
     });
     expect(fold("content.delta", "assistant_text")).toEqual({
       state: "generating",
@@ -37,6 +43,11 @@ describe("nextTurnActivityState", () => {
     // "should be producing" once none are left.
     expect(fold("item.completed", undefined, 1)).toEqual({ state: "tool", tokenArrived: false });
     expect(fold("item.completed", undefined, 0)).toEqual({ state: "quiet", tokenArrived: false });
+  });
+
+  it("does not treat reasoning or message item starts as tool pauses", () => {
+    expect(fold("item.started", undefined, 0)).toEqual({ state: "quiet", tokenArrived: false });
+    expect(fold("item.started", undefined, 1)).toEqual({ state: "tool", tokenArrived: false });
   });
 
   it("reports waiting while a person is on the hook", () => {
@@ -82,6 +93,55 @@ describe("shouldEmitTurnActivity", () => {
 });
 
 describe("ThreadTurnActivityService", () => {
+  it("reports silent thinking without advancing output, and immediately clears it on completion", () => {
+    const service = make({ generatingEmitIntervalMs: 250 });
+    const observe = (type: string, itemType: string, nowMs: number) =>
+      service.observe({
+        threadId: "t",
+        event: { type } as never,
+        itemType,
+        streamKind: undefined,
+        deltaLength: undefined,
+        openToolCount: 0,
+        nowMs,
+      });
+    observe("turn.started", "", 0);
+    // Both transitions are inside the throttle window and keep state=quiet.
+    const started = observe("item.started", "reasoning", 1);
+    expect(started?.isThinking).toBe(true);
+    expect(started?.tokenChunks).toBe(0);
+    expect(started?.generatedTokens).toBeUndefined();
+    const completed = observe("item.completed", "reasoning", 2);
+    expect(completed).toBeDefined();
+    expect(completed?.isThinking).toBeUndefined();
+    expect(completed?.tokenChunks).toBe(0);
+    expect(service.get("t")?.isThinking).toBeUndefined();
+  });
+
+  it("advances the gauge through Codex reasoning-summary output", () => {
+    const service = make({ generatingEmitIntervalMs: 0 });
+    service.observe({
+      threadId: "t",
+      event: { type: "item.started" } as never,
+      streamKind: undefined,
+      deltaLength: undefined,
+      openToolCount: 0,
+      nowMs: 0,
+    });
+    const summary = service.observe({
+      threadId: "t",
+      event: { type: "content.delta" } as never,
+      streamKind: "reasoning_summary_text",
+      deltaLength: 40,
+      openToolCount: 0,
+      nowMs: 100,
+    });
+    expect(summary?.state).toBe("generating");
+    expect(summary?.tokenChunks).toBe(1);
+    expect(summary?.generatedTokens).toBe(10);
+    expect(summary?.updatedAt).toBe("1970-01-01T00:00:00.100Z");
+  });
+
   it("counts every token even when the emission is throttled", () => {
     // The pulse advances by the token delta, so a throttled tick must not lose
     // the tokens it covered — otherwise the bar under-reports real work.

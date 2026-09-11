@@ -29,6 +29,8 @@ export const TURN_PULSE_QUIET_WARN_AFTER_MS = 45_000;
 export type TurnPulseVerdict =
   /** Nothing to show: no turn running. */
   | { readonly kind: "hidden" }
+  /** Provider reports reasoning; show activity without inventing output volume or an ETA. */
+  | { readonly kind: "thinking"; readonly tokenChunks: number; readonly fill: TurnPulseFill }
   /**
    * Working, but not emitting — a tool is running or a question is waiting.
    * Distinct from stalled: this silence has a reason, so it must never alarm.
@@ -128,6 +130,9 @@ export function resolveTurnPulse(input: {
   // agent touched a tool, which is exactly the churn this is meant to remove.
   if (activity.state === "tool" || activity.state === "waiting") {
     return { kind: "paused", tokenChunks: activity.tokenChunks, fill: resolveFill(activity) };
+  }
+  if (activity.isThinking) {
+    return { kind: "thinking", tokenChunks: activity.tokenChunks, fill: resolveFill(activity) };
   }
   const updatedAtMs = Date.parse(activity.updatedAt);
   if (Number.isNaN(updatedAtMs)) {

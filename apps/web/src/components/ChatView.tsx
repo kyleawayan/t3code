@@ -8029,7 +8029,13 @@ export default function ChatView(props: ChatViewProps) {
                 isPreparingWorktree={isPreparingWorktree}
                 isCompacting={isCompacting}
                 turnPulse={turnPulse}
-                showTurnMascot={activeThread.session?.providerName === "claudeAgent"}
+                turnMascot={
+                  activeThread.session?.providerName === "codex"
+                    ? "codey"
+                    : activeThread.session?.providerName === "claudeAgent"
+                      ? "claude"
+                      : undefined
+                }
                 activeTurnStartedAt={activeWorkStartedAt}
                 listRef={legendListRef}
                 timelineEntries={timelineEntries}

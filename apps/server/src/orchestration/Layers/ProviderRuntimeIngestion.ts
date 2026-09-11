@@ -1509,6 +1509,10 @@ const make = Effect.gen(function* () {
         threadId: thread.id,
         event,
         streamKind: event.type === "content.delta" ? event.payload.streamKind : undefined,
+        itemType:
+          event.type === "item.started" || event.type === "item.completed"
+            ? event.payload.itemType
+            : undefined,
         // Real text length when the delta carries text; the provider's token
         // estimate (normalized to the same char unit) when it is a silent
         // thinking tick. Same accumulator either way, so the bar climbs

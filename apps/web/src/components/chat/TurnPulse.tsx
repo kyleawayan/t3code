@@ -1,7 +1,11 @@
 import { cn } from "~/lib/utils";
 
 import claudeTypingGif from "../../assets/claude-typing.gif";
+import codeySpritesheet from "../../assets/codex-pets/codex-spritesheet.webp";
+import styles from "./TurnPulse.module.css";
 import type { TurnPulseVerdict } from "./turnPulse.logic";
+
+export type TurnMascot = "claude" | "codey";
 
 /**
  * Liveness gauge for a running turn: a coarse+fine pair.
@@ -12,30 +16,29 @@ import type { TurnPulseVerdict } from "./turnPulse.logic";
  * continues. So this splits the job. The top track is cumulative overall
  * progress; the bottom track fills and repeats once per chunk of output, so
  * something is always visibly moving no matter how much has come before. Both
- * freeze the instant tokens stop, which is the stall.
+ * hold during silent phases. During thinking the lower track instead shows
+ * indeterminate activity, while the upper track retains measured output.
  *
  * Growing means output is arriving; frozen means it stopped; dim means working
- * but quiet (a tool, or awaiting the first token); orange means stalled.
+ * but quiet (a tool, or awaiting the first token); red means stalled.
  */
 export function TurnPulse({
   verdict,
-  mascot = false,
+  mascot,
 }: {
   verdict: TurnPulseVerdict;
-  /** Show the Claude mascot perched above the bar. Claude threads only. */
-  mascot?: boolean;
+  /** Provider mascot perched above the bar. */
+  mascot?: TurnMascot | undefined;
 }) {
   if (verdict.kind === "hidden") return null;
   const stalled = verdict.kind === "stalled";
-  // The whole turn is Claude's orange — including the pre-first-token wait and
-  // tool pauses, which are still the turn working. The frozen fine bar already
-  // signals a pause, so colour need not; only a stall changes it, to red.
-  const barColor = stalled ? "bg-red-500" : "bg-[#d97757]";
-  // Track is a dim tint of the fill's own colour, not grey: a mid-tone grey sits
-  // at nearly the same luminance as the orange fill and the two blend. A faint
-  // orange track keeps the solid fill clearly readable against it in both themes
-  // and reads as the bar filling its own colour.
-  const trackBg = stalled ? "bg-red-500/25" : "bg-[#d97757]/25";
+  const barColor = stalled ? "bg-red-500" : mascot === "codey" ? "bg-[#6085f7]" : "bg-[#d97757]";
+  // Tint both tracks with the fill colour to keep the gauge readable in either theme.
+  const trackBg = stalled
+    ? "bg-red-500/25"
+    : mascot === "codey"
+      ? "bg-[#6085f7]/25"
+      : "bg-[#d97757]/25";
   // A floor on each so a starting turn shows a sliver rather than nothing.
   const coarsePercent = Math.max(2, Math.min(100, verdict.fill.coarse * 100));
   return (
@@ -45,17 +48,26 @@ export function TurnPulse({
       aria-label={
         stalled
           ? "No agent output"
-          : verdict.kind === "paused"
-            ? "Agent running a tool"
-            : verdict.kind === "waiting"
-              ? "Waiting for agent output"
-              : "Agent output streaming"
+          : verdict.kind === "thinking"
+            ? "Agent thinking"
+            : verdict.kind === "paused"
+              ? "Agent running a tool"
+              : verdict.kind === "waiting"
+                ? "Waiting for agent output"
+                : "Agent output streaming"
       }
       data-turn-coarse={verdict.fill.coarse.toFixed(4)}
       data-turn-fine={verdict.fill.fine.toFixed(4)}
       data-turn-chunks={verdict.tokenChunks}
     >
-      {mascot ? (
+      {mascot === "codey" ? (
+        <span
+          aria-hidden
+          className={styles.codey}
+          data-state={verdict.kind}
+          style={{ backgroundImage: `url(${codeySpritesheet})` }}
+        />
+      ) : mascot === "claude" ? (
         // In normal flow above the bars, not absolutely positioned: the row's
         // height grows to include it, so the `contain: content` item wrapper
         // cannot clip its head (an absolutely-positioned gif poking above the
@@ -79,17 +91,18 @@ export function TurnPulse({
           style={{ width: `${coarsePercent}%` }}
         />
       </span>
-      {/* Current chunk heartbeat: rises to full, touches 100 for a beat, then
-          the loop cuts instantly back to empty and repeats. Runs only while
-          generating; holding or stalled freezes it where it is, so it still
-          reads as liveness rather than decoration. */}
-      <span className="relative block h-[2px] overflow-hidden rounded-full bg-[#d97757]/20">
+      {/* Thinking uses an indeterminate segment; output keeps the existing heartbeat. */}
+      <span className={cn("relative block h-[2px] overflow-hidden rounded-full", trackBg)}>
         <span
           className={cn(
-            "absolute inset-y-0 left-0 w-1 rounded-full opacity-80 animate-turn-fine-fill",
+            "absolute inset-y-0 left-0 rounded-full opacity-80",
+            verdict.kind === "thinking" ? styles.thinkingBar : "w-1 animate-turn-fine-fill",
             barColor,
           )}
-          style={{ animationPlayState: verdict.kind === "moving" ? "running" : "paused" }}
+          style={{
+            animationPlayState:
+              verdict.kind === "moving" || verdict.kind === "thinking" ? "running" : "paused",
+          }}
         />
       </span>
     </span>

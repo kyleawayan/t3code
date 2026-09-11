@@ -1,0 +1,112 @@
+/* Codey: https://learn.chatgpt.com/images/codex/app/pets/codex-spritesheet.webp
+   The sheet has 8 columns and 9 rows, with 192 × 208 px cells.
+   Row 7 types: five 120 ms frames and a final 220 ms frame. */
+.codey {
+  pointer-events: none;
+  align-self: flex-start;
+  width: 28px;
+  aspect-ratio: 192 / 208;
+  background-repeat: no-repeat;
+  background-size: 800% 900%;
+  background-position: 0 0;
+  image-rendering: pixelated;
+}
+
+.codey[data-state="moving"] {
+  background-position-y: 87.5%;
+  animation: codey-typing 820ms step-end infinite;
+}
+
+.codey[data-state="paused"] {
+  background-position: 0 75%;
+}
+
+.codey[data-state="thinking"] {
+  background-position-y: 75%;
+  animation: codey-thinking 1010ms step-end infinite;
+}
+
+/* Transform-only travel with a short squash and rebound at each end. */
+.thinkingBar {
+  width: 30%;
+  animation: thinking-sweep 1.8s cubic-bezier(0.3, 0, 0.2, 1) infinite;
+}
+
+@keyframes thinking-sweep {
+  0%,
+  100% {
+    transform: translateX(0) scaleX(1);
+  }
+  30% {
+    transform: translateX(240%) scaleX(0.8);
+  }
+  40% {
+    transform: translateX(210%) scaleX(1.12);
+  }
+  50% {
+    transform: translateX(233.333333%) scaleX(1);
+  }
+  80% {
+    transform: translateX(-6.666667%) scaleX(0.8);
+  }
+  90% {
+    transform: translateX(23.333333%) scaleX(1.12);
+  }
+}
+
+/* Row 6: five 150 ms frames followed by a 260 ms hold. */
+@keyframes codey-thinking {
+  0% {
+    background-position-x: 0%;
+  }
+  14.851485% {
+    background-position-x: 14.285714%;
+  }
+  29.70297% {
+    background-position-x: 28.571429%;
+  }
+  44.554455% {
+    background-position-x: 42.857143%;
+  }
+  59.405941% {
+    background-position-x: 57.142857%;
+  }
+  74.257426%,
+  100% {
+    background-position-x: 71.428571%;
+  }
+}
+
+.codey[data-state="stalled"] {
+  background-position: 28.571429% 62.5%;
+}
+
+@keyframes codey-typing {
+  0% {
+    background-position-x: 0%;
+  }
+  14.634146% {
+    background-position-x: 14.285714%;
+  }
+  29.268293% {
+    background-position-x: 28.571429%;
+  }
+  43.902439% {
+    background-position-x: 42.857143%;
+  }
+  58.536585% {
+    background-position-x: 57.142857%;
+  }
+  73.170732%,
+  100% {
+    background-position-x: 71.428571%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .codey[data-state="moving"],
+  .codey[data-state="thinking"],
+  .thinkingBar {
+    animation: none;
+  }
+}

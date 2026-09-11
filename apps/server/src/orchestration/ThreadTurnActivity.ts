@@ -6,8 +6,8 @@
  * doing anything, at a granularity the log deliberately does not keep: a
  * spinner and a wedged turn look identical, and the difference is worth knowing
  * in seconds. Clients drive a liveness pulse off `tokenChunks`, which only ever
- * advances on a token that really arrived — so a pulse that stops is a real
- * stall, with no threshold or heuristic involved.
+ * advances on a token that really arrived. Reasoning lifecycle events also
+ * identify thinking intervals that may emit no text.
  *
  * Derived from provider events every adapter already emits, so this is not a
  * Claude feature: a provider that streams reasoning gets a pulse through the
@@ -41,6 +41,7 @@ export const CHARS_PER_TOKEN = 4;
 
 export interface TurnActivitySnapshot {
   readonly state: TurnActivityState;
+  readonly isThinking?: boolean;
   readonly tokenChunks: number;
   /** Approximate tokens generated this turn, from streamed delta length. */
   readonly generatedTokens: number;
@@ -62,25 +63,46 @@ export interface TurnActivitySnapshot {
 export const nextTurnActivityState = (input: {
   readonly event: Pick<ProviderRuntimeEvent, "type">;
   readonly streamKind: string | undefined;
+  readonly itemType?: string | undefined;
   readonly openToolCount: number;
-}): { readonly state: TurnActivityState; readonly tokenArrived: boolean } | undefined => {
+}):
+  | {
+      readonly state: TurnActivityState;
+      readonly tokenArrived: boolean;
+      readonly isThinking?: boolean;
+    }
+  | undefined => {
   switch (input.event.type) {
     case "content.delta":
       // Reasoning and assistant text both count: the question is whether the
       // model is emitting, not what it is emitting.
-      if (input.streamKind !== "reasoning_text" && input.streamKind !== "assistant_text") {
+      if (
+        input.streamKind !== "reasoning_text" &&
+        input.streamKind !== "reasoning_summary_text" &&
+        input.streamKind !== "assistant_text"
+      ) {
         return undefined;
       }
-      return { state: "generating", tokenArrived: true };
+      return {
+        state: "generating",
+        tokenArrived: true,
+        ...(input.streamKind !== "assistant_text" ? { isThinking: true } : {}),
+      };
     case "turn.started":
       return { state: "quiet", tokenArrived: false };
     case "item.started":
-      return { state: "tool", tokenArrived: false };
     case "item.completed":
-      // Back to expecting tokens only once every open tool has returned.
+      // Reasoning and message items also have lifecycles. Only open tools
+      // justify a tool pause; other items mean we are expecting model output.
       return input.openToolCount > 0
         ? { state: "tool", tokenArrived: false }
-        : { state: "quiet", tokenArrived: false };
+        : {
+            state: "quiet",
+            tokenArrived: false,
+            ...(input.event.type === "item.started" && input.itemType === "reasoning"
+              ? { isThinking: true }
+              : {}),
+          };
     case "request.opened":
     case "user-input.requested":
       return { state: "waiting", tokenArrived: false };
@@ -127,6 +149,7 @@ export class ThreadTurnActivityService extends Context.Service<
       readonly threadId: string;
       readonly event: Pick<ProviderRuntimeEvent, "type">;
       readonly streamKind: string | undefined;
+      readonly itemType?: string | undefined;
       /**
        * Characters in this delta, when the event carries one. Real output
        * volume rather than a frame count, so a burst and a trickle no longer
@@ -164,6 +187,7 @@ export function make(options?: {
       const resolved = nextTurnActivityState({
         event: input.event,
         streamKind: input.streamKind,
+        itemType: input.itemType,
         openToolCount: input.openToolCount,
       });
       if (!resolved) return undefined;
@@ -187,6 +211,7 @@ export function make(options?: {
           : 0);
 
       if (
+        Boolean(previous?.isThinking) === Boolean(resolved.isThinking) &&
         !shouldEmitTurnActivity({
           previous,
           nextState: resolved.state,
@@ -206,6 +231,7 @@ export function make(options?: {
 
       const snapshot: TurnActivitySnapshot = {
         state: resolved.state,
+        ...(resolved.isThinking ? { isThinking: true } : {}),
         tokenChunks,
         generatedTokens,
         lastTokenAtMs: resolved.tokenArrived ? input.nowMs : previous?.lastTokenAtMs,
@@ -220,6 +246,7 @@ export function make(options?: {
       return {
         threadId: input.threadId,
         state: snapshot.state,
+        ...(snapshot.isThinking ? { isThinking: true } : {}),
         tokenChunks: snapshot.tokenChunks,
         // Omitted rather than zero when nothing has streamed: absent means
         // "this provider gave us no volume", which the client reads as a cue
