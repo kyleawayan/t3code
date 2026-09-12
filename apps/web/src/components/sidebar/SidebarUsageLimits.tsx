@@ -1,8 +1,9 @@
 import { useAtomValue } from "@effect/atom-react";
 import { Link } from "@tanstack/react-router";
 import { collectLimitAccounts } from "@t3tools/shared/usageLimits";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
+import { useNowMinute } from "../../hooks/useNowMinute";
 import { environmentPresentations } from "../../state/presentation";
 import { useSidebar } from "../ui/sidebar";
 import { UsageLimitsPooled } from "../usage/UsageLimitsPooled";
@@ -31,8 +32,8 @@ export function SidebarUsageLimits() {
       ),
     [presentations],
   );
-  // Match the limits page: anchor countdowns without adding a sidebar timer.
-  const [now] = useState(() => Date.now());
+  const nowMinute = useNowMinute();
+  const now = Date.parse(`${nowMinute}:00Z`);
   if (collectLimitAccounts(eligible).length === 0) return null;
 
   return (

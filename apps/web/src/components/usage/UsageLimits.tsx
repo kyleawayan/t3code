@@ -19,6 +19,7 @@ import {
 import { GaugeIcon, TrendingDownIcon, TrendingUpIcon } from "lucide-react";
 import { Fragment, useState } from "react";
 
+import { useNowMinute } from "../../hooks/useNowMinute";
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { environmentPresentations } from "../../state/presentation";
 import { serverEnvironment } from "../../state/server";
@@ -314,19 +315,14 @@ export function ResetCredits({
   );
 }
 
-/**
- * Subscription quota across every connected environment's providers and hubs,
- * pooled per provider. Countdowns anchor to render time rather than ticking: a
- * live clock would repaint the page every minute for no decision-changing gain.
- */
 export function UsageLimitsSection({
   selectedEnvironmentIds,
 }: {
   readonly selectedEnvironmentIds: ReadonlySet<EnvironmentId> | null;
 }) {
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
-  // Anchored once per mount on purpose: countdowns must not tick (see above).
-  const [now] = useState(() => Date.now());
+  const nowMinute = useNowMinute();
+  const now = Date.parse(`${nowMinute}:00Z`);
   const selected =
     selectedEnvironmentIds === null
       ? presentations
