@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
+import * as Effect from "effect/Effect";
+import { it as effectIt } from "@effect/vitest";
+import type { ThreadTurnActivity } from "@t3tools/contracts";
 
 import {
   make,
@@ -93,6 +96,90 @@ describe("shouldEmitTurnActivity", () => {
 });
 
 describe("ThreadTurnActivityService", () => {
+  effectIt.effect(
+    "gives late subscribers compaction state before completion and forgets settled turns",
+    () =>
+      Effect.gen(function* () {
+        const service = make();
+        const observe = (
+          type: "item.started" | "item.completed" | "turn.completed",
+          nowMs: number,
+        ) =>
+          service.observe({
+            threadId: "late-subscriber-thread",
+            event: { type },
+            itemType: "context_compaction",
+            streamKind: undefined,
+            deltaLength: undefined,
+            openToolCount: 0,
+            nowMs,
+          })!;
+        const started = observe("item.started", 1_000);
+        yield* service.publish(started);
+        const live: ThreadTurnActivity[] = [];
+        const { initial, unsubscribe } = yield* service.subscribe((activity) =>
+          Effect.sync(() => {
+            live.push(activity);
+          }),
+        );
+        expect(initial).toEqual([started]);
+        expect(initial[0]?.isCompacting).toBe(true);
+        expect(initial[0]?.updatedAt).toBe("1970-01-01T00:00:01.000Z");
+        yield* service.publish(observe("item.completed", 1_001));
+        expect(live).toHaveLength(1);
+        expect(live[0]?.isCompacting).toBeUndefined();
+        expect(initial[0]?.isCompacting).toBe(true);
+        yield* service.publish(observe("turn.completed", 1_002));
+        expect(live.at(-1)?.state).toBe("idle");
+        unsubscribe();
+        const reconnected = yield* service.subscribe(() => Effect.void);
+        expect(reconnected.initial).toEqual([]);
+        reconnected.unsubscribe();
+        yield* service.publish(observe("item.started", 2_000));
+        expect(live).toHaveLength(2);
+      }),
+  );
+
+  it.each([
+    "item.completed",
+    "turn.completed",
+    "turn.aborted",
+    "session.exited",
+    "turn.started",
+  ] as const)(
+    "tracks automatic compaction until %s, even within the emission throttle",
+    (endType) => {
+      const service = make({ generatingEmitIntervalMs: 250 });
+      const observe = (type: "item.started" | typeof endType, nowMs: number, itemType?: string) =>
+        service.observe({
+          threadId: "compacting-thread",
+          event: { type },
+          itemType,
+          streamKind: undefined,
+          deltaLength: undefined,
+          openToolCount: 0,
+          nowMs,
+        });
+
+      observe("item.started", 0, "assistant_message");
+      const started = observe("item.started", 1, "context_compaction");
+      expect(started?.isCompacting).toBe(true);
+      expect(started?.tokenChunks).toBe(0);
+      expect(started?.generatedTokens).toBeUndefined();
+      observe("item.started", 2, "reasoning");
+      expect(service.get("compacting-thread")?.isCompacting).toBe(true);
+
+      const ended = observe(
+        endType,
+        3,
+        endType === "item.completed" ? "context_compaction" : undefined,
+      );
+      expect(ended).toBeDefined();
+      expect(ended?.isCompacting).toBeUndefined();
+      expect(service.get("compacting-thread")?.isCompacting).toBeUndefined();
+    },
+  );
+
   it("reports silent thinking without advancing output, and immediately clears it on completion", () => {
     const service = make({ generatingEmitIntervalMs: 250 });
     const observe = (type: string, itemType: string, nowMs: number) =>

@@ -29,6 +29,7 @@ export const TURN_PULSE_QUIET_WARN_AFTER_MS = 45_000;
 export type TurnPulseVerdict =
   /** Nothing to show: no turn running. */
   | { readonly kind: "hidden" }
+  | { readonly kind: "compacting"; readonly tokenChunks: number; readonly fill: TurnPulseFill }
   /** Provider reports reasoning; show activity without inventing output volume or an ETA. */
   | { readonly kind: "thinking"; readonly tokenChunks: number; readonly fill: TurnPulseFill }
   /**
@@ -124,6 +125,9 @@ export function resolveTurnPulse(input: {
   const activity = input.activity;
   if (!activity) return { kind: "hidden" };
   if (activity.state === "idle") return { kind: "hidden" };
+  if (activity.isCompacting) {
+    return { kind: "compacting", tokenChunks: activity.tokenChunks, fill: resolveFill(activity) };
+  }
   // A tool call and a pending question are silent by nature, so they never
   // alarm — but they keep the same widget. Swapping it out for a different
   // indicator mid-turn made the row flicker between two shapes every time the

@@ -470,6 +470,7 @@ export const ThreadTurnActivity = Schema.Struct({
   state: TurnActivityState,
   /** An active reasoning phase may be silent; this does not imply measurable progress. */
   isThinking: Schema.optional(Schema.Boolean),
+  isCompacting: Schema.optional(Schema.Boolean),
   /**
    * Monotonic count of token chunks streamed during this turn. Clients advance
    * the liveness pulse by its delta, so the pulse can only ever move on a token

@@ -16,6 +16,20 @@ const activity = (
   }) as NonNullable<Parameters<typeof resolveTurnPulse>[0]["activity"]>;
 
 describe("resolveTurnPulse", () => {
+  it("shows automatic compaction through silence and resumes stall detection afterward", () => {
+    const compacting = activity({ state: "quiet", isCompacting: true });
+    const nowMs = NOW + 120_000;
+    const verdict = resolveTurnPulse({ activity: compacting, nowMs });
+    expect(verdict.kind).toBe("compacting");
+    expect(resolveTurnPulse({ activity: compacting, nowMs: nowMs + 120_000 })).toEqual(verdict);
+    expect(resolveTurnPulse({ activity: { ...compacting, isCompacting: false }, nowMs }).kind).toBe(
+      "stalled",
+    );
+    expect(resolveTurnPulse({ activity: { ...compacting, state: "idle" }, nowMs }).kind).toBe(
+      "hidden",
+    );
+  });
+
   it("shows indeterminate thinking through silent reasoning without inventing volume", () => {
     const thinking = activity({
       state: "quiet",

@@ -1101,7 +1101,7 @@ describe("ProviderRuntimeIngestion", () => {
   it("publishes turn liveness as real provider events flow through ingestion", async () => {
     const harness = await createHarness();
     const published: Array<{ state: string; tokenChunks: number }> = [];
-    const unsubscribe = await Effect.runPromise(
+    const { unsubscribe } = await Effect.runPromise(
       harness.turnActivity.subscribe((activity) =>
         Effect.sync(() => {
           published.push({ state: activity.state, tokenChunks: activity.tokenChunks });
@@ -1177,6 +1177,38 @@ describe("ProviderRuntimeIngestion", () => {
     // The turn is forgotten once it ends, so a reconnecting client re-derives
     // from the next event rather than inheriting a stale pulse.
     expect(harness.turnActivity.get("thread-1")).toBeUndefined();
+  });
+
+  it("publishes automatic compaction lifecycle without a compact command", async () => {
+    const harness = await createHarness();
+    const base = {
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-auto-compact"),
+    };
+    await harness.emitAndDrain([
+      { ...base, type: "turn.started", eventId: asEventId("auto-compact-turn-started") },
+      {
+        ...base,
+        type: "item.started",
+        eventId: asEventId("auto-compact-started"),
+        itemId: ProviderItemId.make("auto-compact-item"),
+        payload: { itemType: "context_compaction" },
+      },
+    ]);
+    expect(harness.turnActivity.get("thread-1")?.isCompacting).toBe(true);
+    await harness.emitAndDrain([
+      {
+        ...base,
+        type: "item.completed",
+        eventId: asEventId("auto-compact-completed"),
+        itemId: ProviderItemId.make("auto-compact-item"),
+        payload: { itemType: "context_compaction" },
+      },
+    ]);
+    expect(harness.turnActivity.get("thread-1")?.isCompacting).toBeUndefined();
+    expect(harness.turnActivity.get("thread-1")?.state).toBe("quiet");
   });
 
   it("accepts claude turn lifecycle when seeded thread id is a synthetic placeholder", async () => {

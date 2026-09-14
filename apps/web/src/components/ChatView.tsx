@@ -2795,9 +2795,10 @@ export default function ChatView(props: ChatViewProps) {
         return payload?.requestId === pendingCompactionMessage.id;
       }));
   const isCompacting =
-    (isSendBusy || phase === "connecting" || phase === "running") &&
-    compactRequestIsActive &&
-    !compactionSettled;
+    turnPulse.kind === "compacting" ||
+    ((isSendBusy || phase === "connecting" || phase === "running") &&
+      compactRequestIsActive &&
+      !compactionSettled);
   const isWorking =
     phase === "running" || isSendBusy || isConnecting || isRevertingCheckpoint || isCompacting;
   const activeWorkStartedAt = deriveActiveWorkStartedAt(
@@ -5750,7 +5751,7 @@ export default function ChatView(props: ChatViewProps) {
    * offered inline: by the time this appears, that is the decision.
    */
   const stalledTurnBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
-    if (turnPulse.kind !== "stalled") return null;
+    if (isCompacting || turnPulse.kind !== "stalled") return null;
     return {
       id: "turn-stalled",
       variant: "warning",
@@ -5776,7 +5777,7 @@ export default function ChatView(props: ChatViewProps) {
         </Button>
       ),
     };
-  }, [turnPulse, onInterrupt]);
+  }, [isCompacting, turnPulse, onInterrupt]);
 
   const composerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const backgroundLivenessItems =

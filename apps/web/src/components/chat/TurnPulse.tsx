@@ -48,13 +48,15 @@ export function TurnPulse({
       aria-label={
         stalled
           ? "No agent output"
-          : verdict.kind === "thinking"
-            ? "Agent thinking"
-            : verdict.kind === "paused"
-              ? "Agent running a tool"
-              : verdict.kind === "waiting"
-                ? "Waiting for agent output"
-                : "Agent output streaming"
+          : verdict.kind === "compacting"
+            ? "Agent compacting context"
+            : verdict.kind === "thinking"
+              ? "Agent thinking"
+              : verdict.kind === "paused"
+                ? "Agent running a tool"
+                : verdict.kind === "waiting"
+                  ? "Waiting for agent output"
+                  : "Agent output streaming"
       }
       data-turn-coarse={verdict.fill.coarse.toFixed(4)}
       data-turn-fine={verdict.fill.fine.toFixed(4)}

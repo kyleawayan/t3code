@@ -2878,16 +2878,18 @@ const makeWsRpcLayer = (
             { "rpc.aggregate": "auth" },
           ),
         [WS_METHODS.subscribeTurnActivity]: (_input) =>
-          observeRpcStream(
+          observeRpcStreamEffect(
             WS_METHODS.subscribeTurnActivity,
-            Stream.callback<ThreadTurnActivity>((queue) =>
-              Effect.acquireRelease(
+            Effect.gen(function* () {
+              const queue = yield* Queue.unbounded<ThreadTurnActivity>();
+              const { initial } = yield* Effect.acquireRelease(
                 threadTurnActivity.subscribe((activity) =>
                   Queue.offer(queue, activity).pipe(Effect.asVoid),
                 ),
-                (unsubscribe) => Effect.sync(unsubscribe),
-              ),
-            ),
+                ({ unsubscribe }) => Effect.sync(unsubscribe),
+              );
+              return Stream.concat(Stream.fromIterable(initial), Stream.fromQueue(queue));
+            }),
             { "rpc.aggregate": "orchestration" },
           ),
         [WS_METHODS.subscribeBackgroundPolicy]: (_input) =>

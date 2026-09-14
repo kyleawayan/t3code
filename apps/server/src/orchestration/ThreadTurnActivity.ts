@@ -14,8 +14,8 @@
  * thinking phase, and one that does not still gets accurate tool and waiting
  * states with a pulse while its answer streams.
  *
- * Nothing here is persisted or replayed. It describes the present moment; a
- * reconnecting client re-derives it from the next event.
+ * Nothing here is persisted. New subscribers receive the current activity
+ * before live updates so silent phases survive client reconnects.
  *
  * @module ThreadTurnActivityService
  */
@@ -42,6 +42,7 @@ export const CHARS_PER_TOKEN = 4;
 export interface TurnActivitySnapshot {
   readonly state: TurnActivityState;
   readonly isThinking?: boolean;
+  readonly isCompacting?: boolean;
   readonly tokenChunks: number;
   /** Approximate tokens generated this turn, from streamed delta length. */
   readonly generatedTokens: number;
@@ -168,12 +169,33 @@ export class ThreadTurnActivityService extends Context.Service<
     /** Deliver an activity to every subscriber. */
     readonly publish: (activity: ThreadTurnActivity) => Effect.Effect<void>;
 
-    /** Live feed. Returns an unsubscribe function. */
+    /** Capture current activity and register for subsequent updates atomically. */
     readonly subscribe: (
       listener: (activity: ThreadTurnActivity) => Effect.Effect<void>,
-    ) => Effect.Effect<() => void>;
+    ) => Effect.Effect<{
+      readonly initial: ReadonlyArray<ThreadTurnActivity>;
+      readonly unsubscribe: () => void;
+    }>;
   }
 >()("t3/orchestration/ThreadTurnActivity/ThreadTurnActivityService") {}
+
+function toThreadTurnActivity(
+  threadId: string,
+  snapshot: TurnActivitySnapshot,
+): ThreadTurnActivity {
+  return {
+    threadId: threadId,
+    state: snapshot.state,
+    ...(snapshot.isThinking ? { isThinking: true } : {}),
+    ...(snapshot.isCompacting ? { isCompacting: true } : {}),
+    tokenChunks: snapshot.tokenChunks,
+    // Omitted rather than zero when nothing has streamed: absent means
+    // "this provider gave us no volume", which the client reads as a cue
+    // to fall back to frame counting.
+    ...(snapshot.generatedTokens > 0 ? { generatedTokens: snapshot.generatedTokens } : {}),
+    updatedAt: DateTime.formatIso(DateTime.makeUnsafe(snapshot.emittedAtMs)),
+  } as ThreadTurnActivity;
+}
 
 export function make(options?: {
   readonly generatingEmitIntervalMs?: number;
@@ -193,6 +215,12 @@ export function make(options?: {
       if (!resolved) return undefined;
 
       const previous = byThreadId.get(input.threadId);
+      const isCompacting =
+        resolved.state !== "idle" &&
+        input.event.type !== "turn.started" &&
+        (input.itemType === "context_compaction"
+          ? input.event.type === "item.started"
+          : (previous?.isCompacting ?? false));
       // A new turn restarts the count, so the pulse never inherits the last
       // turn's travel.
       const carriedChunks =
@@ -212,6 +240,7 @@ export function make(options?: {
 
       if (
         Boolean(previous?.isThinking) === Boolean(resolved.isThinking) &&
+        Boolean(previous?.isCompacting) === isCompacting &&
         !shouldEmitTurnActivity({
           previous,
           nextState: resolved.state,
@@ -232,6 +261,7 @@ export function make(options?: {
       const snapshot: TurnActivitySnapshot = {
         state: resolved.state,
         ...(resolved.isThinking ? { isThinking: true } : {}),
+        ...(isCompacting ? { isCompacting: true } : {}),
         tokenChunks,
         generatedTokens,
         lastTokenAtMs: resolved.tokenArrived ? input.nowMs : previous?.lastTokenAtMs,
@@ -243,17 +273,7 @@ export function make(options?: {
         byThreadId.set(input.threadId, snapshot);
       }
 
-      return {
-        threadId: input.threadId,
-        state: snapshot.state,
-        ...(snapshot.isThinking ? { isThinking: true } : {}),
-        tokenChunks: snapshot.tokenChunks,
-        // Omitted rather than zero when nothing has streamed: absent means
-        // "this provider gave us no volume", which the client reads as a cue
-        // to fall back to frame counting.
-        ...(snapshot.generatedTokens > 0 ? { generatedTokens: snapshot.generatedTokens } : {}),
-        updatedAt: DateTime.formatIso(DateTime.makeUnsafe(input.nowMs)),
-      } as ThreadTurnActivity;
+      return toThreadTurnActivity(input.threadId, snapshot);
     },
     get: (threadId) => byThreadId.get(threadId),
     clear: (threadId) => {
@@ -270,8 +290,13 @@ export function make(options?: {
     subscribe: (listener) =>
       Effect.sync(() => {
         listeners.add(listener);
-        return () => {
-          listeners.delete(listener);
+        return {
+          initial: Array.from(byThreadId, ([threadId, snapshot]) =>
+            toThreadTurnActivity(threadId, snapshot),
+          ),
+          unsubscribe: () => {
+            listeners.delete(listener);
+          },
         };
       }),
   };
