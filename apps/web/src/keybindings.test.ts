@@ -1,4 +1,5 @@
 import { assert, describe, it } from "vite-plus/test";
+import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 
 import {
   type KeybindingCommand,
@@ -1020,4 +1021,30 @@ describe("plus key parsing", () => {
       }),
     );
   });
+});
+
+describe("queued message steering shortcut", () => {
+  for (const platform of ["MacIntel", "Win32", "Linux"]) {
+    it(`steers the oldest queued message on ${platform} and leaves terminal input alone`, () => {
+      const input = event({
+        key: "Enter",
+        shiftKey: true,
+        metaKey: platform === "MacIntel",
+        ctrlKey: platform !== "MacIntel",
+      });
+      assert.strictEqual(
+        resolveShortcutCommand(input, DEFAULT_RESOLVED_KEYBINDINGS, {
+          platform,
+          context: { terminalFocus: false },
+        }),
+        "thread.steerQueuedMessage",
+      );
+      assert.isNull(
+        resolveShortcutCommand(input, DEFAULT_RESOLVED_KEYBINDINGS, {
+          platform,
+          context: { terminalFocus: true },
+        }),
+      );
+    });
+  }
 });
