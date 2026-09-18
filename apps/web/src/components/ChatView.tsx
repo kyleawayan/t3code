@@ -7278,6 +7278,26 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
 
+  const requestGitAgentAction = useCallback(
+    (prompt: string) => {
+      if (!activeThreadKey) return;
+      // Use the queue so header actions preserve the composer and respect pending approvals.
+      useQueuedMessageStore.getState().enqueue(activeThreadKey, {
+        prompt,
+        images: [],
+        files: [],
+        terminalContexts: [],
+        elementContexts: [],
+        previewAnnotations: [],
+        reviewComments: [],
+        submissionIntent: "foreground",
+        queuedAfterToolActivityId: latestCompletedToolActivityId(threadActivities),
+        createdAt: new Date().toISOString(),
+      });
+    },
+    [activeThreadKey, threadActivities],
+  );
+
   // Sends the oldest queued message once it is due: a tool call finished
   // after it was queued, or the turn ended. Only one leaves per boundary; the
   // take inside onSend re-anchors the rest.
@@ -8236,6 +8256,7 @@ export default function ChatView(props: ChatViewProps) {
           ) : null}
           {!rightPanelControlsAtRoot && !rightPanelControlsInPanel ? panelLayoutControls : null}
           <ChatHeader
+            onRequestGitAgentAction={requestGitAgentAction}
             {...(!supportsPullRequests || activeProjectRepository === null
               ? {}
               : { onOpenPullRequest: openProjectPullRequest })}
