@@ -250,6 +250,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["notification toast popup completion input approval failure"],
   },
   {
+    id: "notification-position",
+    title: "Notification position",
+    to: "/settings/general",
+    searchTerms: ["toast placement corner top bottom left right center command menu"],
+  },
+  {
     id: "time-format",
     title: "Time format",
     to: "/settings/general",

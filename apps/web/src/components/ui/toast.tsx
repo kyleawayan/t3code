@@ -14,6 +14,7 @@ import {
 } from "react";
 import { useParams } from "@tanstack/react-router";
 import { type ScopedThreadRef, type ThreadId } from "@t3tools/contracts";
+import type { NotificationPosition } from "@t3tools/contracts/settings";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -30,6 +31,7 @@ import { cn } from "~/lib/utils";
 import { Button, buttonVariants } from "~/components/ui/button";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { useClientSettings } from "~/hooks/useSettings";
 import { resolveThreadRouteTarget } from "~/threadRoutes";
 import {
   buildVisibleToastLayout,
@@ -416,16 +418,8 @@ function ToastBodyContent({
   );
 }
 
-type ToastPosition =
-  | "top-left"
-  | "top-center"
-  | "top-right"
-  | "bottom-left"
-  | "bottom-center"
-  | "bottom-right";
-
 interface ToastProviderProps extends Toast.Provider.Props {
-  position?: ToastPosition;
+  position?: NotificationPosition;
 }
 
 function useActiveThreadRefFromRoute(): ScopedThreadRef | null {
@@ -529,16 +523,18 @@ function ThreadToastVisibleAutoDismiss({
   return null;
 }
 
-function ToastProvider({ children, position = "top-left", ...props }: ToastProviderProps) {
+function ToastProvider({ children, position, ...props }: ToastProviderProps) {
+  const savedPosition = useClientSettings((settings) => settings.notificationPosition);
   return (
     <Toast.Provider toastManager={toastManager} {...props}>
       {children}
-      <Toasts position={position} />
+      <Toasts placement={position ?? savedPosition} />
     </Toast.Provider>
   );
 }
 
-function Toasts({ position }: { position: ToastPosition }) {
+function Toasts({ placement }: { placement: NotificationPosition }) {
+  const position = placement === "command-menu" ? "top-center" : placement;
   const { toasts } = Toast.useToastManager<ThreadToastData>();
   const activeThreadRef = useActiveThreadRefFromRoute();
   const isTop = position.startsWith("top");
@@ -562,7 +558,9 @@ function Toasts({ position }: { position: ToastPosition }) {
         className={cn(
           "fixed z-100 mx-auto flex w-[calc(100%-var(--toast-inset)*2)] max-w-90 [--toast-header-offset:var(--workspace-topbar-height)] [--toast-inset:--spacing(4)] sm:[--toast-inset:--spacing(8)]",
           // Vertical positioning
-          "data-[position*=top]:top-[calc(var(--toast-inset)+var(--toast-header-offset))]",
+          placement === "command-menu"
+            ? "top-[max(--spacing(4),4vh)] sm:top-[10vh]"
+            : "data-[position*=top]:top-[calc(var(--toast-inset)+var(--toast-header-offset))]",
           "data-[position*=bottom]:bottom-(--toast-inset)",
           // Horizontal positioning
           "data-[position*=left]:left-(--toast-inset)",
@@ -805,7 +803,7 @@ export type { StackedThreadToastOptions } from "./toastHelpers";
 
 export {
   ToastProvider,
-  type ToastPosition,
+  type NotificationPosition as ToastPosition,
   toastManager,
   AnchoredToastProvider,
   anchoredToastManager,

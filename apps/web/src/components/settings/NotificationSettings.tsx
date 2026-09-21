@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { NotificationPosition } from "@t3tools/contracts/settings";
+import * as Schema from "effect/Schema";
 
 import {
   hasDesktopNotifications,
@@ -7,9 +9,70 @@ import {
   unlockNotificationAudio,
 } from "../../threadNotifications";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { Button } from "../ui/button";
+import { toastManager } from "../ui/toast";
 import { SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
+
+const NOTIFICATION_POSITION_LABELS = {
+  "top-left": "Top left",
+  "top-center": "Top center",
+  "top-right": "Top right",
+  "bottom-left": "Bottom left",
+  "bottom-center": "Bottom center",
+  "bottom-right": "Bottom right",
+  "command-menu": "Command menu",
+} satisfies Record<NotificationPosition, string>;
+const isNotificationPosition = Schema.is(NotificationPosition);
+
+export function NotificationPositionSettings() {
+  const position = useScopedSettings((settings) => settings.notificationPosition);
+  const updateSettings = useUpdateScopedSettings();
+
+  return (
+    <SettingsRow
+      {...searchableSetting("notification-position")}
+      description="Where in-app notifications appear on this device. Command menu places them near the top center, like the command palette."
+      control={
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              toastManager.add({
+                title: "Test notification",
+                description: "Notifications will appear here.",
+                type: "info",
+              })
+            }
+          >
+            Test notification
+          </Button>
+          <Select
+            value={position}
+            onValueChange={(value) => {
+              if (isNotificationPosition(value)) {
+                updateSettings({ notificationPosition: value });
+              }
+            }}
+          >
+            <SelectTrigger size="sm" className="w-full sm:w-44" aria-label="Notification position">
+              <SelectValue>{NOTIFICATION_POSITION_LABELS[position]}</SelectValue>
+            </SelectTrigger>
+            <SelectPopup align="end" alignItemWithTrigger={false}>
+              {Object.entries(NOTIFICATION_POSITION_LABELS).map(([value, label]) => (
+                <SelectItem key={value} hideIndicator value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        </div>
+      }
+    />
+  );
+}
 
 export function NotificationSettings() {
   const mode = useScopedSettings((settings) => settings.notificationMode);
