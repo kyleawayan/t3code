@@ -37,6 +37,8 @@ function startTimer(): void {
 function subscribe(listener: () => void): () => void {
   if (listeners.size === 0) {
     startTimer();
+    window.addEventListener("focus", tick);
+    document.addEventListener("visibilitychange", onVisibilityChange);
   }
   listeners.add(listener);
   return () => {
@@ -45,8 +47,14 @@ function subscribe(listener: () => void): () => void {
       if (timerIsInterval) window.clearInterval(timerId);
       else window.clearTimeout(timerId);
       timerId = null;
+      window.removeEventListener("focus", tick);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     }
   };
+}
+
+function onVisibilityChange(): void {
+  if (document.visibilityState === "visible") tick();
 }
 
 function getSnapshot(): string {

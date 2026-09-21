@@ -167,6 +167,7 @@ import {
 } from "../types";
 import { useTheme } from "../hooks/useTheme";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
+import { useTurnPulse } from "../hooks/useTurnPulse";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { subscribeSnapShotComposerFocus } from "../lib/desktopSnapShot";
 import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
@@ -193,6 +194,7 @@ import { ThreadPreviewMiniPlayer } from "./preview/ThreadPreviewMiniPlayer";
 import { subscribePreviewAction } from "./preview/previewActionBus";
 import { getConfiguredPreviewUrls } from "./preview/previewEmptyStateLogic";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
+import { shouldRefreshOpenFile } from "./files/projectFilesQueryState";
 import {
   isSameSidebarThreadRef,
   useSidebarPendingFileDropStore,
@@ -3030,6 +3032,9 @@ export default function ChatView(props: ChatViewProps) {
     () => deriveActivePlanState(threadActivities, activeLatestTurn?.turnId ?? undefined),
     [activeLatestTurn?.turnId, threadActivities],
   );
+  // Live liveness for the open thread: whether output is arriving right now,
+  // which is the one thing a spinner cannot tell you.
+  const turnPulse = useTurnPulse(activeThreadRef);
   const showPlanFollowUpPrompt = shouldShowPlanFollowUpPrompt({
     pendingUserInputCount: pendingUserInputs.length,
     interactionMode,
@@ -3181,9 +3186,10 @@ export default function ChatView(props: ChatViewProps) {
         return payload?.requestId === pendingCompactionMessage.id;
       }));
   const isCompacting =
-    (isSendBusy || phase === "connecting" || phase === "running") &&
-    compactRequestIsActive &&
-    !compactionSettled;
+    turnPulse.kind === "compacting" ||
+    ((isSendBusy || phase === "connecting" || phase === "running") &&
+      compactRequestIsActive &&
+      !compactionSettled);
   // The server records a running worktree setup on the thread for the whole
   // bootstrap window. That record, with no turn yet, is how a reload or another
   // client sees a worktree still being prepared, so it counts as working like
@@ -3581,6 +3587,22 @@ export default function ChatView(props: ChatViewProps) {
     attachDraftHeroComposerAnchorRef,
     captureDraftHeroComposerRect,
   ] = useDraftHeroLayoutTransition(isDraftHeroState);
+  // When the latest turn changed the open file (and the user is not editing it),
+  // hand the file preview a token so it re-reads and shows the agent's edits.
+  // The path is folded in so switching files re-triggers a stale read too.
+  const fileExternalRefreshToken = useMemo(() => {
+    const openPath =
+      activeRightPanelSurface?.kind === "file" ? activeRightPanelSurface.relativePath : null;
+    const latest = activeThread?.checkpoints.at(-1) ?? null;
+    if (openPath === null || latest === null) return null;
+    return shouldRefreshOpenFile({
+      openPath,
+      isDirty: pendingFileSurfaceIds.has(`file:${openPath}`),
+      changedPaths: latest.files.map((changed) => changed.path),
+    })
+      ? `${latest.turnId}:${latest.checkpointTurnCount}:${openPath}`
+      : null;
+  }, [activeRightPanelSurface, activeThread, pendingFileSurfaceIds]);
 
   const gitCwd = activeProject
     ? projectScriptCwd({
@@ -8174,6 +8196,25 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
 
+  const requestGitAgentAction = useCallback(
+    (prompt: string) => {
+      if (!activeThreadKey) return;
+      // Use the queue so header actions preserve the composer and respect pending approvals.
+      useQueuedMessageStore.getState().enqueue(activeThreadKey, {
+        prompt,
+        images: [],
+        files: [],
+        terminalContexts: [],
+        previewAnnotations: [],
+        reviewComments: [],
+        submissionIntent: "foreground",
+        queuedAfterToolActivityId: latestCompletedToolActivityId(threadActivities),
+        createdAt: new Date().toISOString(),
+      });
+    },
+    [activeThreadKey, threadActivities],
+  );
+
   // Sends the oldest queued message once it is due: a tool call finished
   // after it was queued, or the turn ended. Only one leaves per boundary; the
   // take inside onSend re-anchors the rest.
@@ -9308,6 +9349,7 @@ export default function ChatView(props: ChatViewProps) {
             pendingFileSurfaceIds.has(renderedRightPanelSurface.id)
           }
           workspaceMutationId={workspaceMutationId}
+          externalRefreshToken={fileExternalRefreshToken}
         />
       </Suspense>
     ) : null
@@ -9366,6 +9408,7 @@ export default function ChatView(props: ChatViewProps) {
           ) : null}
           {!rightPanelControlsAtRoot && !rightPanelControlsInPanel ? panelLayoutControls : null}
           <ChatHeader
+            onRequestGitAgentAction={requestGitAgentAction}
             {...(!supportsPullRequests || activeProjectRepository === null
               ? {}
               : { onOpenPullRequest: openProjectPullRequest })}
@@ -9458,6 +9501,16 @@ export default function ChatView(props: ChatViewProps) {
                 onCancelWorktreeSetup={onCancelWorktreeSetup}
                 {...(draftId ? { onWorktreeSetupWorkLocally } : {})}
                 {...(onOpenWorktreeSetupTerminal ? { onOpenWorktreeSetupTerminal } : {})}
+                turnPulse={paintOnlyDisplayedTimeline ? { kind: "hidden" } : turnPulse}
+                turnMascot={
+                  paintOnlyDisplayedTimeline
+                    ? undefined
+                    : activeThread.session?.providerName === "codex"
+                      ? "codey"
+                      : activeThread.session?.providerName === "claudeAgent"
+                        ? "claude"
+                        : undefined
+                }
                 listRef={legendListRef}
                 timelineEntries={displayedTimeline.entries}
                 latestTurn={paintOnlyDisplayedTimeline ? null : activeLatestTurn}
@@ -9564,7 +9617,7 @@ export default function ChatView(props: ChatViewProps) {
               >
                 <div
                   data-chat-composer-stack="true"
-                  className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-3xl"
+                  className="group/composer-stack pointer-events-auto relative z-10 me-auto w-full max-w-3xl"
                 >
                   {isDraftHeroState ? (
                     <div className="absolute inset-x-0 bottom-full z-0">
@@ -9936,7 +9989,6 @@ export default function ChatView(props: ChatViewProps) {
             pendingSurfaceIds={pendingFileSurfaceIds}
             previewSessions={activePreviewState.sessions}
             desktopByTabId={activePreviewState.desktopByTabId}
-            previewRuntimeTabId={resolvePreviewRuntimeTabId}
             terminalLabelsById={activeTerminalLabelsById}
             onActivate={activateRightPanelSurface}
             onCloseSurface={closeRightPanelSurface}

@@ -28,6 +28,7 @@ import { useComposerMenuProps } from "./composerEventScope";
 import { shortcutLabelForCommand } from "../../keybindings";
 
 export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+  compact?: boolean | undefined;
   /**
    * The instance currently selected in the composer. Drives the trigger
    * icon, label and the default-highlighted combobox row.
@@ -181,8 +182,12 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             size={size}
             data-chat-provider-model-picker="true"
             className={cn(
-              "min-w-0 shrink justify-between whitespace-nowrap",
-              !props.isComposerOwned && "max-w-48 sm:max-w-56",
+              "min-w-0 justify-between whitespace-nowrap",
+              // Compact composers keep every control inline, so the model name
+              // gives up width first and furthest. The floor holds an
+              // ellipsis plus the model's tail, which is the part that
+              // distinguishes one model from the next.
+              props.compact ? "min-w-18 max-w-42 shrink-8" : "max-w-48 shrink sm:max-w-56",
               props.triggerClassName,
             )}
             disabled={props.disabled}
@@ -211,7 +216,14 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             <TooltipTrigger
               render={
                 <span
-                  className="min-w-0 flex-1 overflow-hidden truncate"
+                  className={cn(
+                    "min-w-0 flex-1 overflow-hidden truncate",
+                    // Model names share a leading brand word and differ at the
+                    // tail, so a narrow composer keeps the end: "…us 5", not
+                    // "Claude O…". RTL moves the ellipsis to the front; the
+                    // name is a single Latin run, so nothing reorders.
+                    props.compact && "text-left [direction:rtl]",
+                  )}
                   data-chat-provider-model-picker-label="true"
                 />
               }

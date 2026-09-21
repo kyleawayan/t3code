@@ -19,6 +19,7 @@ import {
 import { GaugeIcon, TrendingDownIcon, TrendingUpIcon } from "lucide-react";
 import { Fragment, useState } from "react";
 
+import { useNowMinute } from "../../hooks/useNowMinute";
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { environmentPresentations } from "../../state/presentation";
 import { serverEnvironment } from "../../state/server";
@@ -314,19 +315,16 @@ export function ResetCredits({
   );
 }
 
-/**
- * Subscription quota across every connected environment's providers and hubs,
- * pooled per provider. The page advances `now` on explicit refresh rather than
- * ticking: a live clock would repaint the page for no decision-changing gain.
- */
 export function UsageLimitsSection({
   selectedEnvironmentIds,
-  now,
+  now: refreshedAt,
 }: {
   readonly selectedEnvironmentIds: ReadonlySet<EnvironmentId> | null;
   readonly now: number;
 }) {
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
+  const nowMinute = useNowMinute();
+  const now = Math.max(refreshedAt, Date.parse(`${nowMinute}:00Z`));
   const selected =
     selectedEnvironmentIds === null
       ? presentations

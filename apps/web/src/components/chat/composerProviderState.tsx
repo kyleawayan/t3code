@@ -54,6 +54,7 @@ type TraitsRenderInput = {
   onPromptChange: (prompt: string) => void;
   planModeEnabled: boolean;
   size?: ComposerControlSize;
+  compact?: boolean;
   hidden?: boolean;
   triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
   triggerClassName?: string;
@@ -177,6 +178,7 @@ function renderTraitsControl(
     onPromptChange,
     planModeEnabled,
     size,
+    compact,
     hidden,
     triggerVariant,
     triggerClassName,
@@ -216,6 +218,7 @@ function renderTraitsControl(
       onPromptChange={onPromptChange}
       planModeEnabled={planModeEnabled}
       {...(size !== undefined ? { size } : {})}
+      {...(compact !== undefined ? { compact } : {})}
       {...(hidden !== undefined ? { hidden } : {})}
       {...(triggerVariant !== undefined ? { triggerVariant } : {})}
       {...(triggerClassName !== undefined ? { triggerClassName } : {})}

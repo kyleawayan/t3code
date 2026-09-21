@@ -237,17 +237,17 @@ export function resolveTimelineMinimapHasPersistentGutter(viewportWidth: number)
   }
 
   const contentWidth = Math.min(viewportWidth, TIMELINE_CONTENT_MAX_WIDTH);
-  const sideGutter = Math.max(0, (viewportWidth - contentWidth) / 2);
+  const sideGutter = Math.max(0, viewportWidth - contentWidth);
   return sideGutter >= TIMELINE_MINIMAP_PERSISTENT_GUTTER;
 }
 
-const TIMELINE_MINIMAP_HIT_STRIP_LEFT = 12;
+const TIMELINE_MINIMAP_HIT_STRIP_INSET = 12;
 const TIMELINE_MINIMAP_HIT_STRIP_MAX_WIDTH = 40;
 const TIMELINE_MINIMAP_EXPANDED_HIT_STRIP_WIDTH = "22rem";
 
 /**
- * The minimap overlays the viewport's left edge while the content column is
- * centered, so the side gutter between them shrinks under browser zoom or a
+ * The minimap overlays the viewport's right edge, opposite the left-aligned
+ * content column, so the gutter between them shrinks under browser zoom or a
  * narrow pane. A fixed-width hover strip would then sit on top of the message
  * text and swallow its pointer events. Cap the strip's width so it never
  * extends past the gutter into the content column; 0 disables the strip.
@@ -258,12 +258,12 @@ export function resolveTimelineMinimapHitStripWidth(viewportWidth: number): numb
   }
 
   const contentWidth = Math.min(viewportWidth, TIMELINE_CONTENT_MAX_WIDTH);
-  const sideGutter = Math.max(0, (viewportWidth - contentWidth) / 2);
+  const sideGutter = Math.max(0, viewportWidth - contentWidth);
   return Math.max(
     0,
     Math.min(
       TIMELINE_MINIMAP_HIT_STRIP_MAX_WIDTH,
-      Math.floor(sideGutter) - TIMELINE_MINIMAP_HIT_STRIP_LEFT,
+      Math.floor(sideGutter) - TIMELINE_MINIMAP_HIT_STRIP_INSET,
     ),
   );
 }
@@ -1017,11 +1017,9 @@ export function deriveMessagesTimelineRows(input: {
       createdAt: visualResponseStartedAt,
     });
   };
-  let hasActivityRow = false;
   const appendActiveWorkRows = () => {
     if (activeWorkRow === null) return;
     nextRows.push(activeWorkRow);
-    hasActivityRow ||= activeWorkRow.active;
     if (!activeWorkRow.expanded || activeWorkRow.entry.agentSpawn) return;
     nextRows.push(
       expandedWorkGroupRow(
@@ -1036,10 +1034,6 @@ export function deriveMessagesTimelineRows(input: {
     const timelineEntry = input.timelineEntries[index];
     if (!timelineEntry) {
       continue;
-    }
-
-    if (input.isWorking && index === activeTurnHeaderIndex) {
-      appendWorkingRow();
     }
 
     if (timelineEntry.id === activeWorkPlacementEntryId) {
@@ -1085,12 +1079,6 @@ export function deriveMessagesTimelineRows(input: {
         timelineEntry.entry.questionAnswer !== undefined ||
         timelineEntry.entry.tone === "error"
       ) {
-        const spawn = timelineEntry.entry.agentSpawn;
-        if (spawn && entryBelongsToActiveTurn(timelineEntry, index)) {
-          hasActivityRow ||=
-            (spawn.workflowId !== null && input.liveAgentTaskIds?.has(spawn.workflowId)) ||
-            spawn.agentTaskIds.some((taskId) => input.liveAgentTaskIds?.has(taskId));
-        }
         nextRows.push({
           kind: "work",
           id: timelineEntry.id,
@@ -1142,7 +1130,6 @@ export function deriveMessagesTimelineRows(input: {
             expanded,
             active: true,
           });
-          hasActivityRow = true;
           if (expanded) {
             nextRows.push(
               expandedWorkGroupRow(groupId, timelineEntry.createdAt, visibleGroupedEntries),
@@ -1305,12 +1292,7 @@ export function deriveMessagesTimelineRows(input: {
     return attachTrailingToolGroupsToAssistant(nextRows);
   }
 
-  if (input.isWorking && activeTurnHeaderIndex === input.timelineEntries.length) {
-    appendWorkingRow();
-  }
-  // An async setup script outlives the handoff. The turn owns the header, so
-  // the script's row sits first under it, ahead of the agent's own work. A
-  // script that already finished (or never ran) has nothing left to show.
+  // Keep async setup visible after the handoff, including failures.
   const setupScriptStage = input.worktreeSetup?.stages.find((stage) => stage.id === "setup-script");
   if (
     input.worktreeSetup &&
@@ -1324,22 +1306,10 @@ export function deriveMessagesTimelineRows(input: {
       snapshot: input.worktreeSetup,
       embedded: true,
     } as const;
-    const workingRowIndex = nextRows.findIndex((row) => row.kind === "working");
-    if (workingRowIndex >= 0) {
-      nextRows.splice(workingRowIndex + 1, 0, setupRow);
-    } else {
-      // The turn already finished (or has not been dispatched yet): the row
-      // trails the reply so a still-running script stays visible after it.
-      nextRows.push(setupRow);
-    }
+    nextRows.push(setupRow);
   }
-  if (input.isWorking && (!hasActivityRow || latestToolFailed)) {
-    nextRows.push({
-      kind: "thinking",
-      id: LIVE_ACTIVITY_ROW_ID,
-      createdAt: input.activeTurnStartedAt,
-    });
-  }
+  // Keep the liveness gauge below the active output and worktree setup.
+  if (input.isWorking) appendWorkingRow();
   const rows = attachTrailingToolGroupsToAssistant(nextRows);
   input.queuedMessages?.forEach((queuedMessage, index) => {
     rows.push({

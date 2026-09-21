@@ -19,6 +19,12 @@ type ComposerSelectControlProps = Omit<ComponentProps<typeof SelectTrigger>, "si
 const composerControlClassName =
   "rounded-[var(--control-radius)] text-secondary-label transition-none hover:text-foreground [&_svg[data-composer-control-chevron]]:-mx-0.5 [&_svg[data-composer-control-icon]]:mx-0";
 const expandedComposerControlClassName = "h-7 min-h-7 gap-1.5 px-2.5";
+/**
+ * Layered on top of the expanded (`sm`) control classes when the footer is too
+ * narrow for full-size pills. Trimming padding and the inner gap is what buys
+ * the room to keep every control inline instead of folding them into a menu.
+ */
+export const composerCompactControlClassName = "gap-1 px-1.5";
 const restingComposerControlClassName =
   "[--control-icon-color:currentColor] font-normal text-muted-foreground/70 hover:text-foreground/80 [&_svg[data-composer-control-chevron]]:-me-1 [&_svg[data-composer-control-chevron]]:ms-0";
 
