@@ -2079,6 +2079,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
   const isMobileViewport = useMediaQuery("max-sm");
+  const isTouchPrimaryInput = useMediaQuery("(pointer: coarse)");
   const {
     isComposerFocused,
     setIsComposerFocused,
@@ -3809,13 +3810,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const submitCitationAndSend = useCallback(() => {
     const intent = composerSubmissionIntentForEnter({
-      isMobileViewport,
+      isTouchPrimaryInput,
       shiftKey: false,
       modifierKey: true,
       isDraftThread: routeKind === "draft",
     });
     submitComposer(undefined, intent ?? "foreground");
-  }, [isMobileViewport, routeKind, submitComposer]);
+  }, [isTouchPrimaryInput, routeKind, submitComposer]);
   const compactThreadContext = useCallback(() => {
     if (
       compactDisabled ||
@@ -3979,7 +3980,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const submissionIntent =
       key === "Enter"
         ? composerSubmissionIntentForEnter({
-            isMobileViewport,
+            isTouchPrimaryInput,
             shiftKey: event.shiftKey,
             modifierKey: event.metaKey || event.ctrlKey,
             isDraftThread: routeKind === "draft",

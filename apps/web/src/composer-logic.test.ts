@@ -61,10 +61,10 @@ describe("formatAssistantCitationForComposer", () => {
 });
 
 describe("composerSubmissionIntentForEnter", () => {
-  it("submits plain Enter on desktop", () => {
+  it("submits plain Enter with mouse/trackpad input regardless of window width", () => {
     expect(
       composerSubmissionIntentForEnter({
-        isMobileViewport: false,
+        isTouchPrimaryInput: false,
         shiftKey: false,
         modifierKey: false,
         isDraftThread: true,
@@ -72,10 +72,10 @@ describe("composerSubmissionIntentForEnter", () => {
     ).toBe("foreground");
   });
 
-  it("inserts a newline for plain Enter on mobile", () => {
+  it("inserts a newline for plain Enter with touch input regardless of window width", () => {
     expect(
       composerSubmissionIntentForEnter({
-        isMobileViewport: true,
+        isTouchPrimaryInput: true,
         shiftKey: false,
         modifierKey: false,
         isDraftThread: true,
@@ -86,7 +86,7 @@ describe("composerSubmissionIntentForEnter", () => {
   it("inserts a newline for Shift+Enter", () => {
     expect(
       composerSubmissionIntentForEnter({
-        isMobileViewport: false,
+        isTouchPrimaryInput: false,
         shiftKey: true,
         modifierKey: false,
         isDraftThread: true,
@@ -97,7 +97,7 @@ describe("composerSubmissionIntentForEnter", () => {
   it("submits a new thread in the background with Mod+Enter", () => {
     expect(
       composerSubmissionIntentForEnter({
-        isMobileViewport: false,
+        isTouchPrimaryInput: false,
         shiftKey: false,
         modifierKey: true,
         isDraftThread: true,
@@ -108,7 +108,7 @@ describe("composerSubmissionIntentForEnter", () => {
   it("keeps Mod+Enter in the foreground for an active thread", () => {
     expect(
       composerSubmissionIntentForEnter({
-        isMobileViewport: false,
+        isTouchPrimaryInput: false,
         shiftKey: false,
         modifierKey: true,
         isDraftThread: false,
