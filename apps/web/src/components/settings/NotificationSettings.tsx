@@ -1,15 +1,25 @@
-import { useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { NotificationPosition } from "@t3tools/contracts/settings";
 import * as Schema from "effect/Schema";
 
+import {
+  getCustomNotificationSound,
+  parseCustomNotificationSound,
+  readNotificationSound,
+  saveCustomNotificationSound,
+  subscribeCustomNotificationSound,
+} from "../../lib/customNotificationSound";
 import {
   hasDesktopNotifications,
   hasNotificationSound,
   NOTIFICATION_MODE_LABELS,
   unlockNotificationAudio,
+  playNotificationSound,
+  validateNotificationSound,
 } from "../../threadNotifications";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Button } from "../ui/button";
+import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import { SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
@@ -140,6 +150,110 @@ export function NotificationSettings() {
             ))}
           </SelectPopup>
         </Select>
+      }
+    />
+  );
+}
+
+export function NotificationSoundSettings() {
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const stored = useSyncExternalStore(
+    subscribeCustomNotificationSound,
+    getCustomNotificationSound,
+    () => null,
+  );
+  const sound = parseCustomNotificationSound(stored);
+
+  return (
+    <SettingsRow
+      {...searchableSetting("notification-sound")}
+      description={
+        <>
+          <span>
+            Use one audio file for all thread alerts, up to 1 MB and 30 seconds. Saved in this
+            desktop app. Enable sound in Thread notifications.
+          </span>
+          {error && (
+            <span role="alert" className="block text-destructive">
+              {error}
+            </span>
+          )}
+        </>
+      }
+      control={
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger
+              render={<span className="max-w-40 truncate text-xs text-muted-foreground" />}
+            >
+              {sound?.name ?? "Default"}
+            </TooltipTrigger>
+            <TooltipPopup>{sound?.name ?? "Default"}</TooltipPopup>
+          </Tooltip>
+          <input
+            ref={input}
+            type="file"
+            accept="audio/*"
+            aria-label="Choose notification sound"
+            className="hidden"
+            disabled={busy}
+            onChange={async (event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = "";
+              if (!file) return;
+              setBusy(true);
+              setError(null);
+              try {
+                const url = await readNotificationSound(file);
+                await validateNotificationSound(url);
+                saveCustomNotificationSound({ name: file.name, url });
+              } catch (cause) {
+                setError(cause instanceof Error ? cause.message : "Could not save this sound.");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            aria-label="Choose notification sound"
+            onClick={() => input.current?.click()}
+          >
+            {busy ? "Loading…" : "Choose file"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            aria-label="Preview notification sound"
+            onClick={async () => {
+              await unlockNotificationAudio();
+              void playNotificationSound("completion", () => true);
+            }}
+          >
+            Preview
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy || !sound}
+            aria-label="Reset notification sound"
+            onClick={() => {
+              try {
+                saveCustomNotificationSound(null);
+                setError(null);
+              } catch {
+                setError("Could not reset this sound. Try restarting the desktop app.");
+              }
+            }}
+          >
+            Reset
+          </Button>
+        </div>
       }
     />
   );

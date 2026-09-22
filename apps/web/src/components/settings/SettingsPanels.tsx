@@ -1,5 +1,9 @@
 import { Spinner } from "~/components/ui/spinner";
-import { NotificationPositionSettings, NotificationSettings } from "./NotificationSettings";
+import {
+  NotificationPositionSettings,
+  NotificationSettings,
+  NotificationSoundSettings,
+} from "./NotificationSettings";
 import { ArchiveIcon, ArchiveX, ChevronRightIcon, SettingsIcon } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { CSSProperties, ReactNode } from "react";
@@ -2296,6 +2300,7 @@ export function GeneralSettingsPanel() {
 
       <SettingsSection id="behavior" title="Behavior">
         <NotificationSettings />
+        {isElectron && <NotificationSoundSettings />}
         <NotificationPositionSettings />
         <SettingsRow
           {...searchableSetting("in-app-notifications")}
