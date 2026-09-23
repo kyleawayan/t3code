@@ -1269,6 +1269,22 @@ export default function GitActionsControl({
       }
       onConfirmed?.();
 
+      if (onRequestAgentAction) {
+        const prompts: Record<GitStackedAction, string> = {
+          commit: "Commit.",
+          push: "Push.",
+          create_pr: "Create PR.",
+          commit_push: "Commit and push.",
+          commit_push_pr: "Commit and push, then create PR.",
+        };
+        onRequestAgentAction(
+          featureBranch
+            ? `Create and check out a new feature branch. ${prompts[action]}`
+            : prompts[action],
+        );
+        return;
+      }
+
       const progressStages = buildGitActionProgressStages({
         action,
         hasCustomCommitMessage: !!commitMessage?.trim(),
@@ -1506,21 +1522,10 @@ export default function GitActionsControl({
     });
   };
 
-  const requestAgentAction = (action: GitStackedAction) => {
-    const prompts: Record<GitStackedAction, string> = {
-      commit: "Commit.",
-      push: "Push.",
-      create_pr: "Create PR.",
-      commit_push: "Commit and push.",
-      commit_push_pr: "Commit and push, then create PR.",
-    };
-    onRequestAgentAction?.(prompts[action]);
-  };
-
   const runQuickAction = () => {
     if (onRequestAgentAction) {
       if (quickAction.action) {
-        requestAgentAction(quickAction.action);
+        void runGitActionWithToast({ action: quickAction.action });
         return;
       }
       if (quickAction.kind === "run_pull") {
@@ -1603,7 +1608,7 @@ export default function GitActionsControl({
       return;
     }
     if (onRequestAgentAction && item.dialogAction) {
-      requestAgentAction(item.dialogAction);
+      void runGitActionWithToast({ action: item.dialogAction });
       return;
     }
     if (item.dialogAction === "push") {
