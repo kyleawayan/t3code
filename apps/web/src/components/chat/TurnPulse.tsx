@@ -1,5 +1,6 @@
 import { cn } from "~/lib/utils";
 
+import claudeThinkingPng from "../../assets/claude-thinking.png";
 import claudeTypingGif from "../../assets/claude-typing.gif";
 import codeySpritesheet from "../../assets/codex-pets/codex-spritesheet.webp";
 import styles from "./TurnPulse.module.css";
@@ -77,7 +78,7 @@ export function TurnPulse({
         // its feet — the gif has transparent foot padding — and is the knob for
         // how much the feet overlap the bar. Pixelated keeps the art crisp.
         <img
-          src={claudeTypingGif}
+          src={verdict.kind === "thinking" ? claudeThinkingPng : claudeTypingGif}
           alt=""
           aria-hidden
           className="pointer-events-none -mb-[1px] h-6 w-auto self-start [image-rendering:pixelated]"
