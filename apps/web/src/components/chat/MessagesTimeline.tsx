@@ -241,6 +241,10 @@ import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../times
 
 import { SkillInlineText } from "./SkillInlineText";
 import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
+import { TurnPulse, type TurnMascot } from "./TurnPulse";
+import type { TurnPulseVerdict } from "./turnPulse.logic";
+
+const HIDDEN_TURN_PULSE: TurnPulseVerdict = { kind: "hidden" };
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import {
   buildReviewCommentRenderablePatch,
@@ -295,6 +299,10 @@ interface TimelineRowActivityState {
   isCompacting: boolean;
   isRevertingCheckpoint: boolean;
   latestTurnId: TurnId | null;
+  /** Live token-driven liveness for the working row. */
+  turnPulse: TurnPulseVerdict;
+  /** Provider mascot perched on the working bar. */
+  turnMascot: TurnMascot | undefined;
 }
 
 const TimelineRowCtx = createContext<TimelineRowSharedState>(null!);
@@ -327,7 +335,7 @@ function TimelineLoadEarlierHeader({
 }) {
   return (
     <div className={fade ? "pt-[var(--workspace-titlebar-scroll-fade-height)]" : "pt-3 sm:pt-4"}>
-      <div className="mx-auto w-full max-w-3xl pb-2">
+      <div className="me-auto w-full max-w-3xl pb-2">
         <button
           type="button"
           onClick={onLoadEarlier}
@@ -385,6 +393,8 @@ interface MessagesTimelineProps {
   isWorking: boolean;
   isPreparingWorktree?: boolean;
   isCompacting?: boolean;
+  turnPulse?: TurnPulseVerdict;
+  turnMascot?: TurnMascot | undefined;
   activeTurnStartedAt: string | null;
   /** Live bootstrap progress for this thread, or null when none is tracked. */
   worktreeSetup?: WorktreeSetupSnapshot | null;
@@ -461,6 +471,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onOpenWorktreeSetupTerminal,
   isPreparingWorktree = false,
   isCompacting = false,
+  turnPulse = HIDDEN_TURN_PULSE,
+  turnMascot,
   activeTurnStartedAt,
   agentPanelModel,
   onOpenAgents = NOOP_OPEN_AGENTS,
@@ -987,15 +999,25 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isCompacting,
       isRevertingCheckpoint,
       latestTurnId: latestTurn?.turnId ?? null,
+      turnPulse,
+      turnMascot,
     }),
-    [isCompacting, isRevertingCheckpoint, isWorking, isPreparingWorktree, latestTurn?.turnId],
+    [
+      isCompacting,
+      isRevertingCheckpoint,
+      isWorking,
+      isPreparingWorktree,
+      latestTurn?.turnId,
+      turnPulse,
+      turnMascot,
+    ],
   );
 
   // Stable renderItem — no closure deps. Row components read shared state
   // from TimelineRowCtx, which propagates through LegendList's memo.
   const renderItem = useCallback(
     ({ item }: { item: MessagesTimelineRow }) => (
-      <div className="mx-auto w-full min-w-0 max-w-3xl overflow-x-clip" data-timeline-root="true">
+      <div className="me-auto w-full min-w-0 max-w-3xl overflow-x-clip" data-timeline-root="true">
         <TimelineRowContent row={item} />
       </div>
     ),
@@ -1213,7 +1235,7 @@ function TimelineMinimap({
   return (
     <div
       className={cn(
-        "group/minimap pointer-events-none absolute inset-y-0 left-0 z-40 hidden w-18 [@media(pointer:fine)]:block",
+        "group/minimap pointer-events-none absolute inset-y-0 right-0 z-40 hidden w-18 [@media(pointer:fine)]:block",
         hasPersistentGutter
           ? "opacity-100"
           : "opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100",
@@ -1224,9 +1246,9 @@ function TimelineMinimap({
       <div className="relative h-full w-full select-none">
         <div
           className={cn(
-            "absolute top-1/2 left-3 -translate-y-1/2",
+            "absolute top-1/2 right-3 -translate-y-1/2",
             // The strip is width-capped to the side gutter so it never overlays
-            // the centered content column; with no usable gutter it goes inert.
+            // the left-aligned content column; with no usable gutter it goes inert.
             hitStripWidth > 0 ? "pointer-events-auto" : "pointer-events-none",
           )}
           style={{
@@ -1243,7 +1265,7 @@ function TimelineMinimap({
           />
           <button
             aria-label={`Jump to message: ${activeItem?.userText ?? "User message"}`}
-            className="absolute inset-y-0 left-0 w-full cursor-pointer bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+            className="absolute inset-y-0 right-0 w-full cursor-pointer bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
             onBlur={() => setActiveIndex(null)}
             onClick={(event) => {
               if (timelineMinimapEventTargetsPreview(event.target)) {
@@ -1287,7 +1309,7 @@ function TimelineMinimap({
             }}
             type="button"
           >
-            <div className="absolute top-0 left-3 h-full w-px bg-border/15" />
+            <div className="absolute top-0 right-3 h-full w-px bg-border/15" />
             {items.map((item, index) => {
               const top = `${resolveTimelineMinimapTopPercent(index, items.length)}%`;
               const activeDistance =
@@ -1296,7 +1318,7 @@ function TimelineMinimap({
                 <span
                   aria-hidden="true"
                   className={cn(
-                    "pointer-events-none absolute left-0 h-0.5 -translate-y-1/2 rounded-full bg-muted-foreground/35 transition-[background-color,width] duration-150 data-[in-view=true]:bg-foreground/90",
+                    "pointer-events-none absolute right-0 h-0.5 -translate-y-1/2 rounded-full bg-muted-foreground/35 transition-[background-color,width] duration-150 data-[in-view=true]:bg-foreground/90",
                     activeDistance === 0
                       ? "w-6 bg-muted-foreground/75"
                       : activeDistance === 1
@@ -1321,7 +1343,7 @@ function TimelineMinimap({
             })}
             {activeItem ? (
               <span
-                className="pointer-events-auto absolute left-8 w-80 cursor-text select-text"
+                className="pointer-events-auto absolute right-8 w-80 cursor-text select-text"
                 data-minimap-preview
                 onMouseMove={(event) => event.stopPropagation()}
                 style={{
@@ -2210,10 +2232,23 @@ function ProposedPlanTimelineRow({
 }
 
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
-  const { isCompacting, isPreparingWorktree } = use(TimelineRowActivityCtx);
+  const { isCompacting, isPreparingWorktree, turnPulse, turnMascot } = use(TimelineRowActivityCtx);
   return (
-    <div className="border-b border-border/60 pb-2 pt-1">
-      <div className="flex h-6 min-w-0 items-baseline px-1 text-sm leading-relaxed text-muted-foreground tabular-nums">
+    <div className="py-0.5 pl-1.5">
+      <div className="flex min-w-0 items-center gap-2 pt-1 text-secondary-label text-[11px] tabular-nums">
+        {/* The dots animated on a timer, so they looked identical whether the
+            agent was working or wedged. The pulse only moves on real output;
+            the dots stay as the fallback for providers that stream nothing we
+            can count. */}
+        {turnPulse.kind === "hidden" ? (
+          <span className="inline-flex items-center gap-[3px]">
+            <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-status-pulse" />
+            <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-status-pulse [animation-delay:200ms]" />
+            <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-status-pulse [animation-delay:400ms]" />
+          </span>
+        ) : (
+          <TurnPulse verdict={turnPulse} mascot={turnMascot} />
+        )}
         <span
           key={isPreparingWorktree ? "setup" : isCompacting ? "compacting" : "working"}
           ref={isPreparingWorktree || isCompacting ? observeVisibleAnimation : undefined}
@@ -2233,8 +2268,11 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
             </>
           ) : row.createdAt ? (
             <>
-              Working for <WorkingTimer createdAt={row.createdAt} />
+              {turnPulse.kind === "thinking" ? "Thinking · " : "Working for "}
+              <WorkingTimer createdAt={row.createdAt} />
             </>
+          ) : turnPulse.kind === "thinking" ? (
+            "Thinking..."
           ) : (
             "Working..."
           )}

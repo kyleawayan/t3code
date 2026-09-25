@@ -87,6 +87,8 @@ describe("searchSettings", () => {
   });
 
   it("finds settings that used to be reachable only through their section", () => {
+    expect(searchSettings("notification position")[0]?.id).toBe("notification-position");
+    expect(searchSettings("toast corner")[0]?.id).toBe("notification-position");
     expect(searchSettings("pull request template")[0]?.id).toBe("follow-change-request-templates");
     expect(searchSettings("git security keys")[0]?.id).toBe("git-fetch-interval");
     expect(searchSettings("push notifications")[0]?.id).toBe("publish-agent-activity");

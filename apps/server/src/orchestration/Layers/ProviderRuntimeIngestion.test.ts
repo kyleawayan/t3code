@@ -59,6 +59,7 @@ import {
   ProviderRuntimeIngestionLive,
   splitBufferedAssistantText,
 } from "./ProviderRuntimeIngestion.ts";
+import * as ThreadTurnActivity from "../ThreadTurnActivity.ts";
 import { DEFAULT_THREAD_TITLE } from "../threadTitles.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ProviderRuntimeIngestionService } from "../Services/ProviderRuntimeIngestion.ts";
@@ -237,7 +238,10 @@ async function waitForThread(
 
 describe("ProviderRuntimeIngestion", () => {
   let runtime: ManagedRuntime.ManagedRuntime<
-    OrchestrationEngineService | ProviderRuntimeIngestionService | ProjectionSnapshotQuery,
+    | OrchestrationEngineService
+    | ProviderRuntimeIngestionService
+    | ProjectionSnapshotQuery
+    | ThreadTurnActivity.ThreadTurnActivityService,
     unknown
   > | null = null;
   let scope: Scope.Closeable | null = null;
@@ -324,6 +328,7 @@ describe("ProviderRuntimeIngestion", () => {
       // engine, and the snapshot query (reader).
       Layer.provideMerge(ThreadBackgroundLiveness.layer),
       Layer.provideMerge(ThreadPlanProgress.layer),
+      Layer.provideMerge(ThreadTurnActivity.layer),
       Layer.provideMerge(SqlitePersistenceMemory),
       Layer.provideMerge(Layer.succeed(ProviderService, provider.service)),
       Layer.provideMerge(makeTestServerSettingsLayer(options?.serverSettings)),
@@ -401,6 +406,10 @@ describe("ProviderRuntimeIngestion", () => {
       updatedAt: createdAt,
     });
 
+    const turnActivity = await runtime.runPromise(
+      Effect.service(ThreadTurnActivity.ThreadTurnActivityService),
+    );
+
     return {
       engine,
       dispatch,
@@ -418,6 +427,7 @@ describe("ProviderRuntimeIngestion", () => {
       emitAndDrain,
       sqlCount: sqlCounter.count,
       setProviderSession: provider.setSession,
+      turnActivity,
       drain,
     };
   }
@@ -1106,6 +1116,119 @@ describe("ProviderRuntimeIngestion", () => {
       (thread) => thread.session?.status === "ready" && thread.session?.activeTurnId === null,
       10_000,
     );
+  });
+
+  it("publishes turn liveness as real provider events flow through ingestion", async () => {
+    const harness = await createHarness();
+    const published: Array<{ state: string; tokenChunks: number }> = [];
+    const { unsubscribe } = await Effect.runPromise(
+      harness.turnActivity.subscribe((activity) =>
+        Effect.sync(() => {
+          published.push({ state: activity.state, tokenChunks: activity.tokenChunks });
+        }),
+      ),
+    );
+
+    const turnId = asTurnId("turn-liveness");
+    await harness.emitAndDrain([
+      {
+        type: "turn.started",
+        eventId: asEventId("evt-liveness-turn-started"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        threadId: asThreadId("thread-1"),
+        turnId,
+      },
+    ]);
+    // Reasoning first, then assistant text: both are model output, so both must
+    // advance the pulse — the thinking phase is exactly where a wedge hides.
+    await harness.emitAndDrain([
+      {
+        type: "content.delta",
+        eventId: asEventId("evt-liveness-reasoning"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:01.000Z",
+        threadId: asThreadId("thread-1"),
+        turnId,
+        payload: { streamKind: "reasoning_text", delta: "thinking" },
+      },
+    ]);
+    await harness.emitAndDrain([
+      {
+        type: "content.delta",
+        eventId: asEventId("evt-liveness-assistant"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:02.000Z",
+        threadId: asThreadId("thread-1"),
+        turnId,
+        payload: { streamKind: "assistant_text", delta: "answer" },
+      },
+    ]);
+    await harness.emitAndDrain([
+      {
+        type: "turn.completed",
+        eventId: asEventId("evt-liveness-turn-completed"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:03.000Z",
+        threadId: asThreadId("thread-1"),
+        turnId,
+        status: "completed",
+      },
+    ]);
+
+    unsubscribe();
+
+    const states = published.map((entry) => entry.state);
+    // A turn opens quiet, both deltas report generating, and it ends idle.
+    expect(states[0]).toBe("quiet");
+    expect(states).toContain("generating");
+    expect(states.at(-1)).toBe("idle");
+
+    // The pulse only ever advances on a real token and never regresses. How
+    // many "generating" frames reach the wire is timing-dependent (deltas
+    // inside one throttle window collapse — the token is still counted, which
+    // the service unit test pins), so assert the invariant, not the frame count.
+    const generating = published.filter((entry) => entry.state === "generating");
+    expect(generating.length).toBeGreaterThan(0);
+    const chunks = generating.map((entry) => entry.tokenChunks);
+    expect(chunks[0]).toBeGreaterThanOrEqual(1);
+    expect(chunks).toEqual([...chunks].sort((a, b) => a - b));
+
+    // The turn is forgotten once it ends, so a reconnecting client re-derives
+    // from the next event rather than inheriting a stale pulse.
+    expect(harness.turnActivity.get("thread-1")).toBeUndefined();
+  });
+
+  it("publishes automatic compaction lifecycle without a compact command", async () => {
+    const harness = await createHarness();
+    const base = {
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-auto-compact"),
+    };
+    await harness.emitAndDrain([
+      { ...base, type: "turn.started", eventId: asEventId("auto-compact-turn-started") },
+      {
+        ...base,
+        type: "item.started",
+        eventId: asEventId("auto-compact-started"),
+        itemId: ProviderItemId.make("auto-compact-item"),
+        payload: { itemType: "context_compaction" },
+      },
+    ]);
+    expect(harness.turnActivity.get("thread-1")?.isCompacting).toBe(true);
+    await harness.emitAndDrain([
+      {
+        ...base,
+        type: "item.completed",
+        eventId: asEventId("auto-compact-completed"),
+        itemId: ProviderItemId.make("auto-compact-item"),
+        payload: { itemType: "context_compaction" },
+      },
+    ]);
+    expect(harness.turnActivity.get("thread-1")?.isCompacting).toBeUndefined();
+    expect(harness.turnActivity.get("thread-1")?.state).toBe("quiet");
   });
 
   it("accepts claude turn lifecycle when seeded thread id is a synthetic placeholder", async () => {

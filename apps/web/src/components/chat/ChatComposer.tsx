@@ -253,6 +253,7 @@ import {
   ComposerControl,
   ComposerControlIcon,
   ComposerControlSeparator,
+  composerCompactControlClassName,
   ComposerSelectControl,
 } from "./ComposerControl";
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
@@ -1034,12 +1035,18 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
   interactionMode: ProviderInteractionMode;
   runtimeMode: RuntimeMode;
   size?: "sm" | "xs";
+  /**
+   * Narrow footers keep every control but tighten it: short mode labels, no
+   * separators, icon-only build/plan toggle, and less horizontal padding.
+   */
+  compact?: boolean;
   hidden?: boolean;
   onToggleInteractionMode: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
   const size = props.size ?? "sm";
   const composerFloatingLayerProps = useComposerMenuProps();
+  const compact = props.compact === true;
   const [open, setOpen] = useComposerMenuState(props.hidden);
   const runtimeModeOption = runtimeModeConfig[props.runtimeMode];
   const RuntimeModeIcon = runtimeModeOption.icon;
@@ -1050,7 +1057,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
 
   const interactionModeToggle = props.showInteractionModeToggle ? (
     <>
-      <ComposerControlSeparator size={size} />
+      {compact ? null : <ComposerControlSeparator size={size} />}
       <Tooltip>
         <TooltipTrigger
           render={
@@ -1058,6 +1065,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
               size={size}
               className={cn(
                 "shrink-0 whitespace-nowrap",
+                compact && composerCompactControlClassName,
                 props.interactionMode === "plan"
                   ? "bg-accent text-accent-foreground hover:bg-accent/80"
                   : size === "xs"
@@ -1083,7 +1091,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
               opticalSize={size === "xs" ? "default" : "large"}
             />
           )}
-          <span className="sr-only sm:not-sr-only">
+          <span className={compact ? "sr-only" : "sr-only sm:not-sr-only"}>
             {props.interactionMode === "plan" ? "Plan" : "Build"}
           </span>
         </TooltipTrigger>
@@ -1094,7 +1102,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
 
   return (
     <>
-      <ComposerControlSeparator size={size} />
+      {compact ? null : <ComposerControlSeparator size={size} />}
 
       <Tooltip>
         <Select
@@ -1108,13 +1116,28 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
               <ComposerSelectControl
                 data-composer-shortcut="composer.mode"
                 size={size}
-                className={size === "xs" ? undefined : "font-medium"}
+                className={cn(
+                  size === "xs" ? undefined : "font-medium",
+                  // Floor is the icon plus one letter. The icon and tooltip
+                  // carry the access level once the word stops fitting.
+                  compact && cn("min-w-11 shrink", composerCompactControlClassName),
+                )}
                 aria-label="Runtime mode"
               />
             }
           >
             <ComposerControlIcon icon={RuntimeModeIcon} size={size} />
-            <SelectValue>{runtimeModeOption.label}</SelectValue>
+            {/* Clipped rather than ellipsised: at the floor "A" says more
+                than "A…" in the same space. */}
+            <SelectValue
+              className={
+                // Spelled out because `text-clip` alone would merge away the
+                // base `truncate` and with it the overflow clipping.
+                compact ? "min-w-0 overflow-hidden text-clip whitespace-nowrap" : undefined
+              }
+            >
+              {compact ? runtimeModeOption.compactLabel : runtimeModeOption.label}
+            </SelectValue>
           </TooltipTrigger>
           <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
             {runtimeModeOptions.map((mode) => {
@@ -1431,6 +1454,11 @@ export interface ChatComposerProps {
 // --------------------------------------------------------------------------
 // Component
 // --------------------------------------------------------------------------
+
+/** Escape arms the stop; a second press inside this window confirms it. */
+const ESCAPE_STOP_CONFIRM_MS = 2_000;
+/** `keyCode` browsers report while an IME composition is being cancelled. */
+const IME_COMPOSITION_KEY_CODE = 229;
 
 export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps) {
   const {
@@ -2051,6 +2079,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
   const isMobileViewport = useMediaQuery("max-sm");
+  const isTouchPrimaryInput = useMediaQuery("(pointer: coarse)");
   const {
     isComposerFocused,
     setIsComposerFocused,
@@ -3781,13 +3810,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const submitCitationAndSend = useCallback(() => {
     const intent = composerSubmissionIntentForEnter({
-      isMobileViewport,
+      isTouchPrimaryInput,
       shiftKey: false,
       modifierKey: true,
       isDraftThread: routeKind === "draft",
     });
     submitComposer(undefined, intent ?? "foreground");
-  }, [isMobileViewport, routeKind, submitComposer]);
+  }, [isTouchPrimaryInput, routeKind, submitComposer]);
   const compactThreadContext = useCallback(() => {
     if (
       compactDisabled ||
@@ -3951,7 +3980,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const submissionIntent =
       key === "Enter"
         ? composerSubmissionIntentForEnter({
-            isMobileViewport,
+            isTouchPrimaryInput,
             shiftKey: event.shiftKey,
             modifierKey: event.metaKey || event.ctrlKey,
             isDraftThread: routeKind === "draft",
@@ -4843,6 +4872,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     size: "xs",
     hidden: composerControlsHidden || restingHiddenBlockCount > 1,
   });
+  const compactProviderTraitsPicker = composerControlsCompact
+    ? renderProviderTraitsPicker({ ...providerTraitsPickerInput, compact: true })
+    : providerTraitsPicker;
   const restingBlockDefs = [
     ...(providerTraitsPicker
       ? [
@@ -4850,8 +4882,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             id: "traits",
             content: (
               <>
-                <ComposerControlSeparator size={composerControlsInStrip ? "xs" : "sm"} />
-                {composerControlsInStrip ? restingProviderTraitsPicker : providerTraitsPicker}
+                {composerControlsCompact ? null : (
+                  <ComposerControlSeparator size={composerControlsInStrip ? "xs" : "sm"} />
+                )}
+                {composerControlsInStrip
+                  ? restingProviderTraitsPicker
+                  : compactProviderTraitsPicker}
               </>
             ),
           },
@@ -4865,6 +4901,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           interactionMode={interactionMode}
           runtimeMode={runtimeMode}
           size={composerControlsInStrip ? "xs" : "sm"}
+          compact={composerControlsCompact}
           hidden={composerControlsHidden || restingHiddenBlockCount > 0}
           onToggleInteractionMode={toggleInteractionMode}
           onRuntimeModeChange={handleRuntimeModeChange}
@@ -4902,6 +4939,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         />
       ) : null}
       <ProviderModelPicker
+        compact={composerControlsCompact}
         isComposerOwned
         disabled={providerCatalogPending}
         activeInstanceId={
@@ -4923,7 +4961,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         triggerClassName={
           composerControlsInStrip
             ? "min-w-13 shrink text-xs! @max-[640px]/composer-surface:[&_[data-chat-provider-model-picker-label]]:w-0 @max-[640px]/composer-surface:[&_[data-chat-provider-model-picker-label]]:flex-none"
-            : "-ms-2.5"
+            : composerControlsCompact
+              ? cn("-ms-1.5", composerCompactControlClassName)
+              : "-ms-2.5"
         }
         terminalOpen={terminalOpen}
         open={isComposerModelPickerOpen}
@@ -4947,65 +4987,50 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         onOpenProviderSetup={onOpenProviderSetup}
       />
 
-      {composerControlsCompact ? (
-        <CompactComposerControlsMenu
-          interactionMode={interactionMode}
-          runtimeMode={runtimeMode}
-          showInteractionModeToggle={planModeUiEnabled}
-          traitsMenuContent={providerTraitsMenuContent}
-          onToggleInteractionMode={toggleInteractionMode}
-          onRuntimeModeChange={handleRuntimeModeChange}
-        />
-      ) : (
-        <>
-          {restingBlockDefs.map((def, index) => {
-            if (!composerControlsInStrip) {
-              return <Fragment key={def.id}>{def.content}</Fragment>;
+      {restingBlockDefs.map((def, index) => {
+        if (!composerControlsInStrip) {
+          return <Fragment key={def.id}>{def.content}</Fragment>;
+        }
+        const hidden = index >= restingBlockDefs.length - restingHiddenBlockCount;
+        return (
+          <div
+            key={def.id}
+            data-resting-block={def.id}
+            aria-hidden={hidden || undefined}
+            inert={hidden || undefined}
+            className={cn(
+              "flex w-max min-w-max shrink-0 items-center gap-1",
+              hidden && "pointer-events-none invisible absolute",
+            )}
+          >
+            {def.content}
+          </div>
+        );
+      })}
+      {composerControlsInStrip ? (
+        <div
+          data-resting-controls-overflow
+          aria-hidden={hiddenRestingBlockIds.length === 0 || undefined}
+          inert={hiddenRestingBlockIds.length === 0 || undefined}
+          className={cn(
+            "min-w-0 shrink-0",
+            hiddenRestingBlockIds.length === 0 && "pointer-events-none invisible absolute",
+          )}
+        >
+          <CompactComposerControlsMenu
+            interactionMode={interactionMode}
+            runtimeMode={runtimeMode}
+            size="xs"
+            hidden={composerControlsHidden || hiddenRestingBlockIds.length === 0}
+            showInteractionModeToggle={planModeUiEnabled && hiddenRestingBlockIds.includes("mode")}
+            traitsMenuContent={
+              hiddenRestingBlockIds.includes("traits") ? providerTraitsMenuContent : undefined
             }
-            const hidden = index >= restingBlockDefs.length - restingHiddenBlockCount;
-            return (
-              <div
-                key={def.id}
-                data-resting-block={def.id}
-                aria-hidden={hidden || undefined}
-                inert={hidden || undefined}
-                className={cn(
-                  "flex w-max min-w-max shrink-0 items-center gap-1",
-                  hidden && "pointer-events-none invisible absolute",
-                )}
-              >
-                {def.content}
-              </div>
-            );
-          })}
-          {composerControlsInStrip ? (
-            <div
-              data-resting-controls-overflow
-              aria-hidden={hiddenRestingBlockIds.length === 0 || undefined}
-              inert={hiddenRestingBlockIds.length === 0 || undefined}
-              className={cn(
-                "min-w-0 shrink-0",
-                hiddenRestingBlockIds.length === 0 && "pointer-events-none invisible absolute",
-              )}
-            >
-              <CompactComposerControlsMenu
-                interactionMode={interactionMode}
-                runtimeMode={runtimeMode}
-                size="xs"
-                hidden={composerControlsHidden || hiddenRestingBlockIds.length === 0}
-                showInteractionModeToggle={
-                  planModeUiEnabled && hiddenRestingBlockIds.includes("mode")
-                }
-                traitsMenuContent={
-                  hiddenRestingBlockIds.includes("traits") ? providerTraitsMenuContent : undefined
-                }
-                onToggleInteractionMode={toggleInteractionMode}
-                onRuntimeModeChange={handleRuntimeModeChange}
-              />
-            </div>
-          ) : null}
-        </>
-      )}
+            onToggleInteractionMode={toggleInteractionMode}
+            onRuntimeModeChange={handleRuntimeModeChange}
+          />
+        </div>
+      ) : null}
     </>
   );
   const showTasksTab =
@@ -5618,6 +5643,50 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const handleInterruptPrimaryAction = useCallback(() => {
     void onInterrupt();
   }, [onInterrupt]);
+
+  // Escape stops a running turn — the keyboard equivalent of the stop button.
+  //
+  // Deliberately narrow. An earlier version listened on `window` and fired on
+  // any unclaimed Escape, so a reflexive Esc with nothing open ended the turn.
+  // Three guards make it an intentional act: focus must already be inside the
+  // composer, it takes two presses inside a short window, and an IME
+  // composition cancel never counts. The arming press does not preventDefault,
+  // so anything else that wanted that Escape still gets it.
+  const escapeArmedAtRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (phase !== "running") return;
+    const handler = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || event.repeat) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      // Cancelling an IME composition sends Escape. That is not a stop.
+      if (event.isComposing || event.keyCode === IME_COMPOSITION_KEY_CODE) return;
+      const active = document.activeElement;
+      const focusedInComposer =
+        active instanceof Node && (composerFormRef.current?.contains(active) ?? false);
+      if (!focusedInComposer) return;
+
+      const armedAt = escapeArmedAtRef.current;
+      const now = Date.now();
+      if (armedAt !== null && now - armedAt <= ESCAPE_STOP_CONFIRM_MS) {
+        escapeArmedAtRef.current = null;
+        event.preventDefault();
+        void onInterrupt();
+        return;
+      }
+      escapeArmedAtRef.current = now;
+      toastManager.add({
+        type: "info",
+        title: "Press Esc again to stop",
+        timeout: ESCAPE_STOP_CONFIRM_MS,
+      });
+    };
+    window.addEventListener("keydown", handler);
+    return () => {
+      window.removeEventListener("keydown", handler);
+      escapeArmedAtRef.current = null;
+    };
+  }, [phase, onInterrupt]);
+
   const handleImplementPlanInNewThreadPrimaryAction = useCallback(() => {
     void onImplementPlanInNewThread();
   }, [onImplementPlanInNewThread]);
@@ -6769,6 +6838,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   data-chat-composer-footer-controls="true"
                   className={cn(
                     "-m-1 -ms-3.5 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 ps-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                    // Below this width the three labels and their chevrons no
+                    // longer fit together. The chevrons are pure affordance
+                    // and identical on all three, so they go first and the
+                    // labels keep their characters. The threshold is in rem so
+                    // it tracks the user's UI font size.
+                    "@max-[20rem]/composer-surface:[&_svg[data-composer-control-chevron]]:hidden",
                     isComposerResting && "hidden",
                   )}
                 >

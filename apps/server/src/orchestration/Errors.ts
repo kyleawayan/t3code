@@ -52,9 +52,15 @@ export class OrchestrationThreadSettleBlockedError extends Schema.TaggedError<Or
   }
 }
 
+export class OrchestrationAgentConcurrencyLimitError extends Schema.TaggedError<OrchestrationAgentConcurrencyLimitError>()(
+  "OrchestrationAgentConcurrencyLimitError",
+  { message: Schema.String },
+) {}
+
 export const OrchestrationCommandRejection = Schema.Union([
   OrchestrationCommandInvariantError,
   OrchestrationThreadSettleBlockedError,
+  OrchestrationAgentConcurrencyLimitError,
 ]);
 export type OrchestrationCommandRejection = typeof OrchestrationCommandRejection.Type;
 export const isOrchestrationCommandRejection = Schema.is(OrchestrationCommandRejection);

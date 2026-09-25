@@ -1,0 +1,415 @@
+name: Desktop Windows Fork Preview
+
+on:
+  pull_request:
+    types: [labeled, unlabeled, synchronize, reopened, closed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-windows-preview-${{ github.event.pull_request.number }}-${{ contains(fromJSON('["closed", "unlabeled"]'), github.event.action) && 'cleanup' || 'build' }}
+  cancel-in-progress: ${{ !contains(fromJSON('["closed", "unlabeled"]'), github.event.action) && (github.event.action != 'labeled' || github.event.label.name == 'preview:win') }}
+
+jobs:
+  wsl_runtime:
+    name: Build WSL runtime
+    if: >-
+      github.event.action != 'closed' &&
+      github.event.action != 'unlabeled' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(github.event.pull_request.labels.*.name, 'preview:win') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'preview:win')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        shell: bash
+        env:
+          CHECKOUT_REF: ${{ github.event.pull_request.head.sha }}
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          # Anonymous fetch avoids auth cleanup traversing orphaned submodule entries.
+          git init .
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          git fetch --no-tags origin "$CHECKOUT_REF"
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git checkout --detach FETCH_HEAD
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: false
+
+      - name: Install native build libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsecret-1-dev pkg-config
+
+      - name: Install dependencies
+        run: vp install --filter=t3... --filter=@t3tools/scripts...
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - id: version
+        name: Set preview version
+        shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PREVIEW_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$PREVIEW_BRANCH" =~ (v[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "Expected a preview branch ending in vX.Y.Z." >&2
+            exit 1
+          fi
+          release_tag="${BASH_REMATCH[1]}"
+          git fetch --no-tags https://github.com/pingdotgg/t3code.git "refs/tags/${release_tag}:refs/tags/${release_tag}"
+          git merge-base --is-ancestor "$release_tag" HEAD
+          base_tag="$(git describe --tags --match 'v[0-9]*' --exclude '*-*' --abbrev=0)"
+          preview_version="${base_tag#v}-pr.${PR_NUMBER}.${GITHUB_RUN_NUMBER}"
+          node scripts/update-release-package-versions.ts "$preview_version"
+          cp .env.example .env
+          echo "version=$preview_version" >> "$GITHUB_OUTPUT"
+
+      - name: Build server and web client
+        run: vp run --filter t3 build
+
+      - name: Build resource monitor
+        run: cargo build --locked --release --manifest-path native/resource-monitor/Cargo.toml --target x86_64-unknown-linux-gnu
+
+      - name: Build CLI executable
+        env:
+          VP_NODE_VERSION: "26.8.2"
+        run: node apps/server/scripts/cli.ts build-exe --verbose
+
+      - name: Package and smoke-test WSL runtime
+        shell: bash
+        env:
+          PREVIEW_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          monitor_dir="$RUNNER_TEMP/cli-resource-monitor"
+          mkdir -p "$monitor_dir/linux-x64"
+          cp native/resource-monitor/target/x86_64-unknown-linux-gnu/release/t3-resource-monitor "$monitor_dir/linux-x64/"
+          node scripts/build-cli-archive.ts --platform linux --arch x64 --version "$PREVIEW_VERSION" --resource-monitor-dir "$monitor_dir" --output-dir release-cli
+          node scripts/smoke-cli-archive.ts --archive release-cli/*.tar.gz --expect-version "$PREVIEW_VERSION"
+
+      - name: Upload WSL runtime
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: wsl-runtime-linux-x64
+          path: release-cli/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  build:
+    name: Build Windows x64 preview
+    needs: wsl_runtime
+    runs-on: windows-2025
+    timeout-minutes: 60
+    outputs:
+      version: ${{ needs.wsl_runtime.outputs.version }}
+    steps:
+      - name: Checkout
+        shell: bash
+        env:
+          CHECKOUT_REF: ${{ github.event.pull_request.head.sha }}
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          git fetch --no-tags --depth=1 origin "$CHECKOUT_REF"
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git checkout --detach FETCH_HEAD
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Resolve package cache path
+        id: package_cache
+        shell: pwsh
+        run: '"path=$(vp pm cache dir)" >> $env:GITHUB_OUTPUT'
+
+      - name: Cache Windows packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ steps.package_cache.outputs.path }}
+          key: windows-preview-packages-x64-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install desktop dependencies
+        run: vp install --filter=@t3tools/desktop... --filter=t3... --filter=@t3tools/scripts...
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install Spectre-mitigated MSVC libraries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installPath = & $vswhere -products * -latest -property installationPath
+          if (-not $installPath) { throw 'Visual Studio installation not found.' }
+          $setupExe = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+          $proc = Start-Process -FilePath $setupExe `
+            -ArgumentList "modify", "--installPath", "`"$installPath`"", "--add", `
+            "Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre", "--quiet", "--norestart" `
+            -Wait -PassThru -NoNewWindow
+          if ($null -eq $proc -or $proc.ExitCode -ne 0) {
+            throw 'Could not prepare Spectre-mitigated MSVC libraries.'
+          }
+
+      - name: Download WSL runtime
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: wsl-runtime-linux-x64
+          path: wsl-runtime
+
+      - name: Build unsigned installer
+        shell: bash
+        env:
+          PREVIEW_VERSION: ${{ needs.wsl_runtime.outputs.version }}
+        run: |
+          set -euo pipefail
+          node scripts/update-release-package-versions.ts "$PREVIEW_VERSION"
+          cp .env.example .env
+          shopt -s nullglob
+          archives=(wsl-runtime/*.tar.gz)
+          if (( ${#archives[@]} != 1 )); then
+            echo "Expected exactly one WSL runtime archive." >&2
+            exit 1
+          fi
+          vp run dist:desktop:artifact --platform win --target nsis --arch x64 --build-version "$PREVIEW_VERSION" --wsl-runtime "${archives[0]}" --verbose
+          installers=(release/*.exe)
+          if (( ${#installers[@]} != 1 )); then
+            echo "Expected exactly one Windows installer." >&2
+            exit 1
+          fi
+
+      - name: Upload installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          path: release/*.exe
+          archive: false
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+
+  # Publishers handle installer bytes without checking out or executing PR code.
+  publish:
+    name: Publish preview
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+      attestations: write
+    env:
+      PREVIEW_LABEL: preview:win
+      PREVIEW_PLATFORM: windows
+      PREVIEW_EXTENSION: exe
+      PREVIEW_ARCH: x64
+      PREVIEW_TITLE: Windows preview
+      PREVIEW_DOWNLOAD_LABEL: Windows x64 installer
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PREVIEW_VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - name: Download installer
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: "*.exe"
+          merge-multiple: true
+          path: release
+
+      - id: prepare
+        name: Validate current preview
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const fs = require('node:fs');
+            const { owner, repo } = context.repo;
+            const prNumber = context.issue.number;
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+            if (pr.state !== 'open' || pr.head.sha !== process.env.HEAD_SHA ||
+                pr.head.repo?.full_name !== `${owner}/${repo}` ||
+                !pr.labels.some(label => label.name === process.env.PREVIEW_LABEL)) {
+              core.info('Preview is no longer current; skipping publication.');
+              return;
+            }
+            const version = process.env.PREVIEW_VERSION;
+            if (!new RegExp(`^\\d+\\.\\d+\\.\\d+-pr\\.${prNumber}\\.${context.runNumber}$`).test(version)) {
+              throw new Error('Unexpected preview version.');
+            }
+            const name = `T3-Code-${version}-${process.env.PREVIEW_ARCH}.${process.env.PREVIEW_EXTENSION}`;
+            const files = fs.readdirSync('release', { withFileTypes: true });
+            if (files.length !== 1 || files[0].name !== name || !files[0].isFile()) {
+              throw new Error('Expected exactly one regular installer for this preview.');
+            }
+            core.setOutput('path', `release/${name}`);
+            core.setOutput('name', name);
+
+      - name: Attest installer
+        if: steps.prepare.outputs.path != ''
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: ${{ steps.prepare.outputs.path }}
+
+      - name: Publish installer and comment
+        if: steps.prepare.outputs.path != ''
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          INSTALLER_PATH: ${{ steps.prepare.outputs.path }}
+          INSTALLER_NAME: ${{ steps.prepare.outputs.name }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const { owner, repo } = context.repo;
+            const prNumber = context.issue.number;
+            const label = process.env.PREVIEW_LABEL;
+            const extension = `.${process.env.PREVIEW_EXTENSION}`;
+            const tag = 'desktop-preview';
+            const current = async () => {
+              const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+              return pr.state === 'open' && pr.head.sha === process.env.HEAD_SHA &&
+                pr.head.repo?.full_name === `${owner}/${repo}` && pr.labels.some(item => item.name === label);
+            };
+            if (!(await current())) return;
+
+            let release;
+            try {
+              ({ data: release } = await github.rest.repos.getReleaseByTag({ owner, repo, tag }));
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              try {
+                ({ data: release } = await github.rest.repos.createRelease({
+                  owner, repo, tag_name: tag, target_commitish: context.payload.repository.default_branch,
+                  name: 'Desktop preview builds', prerelease: true,
+                  body: 'Desktop previews from pull requests. Downloads are removed when their PR closes or platform preview label is removed.',
+                }));
+              } catch (error) {
+                if (error.status !== 422) throw error;
+                // Mac and Windows can create the shared release concurrently.
+                ({ data: release } = await github.rest.repos.getReleaseByTag({ owner, repo, tag }));
+              }
+            }
+            const remove = async id => {
+              try { await github.rest.repos.deleteReleaseAsset({ owner, repo, asset_id: id }); }
+              catch (error) { if (error.status !== 404) throw error; }
+            };
+            const assets = await github.paginate(github.rest.repos.listReleaseAssets, {
+              owner, repo, release_id: release.id, per_page: 100,
+            });
+            const name = process.env.INSTALLER_NAME;
+            for (const asset of assets.filter(asset => asset.name === name)) await remove(asset.id);
+            if (!(await current())) return;
+            const { data: uploaded } = await github.rest.repos.uploadReleaseAsset({
+              owner, repo, release_id: release.id, name,
+              data: fs.readFileSync(process.env.INSTALLER_PATH),
+              headers: { 'content-type': 'application/octet-stream' },
+            });
+            if (!(await current())) { await remove(uploaded.id); return; }
+            for (const asset of assets) {
+              if (asset.name !== name && asset.name.includes(`-pr.${prNumber}.`) && asset.name.endsWith(extension)) {
+                await remove(asset.id);
+              }
+            }
+            if (!(await current())) { await remove(uploaded.id); return; }
+
+            const marker = `<!-- desktop-${process.env.PREVIEW_PLATFORM}-preview -->`;
+            const buildUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const commitUrl = `${context.serverUrl}/${owner}/${repo}/commit/${process.env.HEAD_SHA}`;
+            const body = [
+              marker, `### ${process.env.PREVIEW_TITLE}`, '',
+              `[Download ${process.env.PREVIEW_DOWNLOAD_LABEL}](${uploaded.browser_download_url})`, '',
+              `Version: ${process.env.PREVIEW_VERSION}`,
+              `Commit: [${process.env.HEAD_SHA.slice(0, 7)}](${commitUrl})`,
+              `[Build](${buildUrl})`, '',
+              'Unsigned preview installer.',
+              'No GitHub sign-in is needed to download.',
+              'The download stays available until this PR closes or its platform preview label is removed.',
+            ].join('\n');
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: prNumber, per_page: 100,
+            });
+            const existing = comments.find(comment => comment.user?.login === 'github-actions[bot]' && comment.body?.startsWith(marker));
+            if (!(await current())) { await remove(uploaded.id); return; }
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number: prNumber, body });
+            }
+
+  cleanup:
+    name: Remove platform preview
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      ((github.event.action == 'closed' && contains(github.event.pull_request.labels.*.name, 'preview:win')) ||
+      (github.event.action == 'unlabeled' && github.event.label.name == 'preview:win'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      PREVIEW_LABEL: preview:win
+      PREVIEW_PLATFORM: windows
+      PREVIEW_EXTENSION: exe
+      PREVIEW_ARCH: x64
+      PREVIEW_TITLE: Windows preview
+      PREVIEW_DOWNLOAD_LABEL: Windows x64 installer
+    steps:
+      - name: Remove downloads and update comment
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const prNumber = context.issue.number;
+            const active = async () => {
+              const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+              return pr.state === 'open' && pr.labels.some(label => label.name === process.env.PREVIEW_LABEL);
+            };
+            if (await active()) return;
+            let release;
+            try {
+              ({ data: release } = await github.rest.repos.getReleaseByTag({ owner, repo, tag: 'desktop-preview' }));
+            } catch (error) { if (error.status !== 404) throw error; }
+            if (release) {
+              const assets = await github.paginate(github.rest.repos.listReleaseAssets, {
+                owner, repo, release_id: release.id, per_page: 100,
+              });
+              for (const asset of assets) {
+                if (!asset.name.includes(`-pr.${prNumber}.`) || !asset.name.endsWith(`.${process.env.PREVIEW_EXTENSION}`)) continue;
+                if (await active()) return;
+                try { await github.rest.repos.deleteReleaseAsset({ owner, repo, asset_id: asset.id }); }
+                catch (error) { if (error.status !== 404) throw error; }
+              }
+            }
+            const marker = `<!-- desktop-${process.env.PREVIEW_PLATFORM}-preview -->`;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: prNumber, per_page: 100,
+            });
+            const existing = comments.find(comment => comment.user?.login === 'github-actions[bot]' && comment.body?.startsWith(marker));
+            if (existing && !(await active())) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id,
+                body: [marker, `### ${process.env.PREVIEW_TITLE}`, '',
+                  'The preview download was removed because this PR closed or its platform preview label was removed.'].join('\n'),
+              });
+            }

@@ -70,6 +70,7 @@ import { useThreadSelection } from "../state/use-thread-selection";
 import { enqueueThreadOutboxMessage } from "./thread-outbox";
 import { dispatchingQueuedMessageIdAtom, useThreadOutboxMessages } from "./use-thread-outbox";
 import { threadEnvironment } from "./threads";
+import { useEnvironmentQuery } from "./query";
 import { useAtomCommand } from "./use-atom-command";
 import {
   composerAttachmentUploadBlockReason,
@@ -130,6 +131,17 @@ export function useThreadComposerState() {
     selectedEnvironmentRuntime,
   } = useThreadSelection();
   const selectedThreadDetail = useSelectedThreadDetail();
+  const turnActivityQuery = useEnvironmentQuery(
+    selectedThreadShell
+      ? threadEnvironment.turnActivity({
+          environmentId: selectedThreadShell.environmentId,
+          input: {},
+        })
+      : null,
+  );
+  const isAutomaticallyCompacting = selectedThreadShell
+    ? turnActivityQuery.data?.[selectedThreadShell.id]?.isCompacting === true
+    : false;
   const composerDrafts = useAtomValue(composerDraftsAtom);
   const acknowledgedMessages = useAtomValue(acknowledgedThreadMessagesAtom);
   const queuedMessagesByThreadKey = useThreadOutboxMessages();
@@ -297,6 +309,7 @@ export function useThreadComposerState() {
       return payload?.requestId === latestCompactMessage?.id;
     });
     return (
+      isAutomaticallyCompacting ||
       queuedMessage !== undefined ||
       ((selectedThread?.session?.status === "starting" ||
         selectedThread?.session?.status === "running") &&
@@ -304,6 +317,7 @@ export function useThreadComposerState() {
         !compactionSettled)
     );
   }, [
+    isAutomaticallyCompacting,
     dispatchingQueuedMessageId,
     selectedThread,
     selectedThreadDetail,

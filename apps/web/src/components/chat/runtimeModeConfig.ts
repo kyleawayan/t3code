@@ -3,25 +3,29 @@ import { type LucideIcon, LockIcon, LockOpenIcon, PenLineIcon, SparklesIcon } fr
 
 export const runtimeModeConfig: Record<
   RuntimeMode,
-  { label: string; description: string; icon: LucideIcon }
+  { label: string; compactLabel: string; description: string; icon: LucideIcon }
 > = {
   "approval-required": {
     label: "Supervised",
+    compactLabel: "Ask",
     description: "Ask before commands and file changes.",
     icon: LockIcon,
   },
   "auto-accept-edits": {
     label: "Auto-accept edits",
+    compactLabel: "Edits",
     description: "Auto-approve edits, ask before other actions.",
     icon: PenLineIcon,
   },
   auto: {
     label: "Auto",
+    compactLabel: "Auto",
     description: "Supported providers approve routine actions; others still ask.",
     icon: SparklesIcon,
   },
   "full-access": {
     label: "Full access",
+    compactLabel: "Full",
     description: "Allow commands and edits without prompts.",
     icon: LockOpenIcon,
   },

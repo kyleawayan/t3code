@@ -1,4 +1,6 @@
+import { type ThreadTurnActivity } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
+import * as Stream from "effect/Stream";
 import { Atom } from "effect/unstable/reactivity";
 import {
   WS_METHODS,
@@ -13,6 +15,7 @@ import {
   createAtomCommandScheduler,
   createEnvironmentCommand,
   createEnvironmentRpcCommand,
+  createEnvironmentRpcSubscriptionAtomFamily,
 } from "./runtime.ts";
 import {
   type ArchiveThreadInput,
@@ -93,6 +96,8 @@ export type {
   UpdateThreadMetadataInput,
 } from "../operations/commands.ts";
 
+const EMPTY_TURN_ACTIVITY: Record<string, ThreadTurnActivity> = {};
+
 export function createThreadEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | Crypto.Crypto | R, E>,
   snapshotAtom: (environmentId: EnvironmentId) => Atom.Atom<OrchestrationShellSnapshot | null>,
@@ -104,6 +109,32 @@ export function createThreadEnvironmentAtoms<R, E>(
       JSON.stringify([environmentId, input.threadId]),
   };
   const commands = {
+    /**
+     * Live per-turn liveness for every thread in the environment.
+     *
+     * One environment-wide subscription rather than one per thread: the feed is
+     * a trickle (a state change, plus a throttled tick only while tokens flow),
+     * and a thread that is not running contributes nothing at all.
+     */
+    turnActivity: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:threads:turn-activity",
+      tag: WS_METHODS.subscribeTurnActivity,
+      transform: (stream) =>
+        stream.pipe(
+          Stream.scan(
+            EMPTY_TURN_ACTIVITY,
+            // An idle turn is dropped rather than kept as an "idle" entry, so
+            // consumers read absence as "nothing running" without a special
+            // case.
+            (byThreadId, activity) =>
+              activity.state === "idle"
+                ? Object.fromEntries(
+                    Object.entries(byThreadId).filter(([id]) => id !== activity.threadId),
+                  )
+                : { ...byThreadId, [activity.threadId]: activity },
+          ),
+        ),
+    }),
     create: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:create",
       execute: (input: CreateThreadInput) => createThread(input),

@@ -111,6 +111,7 @@ interface GitActionsControlProps {
   gitCwd: string | null;
   activeThreadRef: ScopedThreadRef | null;
   draftId?: DraftId;
+  onRequestAgentAction?: (prompt: string) => void;
   /**
    * Opens the thread's own change request beside it. Absent when the thread has no project to
    * place it against, in which case it still opens in the browser.
@@ -948,6 +949,7 @@ export default function GitActionsControl({
   activeThreadRef,
   draftId,
   onOpenPullRequest,
+  onRequestAgentAction,
 }: GitActionsControlProps) {
   const updateThreadMetadata = useAtomCommand(
     threadEnvironment.updateMetadata,
@@ -1267,6 +1269,22 @@ export default function GitActionsControl({
       }
       onConfirmed?.();
 
+      if (onRequestAgentAction) {
+        const prompts: Record<GitStackedAction, string> = {
+          commit: "Commit.",
+          push: "Push.",
+          create_pr: "Create PR.",
+          commit_push: "Commit and push.",
+          commit_push_pr: "Commit and push, then create PR.",
+        };
+        onRequestAgentAction(
+          featureBranch
+            ? `Create and check out a new feature branch. ${prompts[action]}`
+            : prompts[action],
+        );
+        return;
+      }
+
       const progressStages = buildGitActionProgressStages({
         action,
         hasCustomCommitMessage: !!commitMessage?.trim(),
@@ -1505,6 +1523,22 @@ export default function GitActionsControl({
   };
 
   const runQuickAction = () => {
+    if (onRequestAgentAction) {
+      if (quickAction.action) {
+        void runGitActionWithToast({ action: quickAction.action });
+        return;
+      }
+      if (quickAction.kind === "run_pull") {
+        onRequestAgentAction("Pull.");
+        return;
+      }
+      if (quickAction.kind === "open_publish") {
+        onRequestAgentAction(
+          "Publish repository. Ask the user whether it should be public or private.",
+        );
+        return;
+      }
+    }
     if (quickAction.kind === "open_pr") {
       void openExistingPr();
       return;
@@ -1571,6 +1605,10 @@ export default function GitActionsControl({
     if (item.disabled) return;
     if (item.kind === "open_pr") {
       void openExistingPr();
+      return;
+    }
+    if (onRequestAgentAction && item.dialogAction) {
+      void runGitActionWithToast({ action: item.dialogAction });
       return;
     }
     if (item.dialogAction === "push") {
@@ -1642,6 +1680,10 @@ export default function GitActionsControl({
           size="xs"
           disabled={initAction.isPending}
           onClick={() => {
+            if (onRequestAgentAction) {
+              onRequestAgentAction("Initialize Git.");
+              return;
+            }
             void (async () => {
               const result = await initAction.run();
               if (result._tag === "Success" || isAtomCommandInterrupted(result)) {
@@ -1767,7 +1809,13 @@ export default function GitActionsControl({
                 <MenuItem
                   disabled={isGitActionRunning}
                   onClick={() => {
-                    setIsPublishDialogOpen(true);
+                    if (onRequestAgentAction) {
+                      onRequestAgentAction(
+                        "Publish repository. Ask the user whether it should be public or private.",
+                      );
+                    } else {
+                      setIsPublishDialogOpen(true);
+                    }
                   }}
                 >
                   <CloudUploadIcon />

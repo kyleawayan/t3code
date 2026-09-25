@@ -66,7 +66,7 @@ import { faviconUrlForOrigin } from "~/lib/favicon";
 import { useTheme } from "~/hooks/useTheme";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useEnvironmentQuery } from "~/state/query";
-import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
+import { TITLEBAR_CONTROLS_INSET_CLASS } from "~/workspaceTitlebar";
 
 import { PreviewPanelShell, type PreviewPanelMode } from "./preview/PreviewPanelShell";
 import { FaviconImage } from "./preview/PreviewFaviconIcon";
@@ -1104,13 +1104,17 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
           // The sheet overlays from the viewport top, so its tab bar keeps
           // the titlebar's height: a compact row re-centers the layout
           // controls a few pixels higher and the cluster jumps on open.
+          // In overlay (sheet) mode also mark the tab bar no-drag, or the OS
+          // eats clicks on the tabs and the add-surface button as window
+          // drags; inline mode gets this via the .drag-region rule instead.
+          props.mode !== "inline" && "[-webkit-app-region:no-drag]",
           props.mode === "inline" && !props.layoutControls ? "pr-28" : "pr-3",
           ownsDesktopTitleBar && "drag-region",
           ownsDesktopTitleBar &&
             (props.layoutControls
               ? "wco:pr-[var(--workspace-native-controls-inset)]"
               : "wco:pr-[calc(var(--workspace-native-controls-inset)+6rem)]"),
-          props.mode === "inline" && props.maximized && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
+          props.mode === "inline" && props.maximized && TITLEBAR_CONTROLS_INSET_CLASS,
         )}
         data-right-panel-tabbar
       >

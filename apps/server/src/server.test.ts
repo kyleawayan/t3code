@@ -125,10 +125,12 @@ import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngi
 import {
   OrchestrationListenerCallbackError,
   OrchestrationThreadSettleBlockedError,
+  OrchestrationAgentConcurrencyLimitError,
 } from "./orchestration/Errors.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ThreadDeletionReactor } from "./orchestration/Services/ThreadDeletionReactor.ts";
 import * as PullRequestSyncReactor from "./orchestration/PullRequestSyncReactor.ts";
+import * as ThreadTurnActivity from "./orchestration/ThreadTurnActivity.ts";
 import { SqlitePersistenceMemory } from "./persistence/Layers/Sqlite.ts";
 import { OrchestrationEventStoreLive } from "./persistence/Layers/OrchestrationEventStore.ts";
 import { OrchestrationEventStore } from "./persistence/Services/OrchestrationEventStore.ts";
@@ -971,6 +973,7 @@ const buildAppUnderTest = (options?: {
       ),
       Layer.provide(
         Layer.mergeAll(
+          ThreadTurnActivity.layer,
           Layer.mock(OrchestrationEngine.OrchestrationEngineService)({
             readEvents: () => Stream.empty,
             readThreadEvents: () => Stream.empty,
@@ -10499,6 +10502,41 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         dispatchedCommands.map((command) => command.type),
         ["thread.settle"],
       );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("forwards the agent concurrency warning over websocket rpc", () =>
+    Effect.gen(function* () {
+      const message =
+        "Two agents are already working. Wait for one to finish or stop an agent before sending.";
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: {
+            dispatch: () => Effect.fail(new OrchestrationAgentConcurrencyLimitError({ message })),
+          },
+        },
+      });
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const error = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+            type: "thread.turn.start",
+            commandId: CommandId.make("limit-message"),
+            threadId: ThreadId.make("limit-thread"),
+            message: {
+              messageId: MessageId.make("limit-message"),
+              role: "user",
+              text: "Start work",
+              attachments: [],
+            },
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            createdAt: "2026-01-01T00:00:00.000Z",
+          }),
+        ).pipe(Effect.flip),
+      );
+      assert.equal(error._tag, "OrchestrationDispatchCommandError");
+      assert.equal(error.message, message);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

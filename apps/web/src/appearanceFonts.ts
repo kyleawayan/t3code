@@ -27,6 +27,11 @@ export const DEFAULT_CODE_FONT_STACK =
 
 export const TYPOGRAPHY_ADVANCED_STORAGE_KEY = "t3code:typography-advanced";
 
+// Pierre's diff rows default to a loose 20px (~1.67 at 12px). We run tighter so
+// diffs read denser; the virtualizer derives row height from this same var, so
+// scaling it with the code size keeps text and reserved height in sync.
+const DIFF_LINE_HEIGHT_RATIO = 17 / 12;
+
 /**
  * Simple typography treats the terminal as another monospace surface. In
  * Advanced mode an empty terminal preference means the terminal default,
@@ -115,6 +120,7 @@ export function applyAppearanceFontVariables(
   root.style.setProperty("--font-size-code", `${code}px`);
   // The @pierre/diffs surfaces read their own hook for code text.
   root.style.setProperty("--diffs-font-size", `${code}px`);
+  root.style.setProperty("--diffs-line-height", `${Math.round(code * DIFF_LINE_HEIGHT_RATIO)}px`);
 
   // Inherited from the root; only macOS engines honor the property, so no
   // platform gate is needed here. Smoothing on means grayscale `antialiased`

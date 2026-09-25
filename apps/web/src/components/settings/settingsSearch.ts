@@ -244,10 +244,23 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["notification sound alert completion input approval desktop"],
   },
   {
+    id: "notification-sound",
+    title: "Notification sound",
+    desktopOnly: true,
+    to: "/settings/general",
+    searchTerms: ["custom audio upload file preview reset completion input approval failure alert"],
+  },
+  {
     id: "in-app-notifications",
     title: "In-app notifications",
     to: "/settings/general",
     searchTerms: ["notification toast popup completion input approval failure"],
+  },
+  {
+    id: "notification-position",
+    title: "Notification position",
+    to: "/settings/general",
+    searchTerms: ["toast placement corner top bottom left right center command menu"],
   },
   {
     id: "time-format",
