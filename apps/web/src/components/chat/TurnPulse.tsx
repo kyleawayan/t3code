@@ -1,6 +1,7 @@
 import { cn } from "~/lib/utils";
 
-import claudeThinkingPng from "../../assets/claude-thinking.png";
+import claudeStandingPng from "../../assets/claude-standing.png";
+import claudeThinkingGif from "../../assets/claude-thinking.gif";
 import claudeTypingGif from "../../assets/claude-typing.gif";
 import codeySpritesheet from "../../assets/codex-pets/codex-spritesheet.webp";
 import styles from "./TurnPulse.module.css";
@@ -77,12 +78,28 @@ export function TurnPulse({
         // row box gets cut). The negative bottom margin pulls the bars up under
         // its feet — the gif has transparent foot padding — and is the knob for
         // how much the feet overlap the bar. Pixelated keeps the art crisp.
-        <img
-          src={verdict.kind === "thinking" ? claudeThinkingPng : claudeTypingGif}
-          alt=""
+        // Like Codey, it types only while tokens arrive and stands still otherwise.
+        // The slot is fixed to the taller astronaut so switching states never
+        // shifts the timeline; both sources render Claude at the same pixel size.
+        <span
           aria-hidden
-          className="pointer-events-none -mb-[1px] h-6 w-auto self-start [image-rendering:pixelated]"
-        />
+          className="pointer-events-none -mb-[1px] flex h-[30px] items-end self-start"
+        >
+          <img
+            src={
+              verdict.kind === "moving"
+                ? claudeTypingGif
+                : verdict.kind === "thinking"
+                  ? claudeThinkingGif
+                  : claudeStandingPng
+            }
+            alt=""
+            className={cn(
+              "w-auto [image-rendering:pixelated]",
+              verdict.kind === "thinking" ? "h-[30px]" : "h-6",
+            )}
+          />
+        </span>
       ) : null}
       {/* Overall progress: cumulative, only ever forward. */}
       <span className={cn("relative block h-[3px] overflow-hidden rounded-full", trackBg)}>
