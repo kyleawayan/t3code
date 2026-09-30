@@ -7,6 +7,7 @@ import {
   COMPOSER_RESTING_EXPANSION_MIN_PX,
   composerFooterLabelVariant,
   getRestingComposerImagePreviewCounts,
+  resolveComposerFooterControlsWidth,
   resolveComposerFooterLabelStage,
   resolveComposerTimelineInset,
   resolveScrollToEndClearance,
@@ -472,9 +473,10 @@ describe("resolveComposerFooterLabelStage", () => {
   // and the floor of the variant it shows:
   //   model   30 chrome, "Claude Opus 5.5" floor 52, "Opus 5.5" floor 30
   //   traits  10 chrome, "Extra High · 1M" floor 48, "XHigh·1M" floor 30
-  //   mode    30 chrome, "Auto" floor 14, icon only
-  // plus the 28px plan toggle and three 4px gaps. The stages need
-  // 236, 218, 200, and 178px.
+  //   mode    30 chrome, "Auto" floor 14; icon only, it moves into the fixed
+  //           actions and costs its 30px plus the 8px actions gap
+  // plus the 28px plan toggle and 4px row gaps. The stages need
+  // 236, 222, 204, and 182px.
   function controls(rendered: { model?: number; mode?: number } = {}) {
     const model = rendered.model ?? 100;
     const mode = rendered.mode ?? 28;
@@ -503,6 +505,7 @@ describe("resolveComposerFooterLabelStage", () => {
       stage,
       availableWidth,
       gap: 4,
+      actionsGap: 8,
       controls: controls(rendered),
     });
 
@@ -532,9 +535,26 @@ describe("resolveComposerFooterLabelStage", () => {
   });
 
   it("lets the row scroll rather than squeeze a label past its floor", () => {
-    // Even the short variants need 178px. The stage stops at the last step
+    // Even the short variants need 182px. The stage stops at the last step
     // and the labels keep their floors, so "Opus 5.5" never loses its ".5".
     expect(stageAt(150)).toBe(3);
+  });
+
+  it("fits a running turn's footer at 300px with the mode among the actions", () => {
+    // 300px footer: 24px of padding, a 6px gap, and 110px of attach, spinner,
+    // and stop leave the row 160px. The runtime mode's icon then sits in the
+    // actions, so the row's room grows by its 30px and the 8px gap.
+    const measurement = { gap: 4, actionsGap: 8, controls: controls({ mode: 0 }) };
+    const availableWidth = 300 - 24 - 6 - 110 + 30 + 8;
+    const stage = resolveComposerFooterLabelStage({ ...measurement, stage: 3, availableWidth });
+    expect(stage).toBe(3);
+    expect(composerFooterLabelVariant("mode", stage)).toBe(1);
+    expect(composerFooterLabelVariant("traits", stage)).toBe(1);
+    expect(composerFooterLabelVariant("model", stage)).toBe(1);
+    // Every short label fits at its floor, so nothing scrolls or clips.
+    expect(resolveComposerFooterControlsWidth(measurement, stage)).toBeLessThanOrEqual(
+      availableWidth,
+    );
   });
 
   it("gives the same answer however the labels are showing now", () => {
@@ -556,6 +576,7 @@ describe("resolveComposerFooterLabelStage", () => {
         stage: 0,
         availableWidth: 10,
         gap: 4,
+        actionsGap: 8,
         controls: [{ width: 28 }],
       }),
     ).toBe(0);

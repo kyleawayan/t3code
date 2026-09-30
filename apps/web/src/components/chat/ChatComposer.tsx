@@ -980,6 +980,9 @@ import { serverEnvironment } from "../../state/server";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
 
 const WORKSPACE_SNAPSHOT_RETRY_COOLDOWN_MS = 10_000;
+// How far the form must grow past the width where the full-label footer row
+// overflowed before full labels get another try.
+const COMPOSER_FOOTER_OVERFLOW_RELEASE_PX = 24;
 
 const extendReplacementRangeForTrailingSpace = (
   text: string,
@@ -1048,6 +1051,11 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
   compact?: boolean;
   /** The tightest compact footer shows the runtime mode as its icon alone. */
   iconOnly?: boolean;
+  /**
+   * False where the footer renders the runtime mode among its fixed actions
+   * instead, so the scrolling row can never carry it out of view.
+   */
+  showRuntimeMode?: boolean;
   hidden?: boolean;
   onToggleInteractionMode: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
@@ -1109,75 +1117,81 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
     </>
   ) : null;
 
+  const runtimeModeSelect = (
+    <Tooltip>
+      <Select
+        open={open}
+        onOpenChange={setOpen}
+        value={props.runtimeMode}
+        onValueChange={(value) => props.onRuntimeModeChange(value!)}
+      >
+        <TooltipTrigger
+          render={
+            <ComposerSelectControl
+              data-composer-shortcut="composer.mode"
+              size={size}
+              className={cn(
+                size === "xs" ? undefined : "font-medium",
+                // min-w-min holds the squished label at its minimum scale.
+                compact && cn("min-w-min shrink", composerCompactControlClassName),
+              )}
+              aria-label={iconOnly ? `Runtime mode: ${runtimeModeOption.label}` : "Runtime mode"}
+            />
+          }
+        >
+          <ComposerControlIcon icon={RuntimeModeIcon} size={size} />
+          {iconOnly ? null : compact ? (
+            <SelectValue className="flex min-w-0">
+              <SquishText>{runtimeModeOption.compactLabel}</SquishText>
+            </SelectValue>
+          ) : (
+            <SelectValue>{runtimeModeOption.label}</SelectValue>
+          )}
+          {compact ? (
+            <SquishTextProbe
+              data-composer-footer-label="mode"
+              variants={[runtimeModeOption.compactLabel, ""]}
+            />
+          ) : null}
+        </TooltipTrigger>
+        <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
+          {runtimeModeOptions.map((mode) => {
+            const option = runtimeModeConfig[mode];
+            const OptionIcon = option.icon;
+            return (
+              <SelectItem key={mode} value={mode} hideIndicator className="min-w-64 py-2">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="grid min-w-0 flex-1 gap-0.5">
+                    <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+                      <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                      {option.label}
+                    </span>
+                    <span className="text-muted-foreground text-xs leading-4">
+                      {option.description}
+                    </span>
+                  </div>
+                </div>
+              </SelectItem>
+            );
+          })}
+        </SelectPopup>
+      </Select>
+      <TooltipPopup side="top">
+        {iconOnly
+          ? `${runtimeModeOption.label}: ${runtimeModeOption.description}`
+          : runtimeModeOption.description}
+      </TooltipPopup>
+    </Tooltip>
+  );
+
   return (
     <>
-      {compact ? null : <ComposerControlSeparator size={size} />}
-
-      <Tooltip>
-        <Select
-          open={open}
-          onOpenChange={setOpen}
-          value={props.runtimeMode}
-          onValueChange={(value) => props.onRuntimeModeChange(value!)}
-        >
-          <TooltipTrigger
-            render={
-              <ComposerSelectControl
-                data-composer-shortcut="composer.mode"
-                size={size}
-                className={cn(
-                  size === "xs" ? undefined : "font-medium",
-                  // min-w-min holds the squished label at its minimum scale.
-                  compact && cn("min-w-min shrink", composerCompactControlClassName),
-                )}
-                aria-label={iconOnly ? `Runtime mode: ${runtimeModeOption.label}` : "Runtime mode"}
-              />
-            }
-          >
-            <ComposerControlIcon icon={RuntimeModeIcon} size={size} />
-            {iconOnly ? null : compact ? (
-              <SelectValue className="flex min-w-0">
-                <SquishText>{runtimeModeOption.compactLabel}</SquishText>
-              </SelectValue>
-            ) : (
-              <SelectValue>{runtimeModeOption.label}</SelectValue>
-            )}
-            {compact ? (
-              <SquishTextProbe
-                data-composer-footer-label="mode"
-                variants={[runtimeModeOption.compactLabel, ""]}
-              />
-            ) : null}
-          </TooltipTrigger>
-          <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
-            {runtimeModeOptions.map((mode) => {
-              const option = runtimeModeConfig[mode];
-              const OptionIcon = option.icon;
-              return (
-                <SelectItem key={mode} value={mode} hideIndicator className="min-w-64 py-2">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="grid min-w-0 flex-1 gap-0.5">
-                      <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-                        <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                        {option.label}
-                      </span>
-                      <span className="text-muted-foreground text-xs leading-4">
-                        {option.description}
-                      </span>
-                    </div>
-                  </div>
-                </SelectItem>
-              );
-            })}
-          </SelectPopup>
-        </Select>
-        <TooltipPopup side="top">
-          {iconOnly
-            ? `${runtimeModeOption.label}: ${runtimeModeOption.description}`
-            : runtimeModeOption.description}
-        </TooltipPopup>
-      </Tooltip>
-
+      {props.showRuntimeMode === false ? null : (
+        <>
+          {compact ? null : <ComposerControlSeparator size={size} />}
+          {runtimeModeSelect}
+        </>
+      )}
       {interactionModeToggle}
     </>
   );
@@ -2091,6 +2105,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
   const [composerFooterLabelStage, setComposerFooterLabelStage] = useState(0);
+  // The form width at which the full-label footer row last overflowed.
+  const composerFooterOverflowWidthRef = useRef(0);
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
   const isMobileViewport = useMediaQuery("max-sm");
@@ -3158,9 +3174,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const measureComposerFormWidth = () => composerForm.clientWidth;
     const measureFooterCompactness = () => {
       const composerFormWidth = measureComposerFormWidth();
-      const footerCompact = shouldUseCompactComposerFooter(composerFormWidth, {
-        hasWideActions: composerFooterHasWideActions,
-      });
+      const footerCompact =
+        shouldUseCompactComposerFooter(composerFormWidth, {
+          hasWideActions: composerFooterHasWideActions,
+        }) ||
+        composerFormWidth <=
+          composerFooterOverflowWidthRef.current + COMPOSER_FOOTER_OVERFLOW_RELEASE_PX;
       const primaryActionsCompact =
         footerCompact &&
         shouldUseCompactComposerPrimaryActions(composerFormWidth, {
@@ -3230,8 +3249,24 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (!container || typeof ResizeObserver === "undefined") return;
     const measure = () => {
       if (container.clientWidth === 0) return;
+      // The width breakpoints guess when full labels stop fitting; running
+      // actions or long names can beat them. A full-label row that overflows
+      // goes compact until the form grows past the width where it overflowed.
+      const composerForm = composerFormRef.current;
+      if (
+        composerForm &&
+        container.parentElement?.dataset.chatComposerFooterCompact === "false" &&
+        container.scrollWidth > container.clientWidth + 1
+      ) {
+        composerFooterOverflowWidthRef.current = composerForm.clientWidth;
+        setIsComposerFooterCompact(true);
+        return;
+      }
+      const actions = container.parentElement?.querySelector<HTMLElement>(
+        '[data-chat-composer-actions="right"]',
+      );
       const stage = resolveComposerFooterLabelStage({
-        ...measureComposerFooterControls(container),
+        ...measureComposerFooterControls(container, actions ?? null),
         stage: composerFooterLabelStageRef.current,
       });
       if (stage === composerFooterLabelStageRef.current) return;
@@ -4916,6 +4951,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   const restingHiddenBlockCount = composerControlsInStrip ? restingControlsHiddenBlockCount : 0;
   const composerControlsCompact = !composerControlsInStrip && isComposerFooterCompact;
+  // At its icon-only stage the runtime mode joins the fixed actions. The
+  // controls row scrolls as a last resort, and its last item would go first.
+  const composerRuntimeModeInActions =
+    composerControlsCompact &&
+    !showProviderUnavailable &&
+    composerFooterLabelVariant("mode", composerFooterLabelStage) === 1;
   const restingProviderTraitsPicker = renderProviderTraitsPicker({
     ...providerTraitsPickerInput,
     size: "xs",
@@ -4955,10 +4996,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           runtimeMode={runtimeMode}
           size={composerControlsInStrip ? "xs" : "sm"}
           compact={composerControlsCompact}
-          iconOnly={
-            composerControlsCompact &&
-            composerFooterLabelVariant("mode", composerFooterLabelStage) === 1
-          }
+          showRuntimeMode={!composerRuntimeModeInActions}
           hidden={composerControlsHidden || restingHiddenBlockCount > 0}
           onToggleInteractionMode={toggleInteractionMode}
           onRuntimeModeChange={handleRuntimeModeChange}
@@ -6920,6 +6958,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   }
                   className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
                 >
+                  {composerRuntimeModeInActions ? (
+                    <ComposerFooterModeControls
+                      showInteractionModeToggle={false}
+                      interactionMode={interactionMode}
+                      runtimeMode={runtimeMode}
+                      compact
+                      iconOnly
+                      onToggleInteractionMode={toggleInteractionMode}
+                      onRuntimeModeChange={handleRuntimeModeChange}
+                    />
+                  ) : null}
                   {showComposerAttachAction ? (
                     <>
                       <input

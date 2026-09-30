@@ -88,49 +88,66 @@ export function measureRestingComposerControls(
   };
 }
 
+function measureComposerFooterControl(
+  element: HTMLElement,
+  style: CSSStyleDeclaration,
+): ComposerFooterControlWidths {
+  const control: ComposerFooterControlWidths = {
+    width: element.offsetWidth + elementInlineMarginWidth(element),
+  };
+  const probe = element.querySelector<HTMLElement>("[data-composer-footer-label]");
+  const labelControl = probe?.dataset.composerFooterLabel;
+  if (probe && (labelControl === "model" || labelControl === "traits" || labelControl === "mode")) {
+    const [fullFloor = 0, shortFloor = 0] = measureSquishTextProbe(probe);
+    const label = element.querySelector<HTMLElement>("[data-squish-text]");
+    control.label = {
+      control: labelControl,
+      rendered: label ? (measureSquishText(label)?.rendered ?? 0) : 0,
+      gap: Number.parseFloat(style.columnGap) || 0,
+      floors: [fullFloor, shortFloor],
+    };
+  }
+  return control;
+}
+
 /**
- * Read the expanded footer's controls for resolveComposerFooterLabelStage:
- * each in-flow control's width and, where it probes label variants, the label
- * as laid out now and each variant's floor.
+ * Read the expanded footer for resolveComposerFooterLabelStage: each in-flow
+ * control in the scrolling row, plus the runtime mode when it sits among the
+ * fixed actions. The room it takes there counts as the row's.
  */
-export function measureComposerFooterControls(container: HTMLElement): {
+export function measureComposerFooterControls(
+  row: HTMLElement,
+  actions: HTMLElement | null,
+): {
   availableWidth: number;
   gap: number;
+  actionsGap: number;
   controls: ComposerFooterControlWidths[];
 } {
-  const style = getComputedStyle(container);
+  const style = getComputedStyle(row);
   const controls: ComposerFooterControlWidths[] = [];
-  for (const child of container.children) {
+  for (const child of row.children) {
     const element = child as HTMLElement;
     if (element.offsetWidth === 0) continue;
     const elementStyle = getComputedStyle(element);
     if (elementStyle.position === "absolute" || elementStyle.position === "fixed") continue;
-    const control: ComposerFooterControlWidths = {
-      width: element.offsetWidth + elementInlineMarginWidth(element),
-    };
-    const probe = element.querySelector<HTMLElement>("[data-composer-footer-label]");
-    const labelControl = probe?.dataset.composerFooterLabel;
-    if (
-      probe &&
-      (labelControl === "model" || labelControl === "traits" || labelControl === "mode")
-    ) {
-      const [fullFloor = 0, shortFloor = 0] = measureSquishTextProbe(probe);
-      const label = element.querySelector<HTMLElement>("[data-squish-text]");
-      control.label = {
-        control: labelControl,
-        rendered: label ? (measureSquishText(label)?.rendered ?? 0) : 0,
-        gap: Number.parseFloat(elementStyle.columnGap) || 0,
-        floors: [fullFloor, shortFloor],
-      };
-    }
-    controls.push(control);
+    controls.push(measureComposerFooterControl(element, elementStyle));
   }
-  return {
-    availableWidth:
-      container.clientWidth -
-      (Number.parseFloat(style.paddingInlineStart) || 0) -
-      (Number.parseFloat(style.paddingInlineEnd) || 0),
-    gap: Number.parseFloat(style.columnGap) || 0,
-    controls,
-  };
+  const actionsGap = actions ? Number.parseFloat(getComputedStyle(actions).columnGap) || 0 : 0;
+  let availableWidth =
+    row.clientWidth -
+    (Number.parseFloat(style.paddingInlineStart) || 0) -
+    (Number.parseFloat(style.paddingInlineEnd) || 0);
+  const modeInActions = actions
+    ? Array.from(actions.children).find((child) =>
+        child.querySelector('[data-composer-footer-label="mode"]'),
+      )
+    : undefined;
+  if (modeInActions) {
+    const element = modeInActions as HTMLElement;
+    const control = measureComposerFooterControl(element, getComputedStyle(element));
+    controls.push(control);
+    availableWidth += control.width + actionsGap;
+  }
+  return { availableWidth, gap: Number.parseFloat(style.columnGap) || 0, actionsGap, controls };
 }

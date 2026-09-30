@@ -80,48 +80,79 @@ describe("measureRestingComposerControls", () => {
 });
 
 describe("measureComposerFooterControls", () => {
-  it("reads each control's width and the floors of its label variants", () => {
-    const squishText = {
-      offsetWidth: 40,
-      querySelector: () => ({ offsetWidth: 90 }),
-      querySelectorAll: () => [],
-    };
-    // Each probed variant is two halves; its floor is the wider half.
-    const variant = (...halves: number[]) => ({
-      children: halves.map((offsetWidth) => ({ offsetWidth })),
-    });
-    const probe = {
-      dataset: { composerFooterLabel: "model" },
-      querySelectorAll: () => [variant(44, 46), variant(26, 24)],
-    };
+  // Each probed variant is two halves; its floor is the wider half.
+  const variant = (...halves: number[]) => ({
+    children: halves.map((offsetWidth) => ({ offsetWidth })),
+  });
+  const probe = (control: string, ...variants: ReturnType<typeof variant>[]) => ({
+    dataset: { composerFooterLabel: control },
+    querySelectorAll: () => variants,
+  });
+  const squishText = (rendered: number, natural: number) => ({
+    matches: () => true,
+    offsetWidth: rendered,
+    querySelector: () => ({ offsetWidth: natural }),
+    querySelectorAll: () => [],
+  });
+
+  it("reads each row control's width and the floors of its label variants", () => {
     const picker = {
       offsetWidth: 100,
       querySelector: (selector: string) =>
         selector === "[data-composer-footer-label]"
-          ? probe
-          : { matches: () => true, ...squishText },
+          ? probe("model", variant(44, 46), variant(26, 24))
+          : squishText(40, 90),
     };
     const hiddenSeparator = { offsetWidth: 0 };
     const planToggle = { offsetWidth: 28, querySelector: () => null };
-    const container = {
-      clientWidth: 218,
-      children: [picker, hiddenSeparator, planToggle],
-    };
+    const row = { clientWidth: 218, children: [picker, hiddenSeparator, planToggle] };
     vi.stubGlobal("getComputedStyle", (element: unknown) =>
-      element === container
+      element === row
         ? { columnGap: "4px", paddingInlineStart: "14px", paddingInlineEnd: "4px" }
         : element === picker
           ? { position: "static", columnGap: "4px", marginInlineStart: "-6px" }
           : { position: "static" },
     );
 
-    expect(measureComposerFooterControls(container as unknown as HTMLElement)).toEqual({
+    expect(measureComposerFooterControls(row as unknown as HTMLElement, null)).toEqual({
       availableWidth: 200,
       gap: 4,
+      actionsGap: 0,
       controls: [
         { width: 94, label: { control: "model", rendered: 40, gap: 4, floors: [46, 26] } },
         { width: 28 },
       ],
+    });
+  });
+
+  it("counts the icon-only runtime mode among the actions as the row's room", () => {
+    const modeProbe = probe("mode", variant(14, 12), variant(0, 0));
+    const runtimeMode = {
+      offsetWidth: 30,
+      querySelector: (selector: string) =>
+        selector.startsWith("[data-composer-footer-label") ? modeProbe : null,
+    };
+    const attach = { offsetWidth: 32, querySelector: () => null };
+    const actions = { children: [runtimeMode, attach] };
+    const row = { clientWidth: 160, children: [] };
+    vi.stubGlobal("getComputedStyle", (element: unknown) =>
+      element === actions
+        ? { columnGap: "8px" }
+        : element === row
+          ? { columnGap: "4px" }
+          : { position: "static", columnGap: "4px" },
+    );
+
+    expect(
+      measureComposerFooterControls(
+        row as unknown as HTMLElement,
+        actions as unknown as HTMLElement,
+      ),
+    ).toEqual({
+      availableWidth: 198,
+      gap: 4,
+      actionsGap: 8,
+      controls: [{ width: 30, label: { control: "mode", rendered: 0, gap: 4, floors: [14, 0] } }],
     });
   });
 });
