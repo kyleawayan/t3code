@@ -17,7 +17,6 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  ExternalLink,
   Hourglass,
   Lock,
   Map as MapIcon,
@@ -34,6 +33,9 @@ import {
   type ReactNode,
 } from "react";
 
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/unstable/reactivity";
+
 import { useOpenLink } from "~/browser/useOpenLink";
 import { useNowMinute } from "~/hooks/useNowMinute";
 import { cn } from "~/lib/utils";
@@ -49,7 +51,24 @@ import {
   type RecapGutterCell,
   type RecapPathRow,
 } from "./chat/recapMapLayout.logic";
-import { linearIssueUrl, safeRecapLinkUrl } from "./chat/threadResume.logic";
+import {
+  isLinearWorkspaceSlug,
+  latestLinearWorkspace,
+  linearIssueUrl,
+  safeRecapLinkUrl,
+} from "./chat/threadResume.logic";
+import { environmentThreadShells } from "~/state/threads";
+
+/**
+ * Fallback Linear workspace from any thread's recap, for summaries written
+ * before workspace detection. The atom's value is a string, so the map only
+ * re-renders when the workspace itself changes, not on every shell update.
+ */
+const latestLinearWorkspaceAtom = Atom.make((get) =>
+  latestLinearWorkspace(
+    get(environmentThreadShells.threadShellsAtom).map((shell) => shell.recap?.summary),
+  ),
+).pipe(Atom.withLabel("recap-map:latest-linear-workspace"));
 
 const EMPTY_STEPS: ReadonlyArray<ThreadRecapStep> = [];
 const EMPTY_CELL: RecapGutterCell = {
@@ -300,7 +319,7 @@ function LinearChip({
       onClick={(event) => onOpenLink(url, event)}
       className={cn(
         className,
-        "hover:bg-accent hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+        "cursor-pointer hover:bg-accent hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
       )}
     >
       {host ? <MarkdownLinkFavicon host={host} /> : null}
@@ -342,6 +361,7 @@ function PathRow({
   cell,
   laneCount,
   workspace,
+  links,
   onOpenLink,
   rowRef,
 }: {
@@ -349,6 +369,7 @@ function PathRow({
   cell: RecapGutterCell;
   laneCount: number;
   workspace: string | null;
+  links: ReadonlyArray<ThreadRecapLink>;
   onOpenLink: OpenRecapLink;
   rowRef?: ((element: HTMLLIElement | null) => void) | undefined;
 }) {
@@ -408,14 +429,16 @@ function PathRow({
             <RowTag row={row} />
             <StepBadges step={row.step} workspace={workspace} onOpenLink={onOpenLink} />
             {url ? (
-              <button
-                type="button"
-                aria-label={`Open link for ${row.step.label}`}
-                onClick={(event) => onOpenLink(url, event)}
-                className="rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <ExternalLink aria-hidden className="size-3" />
-              </button>
+              <LinkChip
+                label={
+                  links.find((link) => safeRecapLinkUrl(link.url) === url)?.label ??
+                  resolveExternalWebLinkHost(url) ??
+                  "Link"
+                }
+                url={url}
+                size="row"
+                onOpenLink={onOpenLink}
+              />
             ) : null}
           </span>
         </div>
@@ -446,6 +469,33 @@ function HeaderLine({
   );
 }
 
+function LinkChip({
+  label,
+  url,
+  size,
+  onOpenLink,
+}: {
+  label: string;
+  url: string;
+  size: "row" | "header";
+  onOpenLink: OpenRecapLink;
+}) {
+  const host = resolveExternalWebLinkHost(url);
+  return (
+    <button
+      type="button"
+      onClick={(event) => onOpenLink(url, event)}
+      className={cn(
+        "inline-flex max-w-full cursor-pointer items-center rounded-md border border-border text-foreground/90 hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+        size === "row" ? "px-1 text-[10px] leading-4" : "px-1.5 py-0.5 text-[11px]",
+      )}
+    >
+      {host ? <MarkdownLinkFavicon host={host} /> : null}
+      <span className="max-w-48 truncate">{label}</span>
+    </button>
+  );
+}
+
 function LinkChips({
   links,
   onOpenLink,
@@ -455,21 +505,19 @@ function LinkChips({
 }) {
   const openable = links.flatMap((link) => {
     const url = safeRecapLinkUrl(link.url);
-    return url === null ? [] : [{ label: link.label, url, host: resolveExternalWebLinkHost(url) }];
+    return url === null ? [] : [{ label: link.label, url }];
   });
   if (openable.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-1">
       {openable.map((link) => (
-        <button
+        <LinkChip
           key={link.url}
-          type="button"
-          onClick={(event) => onOpenLink(link.url, event)}
-          className="inline-flex max-w-full items-center rounded-md border border-border px-1.5 py-0.5 text-[11px] text-foreground/90 hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {link.host ? <MarkdownLinkFavicon host={link.host} /> : null}
-          <span className="max-w-48 truncate">{link.label}</span>
-        </button>
+          label={link.label}
+          url={link.url}
+          size="header"
+          onOpenLink={onOpenLink}
+        />
       ))}
     </div>
   );
@@ -488,7 +536,9 @@ export const RecapMapPanel = memo(function RecapMapPanel({
   useNowMinute();
   const [doneExpanded, setDoneExpanded] = useState(false);
   const steps = recap?.summary?.steps ?? EMPTY_STEPS;
-  const layout = useMemo(() => layoutRecapPath(steps), [steps]);
+  const summaryNow = recap?.summary?.now ?? null;
+  const fallbackLinearWorkspace = useAtomValue(latestLinearWorkspaceAtom);
+  const layout = useMemo(() => layoutRecapPath(steps, summaryNow), [steps, summaryNow]);
   const openLink = useOpenLink(threadRef);
   const openRecapLink = useCallback<OpenRecapLink>(
     (url, event) => {
@@ -532,6 +582,9 @@ export const RecapMapPanel = memo(function RecapMapPanel({
   }
 
   const summary = recap.summary;
+  const linearWorkspace = isLinearWorkspaceSlug(summary?.linearWorkspace)
+    ? summary.linearWorkspace
+    : fallbackLinearWorkspace;
   const turnOff = onSetEnabled ? (
     <Button size="xs" variant="ghost" onClick={() => onSetEnabled(false)}>
       Turn off
@@ -562,6 +615,14 @@ export const RecapMapPanel = memo(function RecapMapPanel({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex flex-col gap-1 border-b border-border/60 px-3 py-2.5">
+        <div className="mb-1">
+          <p className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
+            Goal
+          </p>
+          <h2 className="line-clamp-3 text-base font-semibold leading-6 text-foreground [overflow-wrap:anywhere]">
+            {summary.goal}
+          </h2>
+        </div>
         {layout.totalCount > 0 ? (
           <p className="text-[11px] text-muted-foreground tabular-nums">
             {done.length} of {layout.totalCount} cleared
@@ -607,19 +668,15 @@ export const RecapMapPanel = memo(function RecapMapPanel({
               <LinearChip
                 key={issueId}
                 issueId={issueId}
-                workspace={summary.linearWorkspace}
+                workspace={linearWorkspace}
                 onOpenLink={openRecapLink}
                 size="header"
               />
             ))}
           </div>
         ) : null}
-        <p className="line-clamp-2 text-[11px] text-muted-foreground [overflow-wrap:anywhere]">
-          Goal: {summary.goal}
-        </p>
       </div>
-      {/* About eight rows tall: more than that scrolls rather than filling the panel. */}
-      <ScrollArea className="h-auto max-h-[28rem] min-h-0 shrink">
+      <ScrollArea className="min-h-0 flex-1">
         <div className="px-3 py-2">
           {done.length > 0 ? (
             <div className="mb-1">
@@ -661,7 +718,7 @@ export const RecapMapPanel = memo(function RecapMapPanel({
                       </span>
                       <StepBadges
                         step={entry.step}
-                        workspace={summary.linearWorkspace}
+                        workspace={linearWorkspace}
                         onOpenLink={openRecapLink}
                       />
                     </li>
@@ -678,7 +735,8 @@ export const RecapMapPanel = memo(function RecapMapPanel({
                   row={row}
                   cell={cells?.[index] ?? EMPTY_CELL}
                   laneCount={laneCount}
-                  workspace={summary.linearWorkspace}
+                  workspace={linearWorkspace}
+                  links={summary.links}
                   onOpenLink={openRecapLink}
                   rowRef={index === firstNowIndex ? scrollNowRowIntoView : undefined}
                 />

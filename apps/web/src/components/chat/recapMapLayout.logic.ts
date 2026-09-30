@@ -98,7 +98,43 @@ function topologicalOrder(
   return order;
 }
 
-export function layoutRecapPath(steps: ReadonlyArray<ThreadRecapStep>): RecapPathLayout {
+export const SYNTHETIC_NOW_STEP_ID = "__now__";
+
+/**
+ * Exactly one "now" step, so the current task always has a row. Older or
+ * imperfect summaries may have none: a step whose label matches
+ * `summaryNow` is promoted, otherwise `summaryNow` becomes a synthetic step.
+ * Extra "now" steps after the first read as next.
+ */
+export function normalizeRecapNowStep(
+  steps: ReadonlyArray<ThreadRecapStep>,
+  summaryNow: string | null,
+): ReadonlyArray<ThreadRecapStep> {
+  const firstNowIndex = steps.findIndex((step) => step.status === "now");
+  if (firstNowIndex >= 0) {
+    return steps.map((step, index) =>
+      step.status === "now" && index !== firstNowIndex ? { ...step, status: "next" } : step,
+    );
+  }
+  const label = summaryNow?.trim() ?? "";
+  if (label.length === 0) return steps;
+  const matchIndex = steps.findIndex(
+    (step) => step.label.trim().toLowerCase() === label.toLowerCase(),
+  );
+  if (matchIndex >= 0) {
+    return steps.map((step, index) => (index === matchIndex ? { ...step, status: "now" } : step));
+  }
+  return [
+    { id: SYNTHETIC_NOW_STEP_ID, label, status: "now", source: "chat", blockedBy: [] },
+    ...steps,
+  ];
+}
+
+export function layoutRecapPath(
+  inputSteps: ReadonlyArray<ThreadRecapStep>,
+  summaryNow: string | null = null,
+): RecapPathLayout {
+  const steps = normalizeRecapNowStep(inputSteps, summaryNow);
   const stepsById = new Map<string, ThreadRecapStep>();
   for (const step of steps) {
     if (!stepsById.has(step.id)) stepsById.set(step.id, step);

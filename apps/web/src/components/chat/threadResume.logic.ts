@@ -23,13 +23,13 @@ export function deriveResumeWhoseMove(input: {
 export function resumeWhoseMoveLabel(move: ResumeWhoseMove): string {
   switch (move) {
     case "approve":
-      return "Your move: approve";
+      return "Suggested move: approve";
     case "answer":
-      return "Your move: answer";
+      return "Suggested move: answer";
     case "agent":
       return "Agent working";
     case "user":
-      return "Your move";
+      return "Suggested move";
   }
 }
 
@@ -64,9 +64,33 @@ export function safeRecapLinkUrl(url: string): string | null {
 const LINEAR_WORKSPACE_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const LINEAR_ISSUE_ID_PATTERN = /^[A-Za-z][A-Za-z0-9]*-[0-9]+$/;
 
+export function isLinearWorkspaceSlug(workspace: string | null | undefined): workspace is string {
+  return typeof workspace === "string" && LINEAR_WORKSPACE_PATTERN.test(workspace);
+}
+
+/**
+ * The workspace from the most recently generated summary that has a valid
+ * one. Summaries written before workspace detection carry null; the user's
+ * other threads usually know it.
+ */
+export function latestLinearWorkspace(
+  summaries: Iterable<
+    { readonly linearWorkspace: string | null; readonly generatedAt: string } | null | undefined
+  >,
+): string | null {
+  let latest: { workspace: string; at: number } | null = null;
+  for (const summary of summaries) {
+    if (!summary || !isLinearWorkspaceSlug(summary.linearWorkspace)) continue;
+    const parsed = Date.parse(summary.generatedAt);
+    const at = Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
+    if (latest === null || at > latest.at) latest = { workspace: summary.linearWorkspace, at };
+  }
+  return latest?.workspace ?? null;
+}
+
 /** Issue page for a Linear ID, or null when either part could not be a real slug or key. */
 export function linearIssueUrl(workspace: string | null, issueId: string): string | null {
-  if (workspace === null || !LINEAR_WORKSPACE_PATTERN.test(workspace)) return null;
+  if (!isLinearWorkspaceSlug(workspace)) return null;
   if (!LINEAR_ISSUE_ID_PATTERN.test(issueId)) return null;
   return `https://linear.app/${workspace}/issue/${issueId.toUpperCase()}`;
 }

@@ -1,6 +1,6 @@
 import type { ThreadRecapSummary } from "@t3tools/contracts";
-import { GitBranchIcon, Link2Icon } from "lucide-react";
-import { memo } from "react";
+import { CircleIcon, GitBranchIcon, Hourglass, Link2Icon, MapPin } from "lucide-react";
+import { memo, type ReactNode } from "react";
 
 import { useNowMinute } from "~/hooks/useNowMinute";
 import { cn } from "~/lib/utils";
@@ -37,7 +37,7 @@ function ProjectBranchLine({
   branch: string | null;
 }) {
   return (
-    <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+    <span className="flex h-[1lh] min-w-0 items-center gap-1.5 whitespace-nowrap">
       <ProjectFavicon project={project} className="size-3 shrink-0" />
       <span className="shrink-0">{project.title}</span>
       {branch ? (
@@ -58,8 +58,12 @@ const WHOSE_MOVE_CLASS: Record<ResumeWhoseMove, string> = {
   user: "text-foreground",
 };
 
+// Every line keeps a fixed height, so switching threads never moves the composer.
+const TWO_LINE_SLOT_CLASS = "block h-[2lh] min-w-0 line-clamp-2 break-words";
+const GOAL_SLOT_CLASS = cn(TWO_LINE_SLOT_CLASS, "font-semibold text-foreground text-sm");
+
 const STRIP_CLASS =
-  "mb-1.5 flex w-full min-w-0 flex-col gap-0.5 rounded-lg border border-border/70 bg-background px-3 py-1.5 text-left text-muted-foreground text-xs";
+  "mb-1.5 flex w-full min-w-0 flex-col gap-2 rounded-lg border border-border/70 bg-background px-3 py-2.5 text-left text-muted-foreground text-xs";
 const STRIP_BUTTON_CLASS = cn(
   STRIP_CLASS,
   "cursor-pointer hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
@@ -108,10 +112,49 @@ function RecapAge({
   );
 }
 
+/** Small uppercase label on its own line, value below: reads well in a narrow chat column. */
+function Field({
+  label,
+  icon,
+  aside,
+  className,
+  labelClassName,
+  children,
+}: {
+  label: string;
+  icon?: ReactNode | undefined;
+  aside?: ReactNode | undefined;
+  className?: string | undefined;
+  labelClassName?: string | undefined;
+  children: ReactNode;
+}) {
+  return (
+    <span className={cn("flex min-w-0 flex-col gap-0.5", className)}>
+      <span
+        className={cn(
+          "flex h-[1lh] min-w-0 items-center gap-1 font-semibold text-[10px] uppercase tracking-wide",
+          labelClassName,
+        )}
+      >
+        {icon}
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        {aside ? (
+          <span className="flex shrink-0 items-center gap-2 font-normal text-xs normal-case tracking-normal">
+            {aside}
+          </span>
+        ) : null}
+      </span>
+      {children}
+    </span>
+  );
+}
+
+const ICON_CLASS = "size-3 shrink-0";
+
 /**
  * "Where was I" above the composer, for every thread: project and branch,
- * then the thread title. With resume recap on, whose move and what is next
- * follow, each clamped to two lines, so the strip stays at most six lines.
+ * then the conversation name. With resume recap on, the goal leads and the
+ * suggested move and what is next follow. Every slot has a fixed height.
  * Clicking opens the map, which also holds the recap's on switch.
  */
 export const ThreadResumeStrip = memo(function ThreadResumeStrip({
@@ -131,11 +174,13 @@ export const ThreadResumeStrip = memo(function ThreadResumeStrip({
   }
 
   const shownSummary = recapEnabled ? summary : null;
-  const titleLine = (
-    <span className="flex min-w-0 items-start gap-2">
-      <span className="min-w-0 flex-1 truncate text-foreground/90">{title}</span>
-      {shownSummary ? <RecapAge summary={shownSummary} freshness={freshness} /> : null}
-    </span>
+  const conversationField = (
+    <Field
+      label="Conversation name"
+      aside={shownSummary ? <RecapAge summary={shownSummary} freshness={freshness} /> : null}
+    >
+      <span className="block h-[1lh] min-w-0 truncate text-foreground/90">{title}</span>
+    </Field>
   );
 
   if (shownSummary === null) {
@@ -146,18 +191,27 @@ export const ThreadResumeStrip = memo(function ThreadResumeStrip({
         data-thread-resume-strip
         className={STRIP_BUTTON_CLASS}
       >
+        {recapEnabled ? (
+          <Field label="Goal">
+            <span className={cn(TWO_LINE_SLOT_CLASS, "text-muted-foreground")}>
+              Recap appears after the next turn.
+            </span>
+          </Field>
+        ) : null}
         {projectLine}
-        {titleLine}
-        {recapEnabled ? <span className="truncate">Recap appears after the next turn.</span> : null}
+        {conversationField}
+        {recapEnabled ? (
+          <>
+            <span aria-hidden className="block h-[3lh] py-0.5" />
+            <span aria-hidden className="block h-[3lh]" />
+          </>
+        ) : null}
       </button>
     );
   }
 
-  const nextLine = shownSummary.blocked
-    ? `Blocked: ${shownSummary.blocked}`
-    : shownSummary.next
-      ? `Next: ${shownSummary.next}`
-      : null;
+  const blocked = shownSummary.blocked;
+  const nextText = blocked ?? shownSummary.next;
   return (
     <Tooltip>
       <TooltipTrigger
@@ -170,32 +224,49 @@ export const ThreadResumeStrip = memo(function ThreadResumeStrip({
           />
         }
       >
+        <Field label="Goal">
+          <span className={GOAL_SLOT_CLASS}>{shownSummary.goal}</span>
+        </Field>
         {projectLine}
-        {titleLine}
-        {/* Done steps live in the map; the strip only answers "what now". */}
-        <span className="line-clamp-2 break-words">
-          <span className={cn("font-semibold", WHOSE_MOVE_CLASS[whoseMove])}>
-            {resumeWhoseMoveLabel(whoseMove)}
+        {conversationField}
+        {/* Done steps live in the map; the strip only answers "what now". Icons and colors
+            match the map: green pin for now, amber hourglass for blocked, hollow circle for next. */}
+        <Field
+          label={resumeWhoseMoveLabel(whoseMove)}
+          icon={<MapPin aria-hidden className={cn(ICON_CLASS, "text-success-foreground")} />}
+          className="rounded-md bg-success/8 px-2 py-1.5"
+          labelClassName={WHOSE_MOVE_CLASS[whoseMove]}
+        >
+          <span className={cn(TWO_LINE_SLOT_CLASS, "font-medium text-success-foreground")}>
+            {shownSummary.now}
           </span>
-          <span aria-hidden> · ▶ </span>
-          <span className="text-foreground">Now: {shownSummary.now}</span>
-        </span>
-        {nextLine ? (
-          <span
-            className={cn(
-              "line-clamp-2 break-words",
-              shownSummary.blocked && "text-warning-foreground",
-            )}
+        </Field>
+        {nextText ? (
+          <Field
+            label={blocked ? "Blocked" : "Next"}
+            icon={
+              blocked ? (
+                <Hourglass aria-hidden className={ICON_CLASS} />
+              ) : (
+                <CircleIcon aria-hidden className={ICON_CLASS} />
+              )
+            }
+            className="px-2"
+            labelClassName={blocked ? "text-warning-foreground" : undefined}
           >
-            {nextLine}
-          </span>
-        ) : null}
+            <span className={cn(TWO_LINE_SLOT_CLASS, blocked && "text-warning-foreground")}>
+              {nextText}
+            </span>
+          </Field>
+        ) : (
+          <span aria-hidden className="block h-[3lh]" />
+        )}
       </TooltipTrigger>
       <TooltipPopup side="top" className="max-w-96 whitespace-normal">
         <span className="flex flex-col gap-1">
           <span>Goal: {shownSummary.goal}</span>
           <span>Now: {shownSummary.now}</span>
-          {nextLine ? <span>{nextLine}</span> : null}
+          {nextText ? <span>{`${blocked ? "Blocked" : "Next"}: ${nextText}`}</span> : null}
         </span>
       </TooltipPopup>
     </Tooltip>

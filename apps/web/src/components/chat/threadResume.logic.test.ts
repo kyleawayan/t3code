@@ -7,6 +7,7 @@ import {
   deriveResumeWhoseMove,
   countRecapLinks,
   insertLeftOffDividerRow,
+  latestLinearWorkspace,
   LEFT_OFF_ROW_ID,
   linearIssueUrl,
   recapStepSourceLabel,
@@ -112,6 +113,31 @@ describe("linearIssueUrl", () => {
     expect(linearIssueUrl("my-workspace/../evil", "ABC-123")).toBeNull();
     expect(linearIssueUrl("my-workspace", "ABC-123/../../x")).toBeNull();
     expect(linearIssueUrl("my-workspace", "not an id")).toBeNull();
+  });
+});
+
+describe("latestLinearWorkspace", () => {
+  it("takes the most recently generated valid workspace and skips invalid ones", () => {
+    expect(
+      latestLinearWorkspace([
+        { linearWorkspace: "older-workspace", generatedAt: "2026-09-01T00:00:00.000Z" },
+        { linearWorkspace: "Not A Slug", generatedAt: "2026-09-30T00:00:00.000Z" },
+        null,
+        { linearWorkspace: null, generatedAt: "2026-09-29T00:00:00.000Z" },
+        { linearWorkspace: "newer-workspace", generatedAt: "2026-09-20T00:00:00.000Z" },
+        undefined,
+      ]),
+    ).toBe("newer-workspace");
+  });
+
+  it("is null when no summary knows a workspace", () => {
+    expect(latestLinearWorkspace([])).toBeNull();
+    expect(
+      latestLinearWorkspace([
+        { linearWorkspace: null, generatedAt: "2026-09-01T00:00:00.000Z" },
+        { linearWorkspace: "bad/slug", generatedAt: "2026-09-02T00:00:00.000Z" },
+      ]),
+    ).toBeNull();
   });
 });
 

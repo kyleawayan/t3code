@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ThreadRecapStep } from "@t3tools/contracts";
 
-import { layoutRecapPath } from "./recapMapLayout.logic";
+import { layoutRecapPath, SYNTHETIC_NOW_STEP_ID } from "./recapMapLayout.logic";
 
 const step = (
   id: string,
@@ -178,6 +178,41 @@ describe("layoutRecapPath", () => {
     ]);
     expect(layout.canStart?.step.id).toBe("b");
     expect(layout.totalCount).toBe(3);
+  });
+
+  it("adds the summary's current task as a row when no step is current", () => {
+    const layout = layoutRecapPath(
+      [step("setup", "done"), step("docs", "next"), step("approval", "blocked")],
+      "  Wire up the widget  ",
+    );
+    expect(layout.rows.map((row) => [row.step.id, row.step.label, row.kind])).toEqual([
+      [SYNTHETIC_NOW_STEP_ID, "Wire up the widget", "now"],
+      ["docs", "docs", "side-quest"],
+      ["approval", "approval", "waiting"],
+    ]);
+    expect(layout.now?.step.id).toBe(SYNTHETIC_NOW_STEP_ID);
+    expect(layout.totalCount).toBe(4);
+  });
+
+  it("promotes the step whose label matches the summary's current task", () => {
+    const layout = layoutRecapPath(
+      [step("setup", "done"), { ...step("widget", "next"), label: "Wire Up The Widget" }],
+      "wire up the widget",
+    );
+    expect(layout.rows.map((row) => [row.step.id, row.kind])).toEqual([["widget", "now"]]);
+    expect(layout.totalCount).toBe(2);
+  });
+
+  it("keeps one current step: no synthetic duplicate, and extra ones read as next", () => {
+    const layout = layoutRecapPath(
+      [step("first", "now"), step("second", "now")],
+      "Something the summary calls current",
+    );
+    expect(layout.rows.map((row) => [row.step.id, row.kind])).toEqual([
+      ["first", "now"],
+      ["second", "side-quest"],
+    ]);
+    expect(layout.rows.some((row) => row.step.id === SYNTHETIC_NOW_STEP_ID)).toBe(false);
   });
 
   it("has no current, parallel, or waiting step for an empty summary", () => {
