@@ -1018,6 +1018,15 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           ...(command.linkedPullRequest !== undefined
             ? { linkedPullRequest: command.linkedPullRequest }
             : {}),
+          // Turning off keeps the last summary so turning back on shows it right away.
+          ...(command.recapEnabled !== undefined
+            ? {
+                recap: { enabled: command.recapEnabled, summary: thread.recap?.summary ?? null },
+                ...(command.recapEnabled && thread.recap?.enabled !== true
+                  ? { recapRequested: true as const }
+                  : {}),
+              }
+            : {}),
           updatedAt: occurredAt,
         },
       };
@@ -1240,6 +1249,26 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
                 },
               }
             : {}),
+          updatedAt: thread.updatedAt,
+        },
+      };
+    }
+
+    case "thread.recap.update": {
+      const thread = yield* requireThread({ readModel, command, threadId: command.threadId });
+      // A recap turned off while generating stays off; the stale result is dropped.
+      const current = thread.deletedAt === null && thread.recap?.enabled === true;
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: yield* nowIso,
+          commandId: command.commandId,
+        })),
+        type: "thread.meta-updated",
+        payload: {
+          threadId: command.threadId,
+          ...(current ? { recap: { enabled: true, summary: command.summary } } : {}),
           updatedAt: thread.updatedAt,
         },
       };

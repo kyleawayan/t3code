@@ -14,12 +14,18 @@ import {
   ProjectionThreadRepository,
   type ProjectionThreadRepositoryShape,
 } from "../Services/ProjectionThreads.ts";
-import { ModelSelection, ThreadLinkedPullRequest, ThreadTitleState } from "@t3tools/contracts";
+import {
+  ModelSelection,
+  ThreadLinkedPullRequest,
+  ThreadRecap,
+  ThreadTitleState,
+} from "@t3tools/contracts";
 
 const ProjectionThreadDbRow = ProjectionThread.mapFields(
   Struct.assign({
     modelSelection: Schema.fromJsonString(ModelSelection),
     titleState: Schema.NullOr(Schema.fromJsonString(ThreadTitleState)),
+    recap: Schema.NullOr(Schema.fromJsonString(ThreadRecap)),
     linkedPullRequest: Schema.NullOr(Schema.fromJsonString(ThreadLinkedPullRequest)),
     branchPullRequest: Schema.NullOr(Schema.fromJsonString(ThreadLinkedPullRequest)),
   }),
@@ -38,6 +44,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           project_id,
           title,
           title_state_json,
+          recap_json,
           model_selection_json,
           runtime_mode,
           interaction_mode,
@@ -70,6 +77,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           ${row.projectId},
           ${row.title},
           ${row.titleState == null ? null : JSON.stringify(row.titleState)},
+          ${row.recap == null ? null : JSON.stringify(row.recap)},
           ${JSON.stringify(row.modelSelection)},
           ${row.runtimeMode},
           ${row.interactionMode},
@@ -102,6 +110,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           project_id = excluded.project_id,
           title = excluded.title,
           title_state_json = excluded.title_state_json,
+          recap_json = excluded.recap_json,
           model_selection_json = excluded.model_selection_json,
           runtime_mode = excluded.runtime_mode,
           interaction_mode = excluded.interaction_mode,
@@ -141,6 +150,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           project_id AS "projectId",
           title,
           title_state_json AS "titleState",
+          recap_json AS "recap",
           model_selection_json AS "modelSelection",
           runtime_mode AS "runtimeMode",
           interaction_mode AS "interactionMode",
@@ -182,6 +192,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           project_id AS "projectId",
           title,
           title_state_json AS "titleState",
+          recap_json AS "recap",
           model_selection_json AS "modelSelection",
           runtime_mode AS "runtimeMode",
           interaction_mode AS "interactionMode",

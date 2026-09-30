@@ -347,6 +347,38 @@ describe("applyThreadDetailEvent", () => {
       }
     });
 
+    it("replaces the recap and leaves it alone when absent", () => {
+      const recap = { enabled: true, summary: null };
+      const enabled = applyThreadDetailEvent(baseThread, {
+        ...baseEventFields,
+        sequence: 5,
+        occurredAt: "2026-04-01T05:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: baseThread.id,
+        type: "thread.meta-updated",
+        payload: { threadId: baseThread.id, recap, updatedAt: "2026-04-01T05:00:00.000Z" },
+      });
+      expect(enabled.kind).toBe("updated");
+      if (enabled.kind !== "updated") return;
+      expect(enabled.thread.recap).toEqual(recap);
+
+      const renamed = applyThreadDetailEvent(enabled.thread, {
+        ...baseEventFields,
+        sequence: 6,
+        occurredAt: "2026-04-01T06:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: baseThread.id,
+        type: "thread.meta-updated",
+        payload: {
+          threadId: baseThread.id,
+          title: "Renamed",
+          updatedAt: "2026-04-01T06:00:00.000Z",
+        },
+      });
+      expect(renamed.kind).toBe("updated");
+      if (renamed.kind === "updated") expect(renamed.thread.recap).toEqual(recap);
+    });
+
     it.each(["linkedPullRequest", "branchPullRequest"] as const)(
       "sets and clears %s without changing the other link",
       (field) => {

@@ -693,6 +693,54 @@ export const ThreadTitleRegeneration = Schema.Struct({
 });
 export type ThreadTitleRegeneration = typeof ThreadTitleRegeneration.Type;
 
+export const ThreadRecapStepStatus = Schema.Literals(["done", "now", "next", "blocked", "unknown"]);
+export type ThreadRecapStepStatus = typeof ThreadRecapStepStatus.Type;
+
+export const ThreadRecapStep = Schema.Struct({
+  /** Stable across regenerations so the map keeps its layout between turns. */
+  id: TrimmedNonEmptyString,
+  label: TrimmedNonEmptyString,
+  status: ThreadRecapStepStatus,
+  /** Where the step came from; `inferred` steps are guesses and render as such. */
+  source: Schema.Literals(["chat", "linear", "inferred"]),
+  linearIssueId: Schema.optional(TrimmedNonEmptyString),
+  /** A link from the thread (issue, Slack thread, PR, doc) that this step is about. */
+  url: Schema.optional(TrimmedNonEmptyString),
+  blockedBy: Schema.Array(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+});
+export type ThreadRecapStep = typeof ThreadRecapStep.Type;
+
+/** Links the user pasted into the thread; the server drops any the thread does not contain. */
+export const ThreadRecapLink = Schema.Struct({
+  label: TrimmedNonEmptyString,
+  url: TrimmedNonEmptyString,
+});
+export type ThreadRecapLink = typeof ThreadRecapLink.Type;
+
+export const ThreadRecapSummary = Schema.Struct({
+  goal: TrimmedNonEmptyString,
+  done: Schema.NullOr(TrimmedNonEmptyString),
+  now: TrimmedNonEmptyString,
+  next: Schema.NullOr(TrimmedNonEmptyString),
+  blocked: Schema.NullOr(TrimmedNonEmptyString),
+  steps: Schema.Array(ThreadRecapStep),
+  links: Schema.Array(ThreadRecapLink).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  linearIssueIds: Schema.Array(TrimmedNonEmptyString),
+  /** Newest message the summary covers; clients mark it stale past this point. */
+  basedOnMessageId: Schema.NullOr(MessageId),
+  generatedAt: IsoDateTime,
+});
+export type ThreadRecapSummary = typeof ThreadRecapSummary.Type;
+
+/** Per-thread resume recap. Off by default; generated after turns only while enabled. */
+export const ThreadRecap = Schema.Struct({
+  enabled: Schema.Boolean,
+  summary: Schema.NullOr(ThreadRecapSummary),
+});
+export type ThreadRecap = typeof ThreadRecap.Type;
+
 /**
  * Legacy single-PR link. Still emitted as the thread's derived current pull
  * request (see `@t3tools/shared/threadPullRequests`) so clients from before
@@ -831,6 +879,7 @@ export const OrchestrationThread = Schema.Struct({
   // Pending-only state. Optional so older servers remain compatible.
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
+  recap: Schema.optional(Schema.NullOr(ThreadRecap)),
   deletedAt: Schema.NullOr(IsoDateTime),
   messages: Schema.Array(OrchestrationMessage),
   proposedPlans: Schema.Array(OrchestrationProposedPlan).pipe(
@@ -900,6 +949,7 @@ export const OrchestrationThreadShell = Schema.Struct({
   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
+  recap: Schema.optional(Schema.NullOr(ThreadRecap)),
   session: Schema.NullOr(OrchestrationSession),
   latestUserMessageAt: Schema.NullOr(IsoDateTime),
   hasPendingApprovals: Schema.Boolean,
@@ -1224,6 +1274,7 @@ const ThreadMetaUpdateCommand = Schema.Struct({
   expectedBranch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
+  recapEnabled: Schema.optional(Schema.Boolean),
 }).check(
   Schema.makeFilter(
     (input) =>
@@ -1570,6 +1621,13 @@ const ThreadTitleGenerateCompleteCommand = Schema.Struct({
   needsRefinement: Schema.Boolean,
 });
 
+const ThreadRecapUpdateCommand = Schema.Struct({
+  type: Schema.Literal("thread.recap.update"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  summary: ThreadRecapSummary,
+});
+
 const ThreadTitleRefineCommand = Schema.Struct({
   type: Schema.Literal("thread.title.refine"),
   commandId: CommandId,
@@ -1627,6 +1685,7 @@ const InternalOrchestrationCommand = Schema.Union([
   ThreadTitleRegenerationCompleteCommand,
   ThreadTitleGenerateCompleteCommand,
   ThreadTitleRefineCommand,
+  ThreadRecapUpdateCommand,
   ThreadPullRequestSyncCommand,
   ThreadPullRequestLinkSyncCommand,
 ]);
@@ -1805,6 +1864,9 @@ export const ThreadMetaUpdatedPayload = Schema.Struct({
   /** Pending state shared with clients. Null clears a matching request. */
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
+  /** Replaces the thread's whole recap. `recapRequested` asks the recap reactor to regenerate. */
+  recap: Schema.optional(Schema.NullOr(ThreadRecap)),
+  recapRequested: Schema.optional(Schema.Literal(true)),
   modelSelection: Schema.optional(ModelSelection),
   branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),

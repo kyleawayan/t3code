@@ -211,6 +211,13 @@ import { PullRequestDetailGhost } from "./pullRequest/PullRequestGhosts";
 import { PullRequestsUnavailableState } from "./pullRequest/PullRequestsUnavailableState";
 import { RightPanelTabs } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
+import { RecapMapPanel } from "./RecapMapPanel";
+import { ThreadResumeStrip } from "./chat/ThreadResumeStrip";
+import {
+  deriveRecapFreshness,
+  deriveResumeWhoseMove,
+  type LeftOffSnapshot,
+} from "./chat/threadResume.logic";
 import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
 import { ThreadPullRequestsPanel } from "./pullRequest/ThreadPullRequestsPanel";
 import { useDeviceState } from "~/state/device";
@@ -260,6 +267,7 @@ import {
   useEnvironmentSettings,
 } from "../hooks/useSettings";
 import { useNowMinute } from "../hooks/useNowMinute";
+import { useSetThreadRecapEnabled } from "../hooks/useThreadRecap";
 import { usePanelAnimationSettings, usePanelPresence } from "../panelAnimations";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useRemoveClonedProject } from "../hooks/useRemoveClonedProject";
@@ -4532,6 +4540,30 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "agents");
   }, [activeThreadRef]);
+  const addRecapMapSurface = useCallback(() => {
+    if (!activeThreadRef || !isServerThread) return;
+    useRightPanelStore.getState().open(activeThreadRef, "recap");
+  }, [activeThreadRef, isServerThread]);
+  const setThreadRecapEnabled = useSetThreadRecapEnabled();
+  const setActiveThreadRecapEnabled = useCallback(
+    (enabled: boolean) => {
+      if (!activeThreadRef || !isServerThread) return;
+      void setThreadRecapEnabled(activeThreadRef, enabled);
+    },
+    [activeThreadRef, isServerThread, setThreadRecapEnabled],
+  );
+  const activeThreadRecap = activeThreadShell?.recap ?? null;
+  const activeThreadRecapEnabled = activeThreadRecap?.enabled === true;
+  const resumeWhoseMove = deriveResumeWhoseMove({
+    hasPendingApproval: activePendingApproval !== null,
+    hasPendingUserInput: pendingUserInputs.length > 0,
+    isWorking,
+  });
+  const resumeRecapFreshness = deriveRecapFreshness({
+    basedOnMessageId: activeThreadRecap?.summary?.basedOnMessageId ?? null,
+    latestMessageId: activeServerThread?.messages.at(-1)?.id ?? null,
+    isWorking,
+  });
   const supportsThreadPullRequests =
     serverConfig?.environment.capabilities.threadPullRequests === true;
   const visiblePullRequestCount = visibleThreadPullRequests(
@@ -5972,6 +6004,20 @@ export default function ChatView(props: ChatViewProps) {
   const activeThreadLastVisitedAt = useUiStateStore((store) =>
     activeThreadKey === null ? undefined : store.threadLastVisitedAtById[activeThreadKey],
   );
+  // Captured on the first render for a thread, before the visit effect above
+  // moves the stamp, so "You left off here" stays put for the whole visit.
+  const [leftOffSnapshot, setLeftOffSnapshot] = useState<{
+    readonly threadKey: string | null;
+    readonly snapshot: LeftOffSnapshot | null;
+  }>({ threadKey: null, snapshot: null });
+  if (leftOffSnapshot.threadKey !== activeThreadKey) {
+    setLeftOffSnapshot({
+      threadKey: activeThreadKey,
+      snapshot: activeThreadLastVisitedAt
+        ? { visitedAt: activeThreadLastVisitedAt, openedAt: new Date().toISOString() }
+        : null,
+    });
+  }
   const activeThreadWokeVisible = useMemo(() => {
     if (activeThreadWokeAt === null) return false;
     if (activeThreadShell?.settledOverride === "settled") return false;
@@ -9292,6 +9338,13 @@ export default function ChatView(props: ChatViewProps) {
         environmentId={activeThreadRef?.environmentId ?? null}
         threadId={activeThreadRef?.threadId ?? null}
       />
+    ) : renderedRightPanelSurface?.kind === "recap" ? (
+      <RecapMapPanel
+        key={activeThreadKey}
+        recap={activeThreadRecap}
+        threadRef={activeThreadRef}
+        onSetEnabled={isServerThread ? setActiveThreadRecapEnabled : null}
+      />
     ) : renderedRightPanelSurface?.kind === "device" ? (
       <Suspense fallback={null}>
         <DevicePanel
@@ -9417,6 +9470,7 @@ export default function ChatView(props: ChatViewProps) {
             {...(routeKind === "draft" && draftId ? { draftId } : {})}
             activeThreadTitle={activeThread.title}
             isServerThread={isServerThread}
+            recapEnabled={activeThreadRecapEnabled}
             activeProject={activeProject}
             openInCwd={gitCwd}
             activeProjectScripts={activeProjectScripts}
@@ -9574,6 +9628,11 @@ export default function ChatView(props: ChatViewProps) {
                   { context: { terminalFocus: false } },
                 )}
                 onRemoveQueuedMessage={onRemoveQueuedMessage}
+                leftOff={
+                  paintOnlyDisplayedTimeline || leftOffSnapshot.threadKey !== activeThreadKey
+                    ? null
+                    : leftOffSnapshot.snapshot
+                }
               />
 
               {/* scroll to end pill — shown when user has scrolled away from the live edge */}
@@ -9638,6 +9697,14 @@ export default function ChatView(props: ChatViewProps) {
                         />
                       </div>
                     </div>
+                  ) : null}
+                  {activeThreadRecapEnabled && isServerThread && !isDraftHeroState ? (
+                    <ThreadResumeStrip
+                      summary={activeThreadRecap?.summary ?? null}
+                      whoseMove={resumeWhoseMove}
+                      freshness={resumeRecapFreshness}
+                      onOpenMap={addRecapMapSurface}
+                    />
                   ) : null}
                   <div
                     className="relative"
@@ -9950,6 +10017,7 @@ export default function ChatView(props: ChatViewProps) {
           onAddPullRequest={addPullRequestSurface}
           onAddPullRequests={addPullRequestsSurface}
           onAddAgents={addAgentsSurface}
+          onAddRecapMap={addRecapMapSurface}
           onAddDevice={addDeviceSurface}
           browserAvailable={isPreviewSupportedInRuntime()}
           terminalAvailable={activeProject !== null}
@@ -9958,6 +10026,7 @@ export default function ChatView(props: ChatViewProps) {
           pullRequestAvailable={pullRequestSurfaceAvailable}
           pullRequestsAvailable={pullRequestsSurfaceAvailable}
           agentsAvailable
+          recapMapAvailable={isServerThread}
           deviceAvailable={activeThreadRef !== null}
           liveAgentCount={agentPanelModel.liveCount}
         >
@@ -10007,6 +10076,7 @@ export default function ChatView(props: ChatViewProps) {
             onAddPullRequest={addPullRequestSurface}
             onAddPullRequests={addPullRequestsSurface}
             onAddAgents={addAgentsSurface}
+            onAddRecapMap={addRecapMapSurface}
             onAddDevice={addDeviceSurface}
             browserAvailable={isPreviewSupportedInRuntime()}
             terminalAvailable={activeProject !== null}
@@ -10015,6 +10085,7 @@ export default function ChatView(props: ChatViewProps) {
             pullRequestAvailable={pullRequestSurfaceAvailable}
             pullRequestsAvailable={pullRequestsSurfaceAvailable}
             agentsAvailable
+            recapMapAvailable={isServerThread}
             deviceAvailable={activeThreadRef !== null}
             liveAgentCount={agentPanelModel.liveCount}
           >

@@ -64,7 +64,13 @@ function makeFakeClaudeBinary(dir: string) {
         'if (!argv.includes("--disable-slash-commands")) {',
         '  fail("text generation must disable skills", 8);',
         "}",
-        'if (!argv.includes("--strict-mcp-config")) {',
+        'const allowedToolsIndex = argv.indexOf("--allowedTools");',
+        "if (allowedToolsIndex !== -1) {",
+        "  const readOnlyLinear = /^mcp__(plugin_linear_linear|linear)__(get_issue|list_issues|list_comments)$/;",
+        '  if (!argv[allowedToolsIndex + 1].split(",").every((tool) => readOnlyLinear.test(tool))) {',
+        '    fail("text generation may only allow read-only Linear tools", 13);',
+        "  }",
+        '} else if (!argv.includes("--strict-mcp-config")) {',
         '  fail("text generation must not load configured MCP servers", 9);',
         "}",
         'const settingsIndex = argv.indexOf("--settings");',
@@ -425,6 +431,44 @@ it.layer(ClaudeTextGenerationTestLayer)("ClaudeTextGeneration", (it) => {
           });
 
           expect(generated.branch).toBe("call-script");
+        }),
+    ),
+  );
+
+  it.effect("lets recaps read Linear issues and nothing else", () =>
+    withFakeClaudeEnv(
+      {
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        output: JSON.stringify({
+          structured_output: {
+            goal: "Ship the login fix",
+            done: null,
+            now: "Fixing the session refresh",
+            next: null,
+            blocked: null,
+            steps: [],
+            links: [{ label: "Issue", url: "https://linear.app/acme/issue/ENG-42" }],
+          },
+        }),
+        argsMustContain: "--allowedTools mcp__plugin_linear_linear__get_issue",
+        argsMustNotContain: "--strict-mcp-config",
+        stdinMustContain: "Linear issues in this thread: ENG-42",
+      },
+      (textGeneration) =>
+        Effect.gen(function* () {
+          const generated = yield* textGeneration.generateThreadRecap({
+            cwd: process.cwd(),
+            message: "USER:\nFix ENG-42 https://linear.app/acme/issue/ENG-42",
+            linearIssueIds: ["ENG-42"],
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("claudeAgent"),
+              model: SYNTHETIC_CLAUDE_STANDARD_MODEL,
+            },
+          });
+
+          expect(generated.links).toEqual([
+            { label: "Issue", url: "https://linear.app/acme/issue/ENG-42" },
+          ]);
         }),
     ),
   );

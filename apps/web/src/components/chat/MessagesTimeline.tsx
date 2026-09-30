@@ -243,6 +243,7 @@ import { SkillInlineText } from "./SkillInlineText";
 import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
 import { TurnPulse, type TurnMascot } from "./TurnPulse";
 import type { TurnPulseVerdict } from "./turnPulse.logic";
+import { insertLeftOffDividerRow, type LeftOffSnapshot } from "./threadResume.logic";
 
 const HIDDEN_TURN_PULSE: TurnPulseVerdict = { kind: "hidden" };
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
@@ -454,6 +455,8 @@ interface MessagesTimelineProps {
   onSteerQueuedMessage?: (id: string) => void;
   steerQueuedMessageShortcutLabel?: string | null;
   onRemoveQueuedMessage?: (id: string) => void;
+  /** Previous visit to this thread; draws "You left off here" before what was missed. */
+  leftOff?: LeftOffSnapshot | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -512,6 +515,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onSteerQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
   steerQueuedMessageShortcutLabel = null,
   onRemoveQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
+  leftOff = null,
 }: MessagesTimelineProps) {
   const [expandedTurnIds, setExpandedTurnIds] = useState<ReadonlySet<TurnId>>(new Set());
   const [expandedWorkGroupIds, setExpandedWorkGroupIds] = useState<ReadonlySet<string>>(new Set());
@@ -760,7 +764,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     worktreeSetup,
     queuedMessages,
   ]);
-  const rows = useStableRows(rawRows, listIdentityKey);
+  const stableRows = useStableRows(rawRows, listIdentityKey);
+  const rows = useMemo(() => insertLeftOffDividerRow(stableRows, leftOff), [stableRows, leftOff]);
   const minimapItems = useMemo(() => deriveTimelineMinimapItems(rows), [rows]);
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(
     null,
@@ -1482,6 +1487,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "work-toggle" ? <WorkGroupToggleTimelineRow row={row} /> : null}
       {row.kind === "turn-fold" ? <TurnFoldTimelineRow row={row} /> : null}
       {row.kind === "context-compaction" ? <ContextCompactionTimelineRow row={row} /> : null}
+      {row.kind === "left-off" ? <LeftOffTimelineRow row={row} /> : null}
       {row.kind === "message" && row.message.role === "user" ? <UserTimelineRow row={row} /> : null}
       {row.kind === "message" && row.message.role === "assistant" ? (
         <AssistantTimelineRow row={row} />
@@ -1640,6 +1646,22 @@ function ContextCompactionTimelineRow({
         {row.label}
       </span>
       <span className="h-px flex-1 bg-border/70" />
+    </div>
+  );
+}
+
+function LeftOffTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "left-off" }> }) {
+  const newLabel = `${row.newCount} new since you left`;
+  return (
+    <div
+      role="separator"
+      aria-label={`You left off here. ${newLabel}`}
+      className="mx-auto flex w-full max-w-3xl items-center gap-3 py-1 text-xs"
+    >
+      <span className="h-px flex-1 bg-primary/50" />
+      <span className="shrink-0 font-medium text-primary">You left off here</span>
+      <span className="shrink-0 text-muted-foreground">{newLabel}</span>
+      <span className="h-px flex-1 bg-primary/50" />
     </div>
   );
 }

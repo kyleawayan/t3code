@@ -25,9 +25,11 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildThreadRecapPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
 import {
+  finalizeThreadRecap,
   sanitizeCommitSubject,
   sanitizePrTitle,
   sanitizeThreadTitle,
@@ -405,10 +407,21 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
       };
     });
 
+  const generateThreadRecap: TextGeneration.TextGeneration["Service"]["generateThreadRecap"] =
+    Effect.fn("AntigravityTextGeneration.generateThreadRecap")(function* (input) {
+      const generated = yield* runAntigravityJson({
+        operation: "generateThreadRecap",
+        ...buildThreadRecapPrompt(input),
+        modelSelection: input.modelSelection,
+      });
+      return yield* finalizeThreadRecap(generated, input);
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateThreadRecap,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

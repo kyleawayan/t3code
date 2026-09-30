@@ -813,6 +813,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             ...(event.payload.titleState !== undefined
               ? { titleState: event.payload.titleState }
               : {}),
+            ...(event.payload.recap !== undefined ? { recap: event.payload.recap } : {}),
             ...(event.payload.titleRegeneration !== undefined
               ? {
                   titleRegenerationRequestId: event.payload.titleRegeneration?.requestId ?? null,

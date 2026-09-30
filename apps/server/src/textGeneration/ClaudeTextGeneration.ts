@@ -24,9 +24,11 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildThreadRecapPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
 import {
+  finalizeThreadRecap,
   normalizeCliError,
   sanitizeCommitSubject,
   sanitizePrTitle,
@@ -51,6 +53,11 @@ import {
 import { makeClaudeEnvironment } from "../provider/Drivers/ClaudeHome.ts";
 
 const CLAUDE_TIMEOUT_MS = 180_000;
+
+/** Covers the official Linear plugin and a standalone MCP server named `linear`. */
+const LINEAR_READ_TOOLS = ["mcp__plugin_linear_linear", "mcp__linear"].flatMap((server) =>
+  ["get_issue", "list_issues", "list_comments"].map((tool) => `${server}__${tool}`),
+);
 
 /**
  * Schema for the wrapper JSON returned by `claude -p --output-format json`.
@@ -102,7 +109,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle",
+      | "generateThreadTitle"
+      | "generateThreadRecap",
     value: unknown,
     detail: string,
   ): Effect.Effect<string, TextGenerationError> =>
@@ -132,7 +140,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateThreadRecap";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -185,9 +194,9 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     );
 
     const runClaudeCommand = Effect.fn("runClaudeJson.runClaudeCommand")(function* () {
-      // Titles need only the supplied prompt, not configuration from the checkout.
+      // Titles and recaps need only the supplied prompt, not configuration from the checkout.
       const workingDirectory =
-        operation === "generateThreadTitle"
+        operation === "generateThreadTitle" || operation === "generateThreadRecap"
           ? yield* fileSystem
               .makeTempDirectoryScoped({ prefix: "t3code-claude-title-" })
               .pipe(
@@ -213,7 +222,11 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
           "--tools",
           "",
           "--disable-slash-commands",
-          "--strict-mcp-config",
+          // Recaps may read the thread's Linear issues through the user's own Linear MCP
+          // server. Only the read tools are allowed; dontAsk denies everything else.
+          ...(operation === "generateThreadRecap"
+            ? ["--allowedTools", LINEAR_READ_TOOLS.join(",")]
+            : ["--strict-mcp-config"]),
           "--permission-mode",
           "dontAsk",
         ],
@@ -410,10 +423,24 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       };
     });
 
+  const generateThreadRecap: TextGeneration.TextGeneration["Service"]["generateThreadRecap"] =
+    Effect.fn("ClaudeTextGeneration.generateThreadRecap")(function* (input) {
+      const { prompt, outputSchema } = buildThreadRecapPrompt(input);
+      const generated = yield* runClaudeJson({
+        operation: "generateThreadRecap",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+      return yield* finalizeThreadRecap(generated, input);
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateThreadRecap,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

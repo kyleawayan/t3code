@@ -4679,4 +4679,106 @@ engineLayer("OrchestrationProjectionPipeline via engine dispatch", (it) => {
       );
     }),
   );
+
+  it.effect("persists a thread recap through toggles and unrelated metadata updates", () =>
+    Effect.gen(function* () {
+      const engine = yield* OrchestrationEngineService;
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const createdAt = "2026-01-01T00:00:00.000Z";
+      const projectId = ProjectId.make("project-recap");
+      const threadId = ThreadId.make("thread-recap");
+      const summary = {
+        goal: "Migrate to the new UI library",
+        done: null,
+        now: "Migrating Modal and Button components",
+        next: "Get the E2E suite passing on the new UI",
+        blocked: null,
+        steps: [
+          {
+            id: "migrate-components",
+            label: "Migrate Modal and Button",
+            status: "now" as const,
+            source: "linear" as const,
+            linearIssueId: "ENG-42",
+            url: "https://linear.app/acme/issue/ENG-42",
+            blockedBy: [],
+          },
+        ],
+        links: [{ label: "Login issue", url: "https://linear.app/acme/issue/ENG-42" }],
+        linearIssueIds: ["ENG-42"],
+        basedOnMessageId: MessageId.make("message-recap"),
+        generatedAt: createdAt,
+      };
+      const readRecaps = Effect.gen(function* () {
+        const shell = yield* snapshotQuery.getThreadShellById(threadId);
+        const detail = yield* snapshotQuery.getThreadDetailById(threadId);
+        const readModel = yield* snapshotQuery.getCommandReadModel();
+        return [
+          Option.getOrThrow(shell).recap,
+          Option.getOrThrow(detail).recap,
+          readModel.threads.find((thread) => thread.id === threadId)?.recap,
+        ];
+      });
+
+      yield* engine.dispatch({
+        type: "project.create",
+        commandId: CommandId.make("cmd-recap-project"),
+        projectId,
+        title: "Recap Project",
+        workspaceRoot: "/tmp/project-recap",
+        defaultModelSelection: null,
+        createdAt,
+      });
+      yield* engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("cmd-recap-thread"),
+        threadId,
+        projectId,
+        title: "Recap thread",
+        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5-codex" },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdAt,
+      });
+      assert.deepEqual(yield* readRecaps, [null, null, null]);
+
+      yield* engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-recap-on"),
+        threadId,
+        recapEnabled: true,
+      });
+      yield* engine.dispatch({
+        type: "thread.recap.update",
+        commandId: CommandId.make("cmd-recap-generated"),
+        threadId,
+        summary,
+      });
+      yield* engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-recap-rename"),
+        threadId,
+        title: "Renamed recap thread",
+      });
+      const enabled = { enabled: true, summary };
+      assert.deepEqual(yield* readRecaps, [enabled, enabled, enabled]);
+
+      yield* engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-recap-off"),
+        threadId,
+        recapEnabled: false,
+      });
+      yield* engine.dispatch({
+        type: "thread.recap.update",
+        commandId: CommandId.make("cmd-recap-late"),
+        threadId,
+        summary: { ...summary, now: "Should not be stored" },
+      });
+      const disabled = { enabled: false, summary };
+      assert.deepEqual(yield* readRecaps, [disabled, disabled, disabled]);
+    }),
+  );
 });

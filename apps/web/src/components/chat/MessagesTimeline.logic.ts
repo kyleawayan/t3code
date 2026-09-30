@@ -361,6 +361,13 @@ export type MessagesTimelineRow =
       label: string;
     }
   | {
+      /** "You left off here": inserted after row projection, see `insertLeftOffDividerRow`. */
+      kind: "left-off";
+      id: string;
+      createdAt: string;
+      newCount: number;
+    }
+  | {
       kind: "message";
       id: string;
       createdAt: string;
@@ -1453,6 +1460,11 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
     case "context-compaction": {
       const bc = b as typeof a;
       return a.createdAt === bc.createdAt && a.label === bc.label;
+    }
+
+    case "left-off": {
+      const bl = b as typeof a;
+      return a.createdAt === bl.createdAt && a.newCount === bl.newCount;
     }
 
     case "proposed-plan":

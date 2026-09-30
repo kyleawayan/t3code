@@ -48,6 +48,7 @@ import {
   FolderPlusIcon,
   GitPullRequestArrowIcon,
   LinkIcon,
+  MapIcon,
   MessageSquareIcon,
   PaletteIcon,
   SettingsIcon,
@@ -72,6 +73,7 @@ import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
+import { useSetThreadRecapEnabled } from "../hooks/useThreadRecap";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { useClientSettings } from "../hooks/useSettings";
 import { useTheme } from "../hooks/useTheme";
@@ -664,6 +666,7 @@ function OpenCommandPaletteDialog(props: {
         ? scopeThreadRef(activeThread.environmentId, activeThread.id)
         : null;
   const openPanelPullRequestUrl = useOpenPanelPullRequestUrl(referenceThreadRef);
+  const setThreadRecapEnabled = useSetThreadRecapEnabled();
   const activeThreadServerConfig = useServerConfigs().get(
     activeThread?.environmentId ?? ("" as EnvironmentId),
   );
@@ -1730,6 +1733,34 @@ function OpenCommandPaletteDialog(props: {
         },
       });
     }
+  }
+
+  if (activeThread !== null) {
+    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    const recapEnabled = activeThread.recap?.enabled === true;
+    const recapSearchTerms = ["resume", "recap", "summary", "where was i", "left off", "map"];
+    actionItems.push({
+      kind: "action",
+      value: "action:toggle-resume-recap",
+      searchTerms: recapSearchTerms,
+      title: recapEnabled
+        ? "Turn off resume recap for this thread"
+        : "Turn on resume recap for this thread",
+      icon: <MapIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        await setThreadRecapEnabled(threadRef, !recapEnabled);
+      },
+    });
+    actionItems.push({
+      kind: "action",
+      value: "action:open-resume-map",
+      searchTerms: recapSearchTerms,
+      title: "Open resume map",
+      icon: <MapIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        useRightPanelStore.getState().open(threadRef, "recap");
+      },
+    });
   }
 
   actionItems.push({
