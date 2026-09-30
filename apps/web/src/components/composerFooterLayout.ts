@@ -133,15 +133,26 @@ function restingComposerControlsWidth(
 /**
  * The width the resting controls take with nothing moved into overflow.
  *
- * The context strip reserves this much for the composer before deciding
- * whether its own labels may expand. Judging against the currently visible
- * controls instead lets the strip expand into space the composer just gave
- * up, which shrinks the host, hides the controls again, and repeats.
+ * The context strip squishes its labels to reserve up to this much for the
+ * composer. Judging against the currently visible controls instead lets the
+ * strip widen its labels into space the composer just gave up, which shrinks
+ * the host, hides the controls again, and repeats.
  */
 export function resolveRestingComposerControlsNaturalWidth(
   input: RestingComposerControlsMeasurement,
 ): number {
   return restingComposerControlsWidth(input, 0);
+}
+
+/**
+ * The narrowest width at which the resting controls still show: every block
+ * in overflow and the model picker at its minimum. The context strip collapses
+ * its labels before leaving the host less than this.
+ */
+export function resolveRestingComposerControlsMinimumWidth(
+  input: RestingComposerControlsMeasurement,
+): number {
+  return restingComposerControlsWidth(input, input.blockWidths.length, input.minimumFixedWidth);
 }
 
 /**

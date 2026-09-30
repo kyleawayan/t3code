@@ -9,6 +9,7 @@ import type { VariantProps } from "class-variance-authority";
 import { Badge } from "../ui/badge";
 import { buttonVariants } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { SquishText } from "../ui/squish-text";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
 import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPickerContent";
@@ -182,12 +183,10 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             size={size}
             data-chat-provider-model-picker="true"
             className={cn(
-              "min-w-0 justify-between whitespace-nowrap",
-              // Compact composers keep every control inline, so the model name
-              // gives up width first and furthest. The floor holds an
-              // ellipsis plus the model's tail, which is the part that
-              // distinguishes one model from the next.
-              props.compact ? "min-w-18 max-w-42 shrink-8" : "max-w-48 shrink sm:max-w-56",
+              // The model name squishes rather than truncates. min-w-min holds
+              // it at its minimum scale, so the whole name stays in view.
+              "min-w-min justify-between whitespace-nowrap",
+              props.compact ? "max-w-42 shrink" : "max-w-48 shrink sm:max-w-56",
               props.triggerClassName,
             )}
             disabled={props.disabled}
@@ -216,19 +215,12 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             <TooltipTrigger
               render={
                 <span
-                  className={cn(
-                    "min-w-0 flex-1 overflow-hidden truncate",
-                    // Model names share a leading brand word and differ at the
-                    // tail, so a narrow composer keeps the end: "…us 5", not
-                    // "Claude O…". RTL moves the ellipsis to the front; the
-                    // name is a single Latin run, so nothing reorders.
-                    props.compact && "text-left [direction:rtl]",
-                  )}
+                  className="flex min-w-0 flex-1"
                   data-chat-provider-model-picker-label="true"
                 />
               }
             >
-              {props.triggerLabel ?? triggerTitle}
+              <SquishText>{props.triggerLabel ?? triggerTitle}</SquishText>
             </TooltipTrigger>
             <TooltipPopup side="top">{triggerTooltipContent}</TooltipPopup>
           </Tooltip>

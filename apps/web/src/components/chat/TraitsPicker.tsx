@@ -32,6 +32,7 @@ import { useComposerDraftStore, DraftId } from "../../composerDraftStore";
 import { getProviderModelCapabilities } from "../../providerModels";
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
+import { SquishText } from "../ui/squish-text";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   ComposerControl,
@@ -559,7 +560,7 @@ export const TraitsPicker = memo(function TraitsPicker({
   TraitsPersistence & {
     size?: ComposerControlSize;
     /**
-     * Narrow footers trim the trigger's padding and let its label truncate so
+     * Narrow footers trim the trigger's padding and let its label squish so
      * the traits stay visible next to the model picker.
      */
     compact?: boolean;
@@ -632,18 +633,17 @@ export const TraitsPicker = memo(function TraitsPicker({
             size={size}
             className={cn(
               isCodexStyle || compact
-                ? "min-w-0 max-w-40 shrink justify-start overflow-hidden whitespace-nowrap sm:max-w-48"
+                ? // min-w-min holds the squished label at its minimum scale.
+                  "min-w-min max-w-40 shrink justify-start overflow-hidden whitespace-nowrap sm:max-w-48"
                 : "shrink-0 whitespace-nowrap",
-              // Enough room for the first few characters of the effort level,
-              // so "Extra High" still reads as "Extr…" rather than "E…".
-              compact && cn("min-w-11", composerCompactControlClassName),
+              compact && composerCompactControlClassName,
               triggerClassName,
             )}
           />
         }
       >
         {isCodexStyle || compact ? (
-          // The label truncates itself; clipping the wrapper too would cut off
+          // The label squishes itself; clipping the wrapper too would cut off
           // the chevron, whose negative end margin overhangs the wrapper edge.
           <span
             className={cn(
@@ -653,8 +653,8 @@ export const TraitsPicker = memo(function TraitsPicker({
           >
             {fastModeIcon}
             <Tooltip>
-              <TooltipTrigger render={<span className="min-w-0 truncate" />}>
-                {triggerLabel}
+              <TooltipTrigger render={<span className="flex min-w-0" />}>
+                <SquishText>{triggerLabel}</SquishText>
               </TooltipTrigger>
               <TooltipPopup side="top">{triggerLabel}</TooltipPopup>
             </Tooltip>

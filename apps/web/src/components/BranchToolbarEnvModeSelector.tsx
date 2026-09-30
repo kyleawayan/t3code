@@ -8,6 +8,7 @@ import {
   type EnvMode,
 } from "./BranchToolbar.logic";
 import { useComposerMenuProps } from "./chat/composerEventScope";
+import { ComposerContextLabel } from "./ComposerContextLabel";
 import {
   Select,
   SelectGroup,
@@ -49,11 +50,13 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
     ],
     [activeWorktreePath, previousWorktreeLabel, showPreviousWorktree],
   );
+  const selectedEnvModeLabel =
+    envModeItems.find((item) => item.value === effectiveEnvMode)?.label ?? "";
 
   if (envLocked) {
     return (
       <span
-        className="inline-flex h-7 min-w-0 items-center gap-1 border border-transparent px-[calc(--spacing(2)-1px)] font-normal text-muted-foreground/70 text-xs sm:h-6"
+        className="inline-flex h-7 min-w-min items-center gap-1 border border-transparent px-[calc(--spacing(2)-1px)] font-normal text-muted-foreground/70 text-xs sm:h-6"
         data-composer-context-control
       >
         {activeWorktreePath ? (
@@ -61,17 +64,9 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
         ) : (
           <FolderIcon className="size-3 shrink-0" />
         )}
-        <span
-          data-composer-label
-          className="min-w-0 max-w-[240px] group-data-[compact]/composer-context:max-w-0"
-        >
-          <span
-            data-composer-label-motion
-            className="block w-full min-w-0 max-w-[240px] truncate transition-opacity duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transition-none"
-          >
-            {resolveLockedWorkspaceLabel(activeWorktreePath)}
-          </span>
-        </span>
+        <ComposerContextLabel collapsible>
+          {resolveLockedWorkspaceLabel(activeWorktreePath)}
+        </ComposerContextLabel>
       </span>
     );
   }
@@ -92,7 +87,7 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
       <SelectTrigger
         variant="ghost"
         size="xs"
-        className="min-w-0 shrink font-normal text-xs!"
+        className="min-w-min shrink font-normal text-xs!"
         aria-label="Workspace"
         data-composer-shortcut="composer.workspace"
         data-composer-context-control
@@ -104,17 +99,9 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
         ) : (
           <FolderIcon className="size-3" />
         )}
-        <span
-          data-composer-label
-          className="min-w-0 max-w-[240px] group-data-[compact]/composer-context:max-w-0"
-        >
-          <span
-            data-composer-label-motion
-            className="block w-full min-w-0 max-w-[240px] truncate transition-opacity duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transition-none"
-          >
-            <SelectValue />
-          </span>
-        </span>
+        <SelectValue className="flex min-w-0">
+          <ComposerContextLabel collapsible>{selectedEnvModeLabel}</ComposerContextLabel>
+        </SelectValue>
       </SelectTrigger>
       <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
         <SelectGroup>

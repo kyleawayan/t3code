@@ -235,6 +235,7 @@ import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
+import { SquishText } from "./ui/squish-text";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import {
   composerDraftHasUserContent,
@@ -777,9 +778,9 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
             {props.project ? (
               <ProjectFavicon project={props.project} className="size-4 shrink-0" />
             ) : null}
-            <span className="min-w-0 flex-1 truncate text-xs font-medium text-secondary-label">
-              {props.projectDisplayName}
-            </span>
+            <SquishText className="flex-1 text-xs font-medium text-secondary-label">
+              {props.projectDisplayName ?? ""}
+            </SquishText>
             <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-end">
               <Tooltip>
                 <TooltipTrigger
@@ -798,7 +799,11 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
               </Tooltip>
             </span>
           </div>
-          <div className="mt-0.5 truncate text-sm font-medium text-foreground/90">{preview}</div>
+          <div className="mt-0.5 flex min-w-0">
+            <SquishText className="flex-1 text-sm font-medium text-foreground/90">
+              {preview}
+            </SquishText>
+          </div>
         </div>
       </div>
     </li>
@@ -1463,23 +1468,20 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       className="min-w-0 flex-1 rounded-sm border border-input bg-card px-1 text-sm font-medium text-card-foreground outline-none focus:border-foreground"
     />
   ) : (
-    <span
+    <SquishText
       className={cn(
-        "min-w-0 flex-1 text-sm transition-opacity motion-reduce:transition-none",
+        "flex-1 text-sm transition-opacity motion-reduce:transition-none",
         shouldRecede ? "font-normal" : "font-medium",
         variant === "card"
-          ? cn(
-              "truncate",
-              shouldRecede
-                ? "text-secondary-label"
-                : isUnread || isWoke || status === "input"
-                  ? "text-foreground"
-                  : status === "failed"
-                    ? "text-foreground/95"
-                    : "text-foreground/90",
-            )
+          ? shouldRecede
+            ? "text-secondary-label"
+            : isUnread || isWoke || status === "input"
+              ? "text-foreground"
+              : status === "failed"
+                ? "text-foreground/95"
+                : "text-foreground/90"
           : cn(
-              "truncate group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
+              "group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
               shouldRecede
                 ? "text-secondary-label/70"
                 : props.isActive || isWoke || status === "input"
@@ -1492,7 +1494,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       )}
     >
       {thread.title}
-    </span>
+    </SquishText>
   );
 
   // Stacks show their layer count; multiple unrelated links show their total count.
@@ -1762,14 +1764,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 <ProjectFavicon project={props.project} className="size-4 shrink-0" />
               ) : null}
               {props.projectDisplayName ? (
-                <span
+                <SquishText
                   className={cn(
-                    "min-w-0 flex-1 truncate text-secondary-label text-xs",
+                    "flex-1 text-secondary-label text-xs",
                     shouldRecede ? "font-normal" : "font-medium",
                   )}
                 >
                   {props.projectDisplayName}
-                </span>
+                </SquishText>
               ) : (
                 <span className="flex-1" />
               )}
@@ -1925,9 +1927,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               {thread.branch ? (
                 <>
                   <ThreadWorktreeIndicator thread={thread} />
-                  <span className="min-w-0 flex-1 truncate whitespace-nowrap text-muted-foreground/40">
+                  <SquishText className="flex-1 text-muted-foreground/40">
                     {thread.branch}
-                  </span>
+                  </SquishText>
                 </>
               ) : (
                 <span className="flex-1" />

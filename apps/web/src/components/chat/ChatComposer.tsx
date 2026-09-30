@@ -922,6 +922,7 @@ function ComposerCommandMenuLayer(props: { anchor: HTMLElement | null; children:
 }
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectValue } from "../ui/select";
+import { SquishText } from "../ui/squish-text";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import {
@@ -1118,26 +1119,21 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
                 size={size}
                 className={cn(
                   size === "xs" ? undefined : "font-medium",
-                  // Floor is the icon plus one letter. The icon and tooltip
-                  // carry the access level once the word stops fitting.
-                  compact && cn("min-w-11 shrink", composerCompactControlClassName),
+                  // min-w-min holds the squished label at its minimum scale.
+                  compact && cn("min-w-min shrink", composerCompactControlClassName),
                 )}
                 aria-label="Runtime mode"
               />
             }
           >
             <ComposerControlIcon icon={RuntimeModeIcon} size={size} />
-            {/* Clipped rather than ellipsised: at the floor "A" says more
-                than "A…" in the same space. */}
-            <SelectValue
-              className={
-                // Spelled out because `text-clip` alone would merge away the
-                // base `truncate` and with it the overflow clipping.
-                compact ? "min-w-0 overflow-hidden text-clip whitespace-nowrap" : undefined
-              }
-            >
-              {compact ? runtimeModeOption.compactLabel : runtimeModeOption.label}
-            </SelectValue>
+            {compact ? (
+              <SelectValue className="flex min-w-0">
+                <SquishText>{runtimeModeOption.compactLabel}</SquishText>
+              </SelectValue>
+            ) : (
+              <SelectValue>{runtimeModeOption.label}</SelectValue>
+            )}
           </TooltipTrigger>
           <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
             {runtimeModeOptions.map((mode) => {
@@ -4960,7 +4956,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         size={composerControlsInStrip ? "xs" : "sm"}
         triggerClassName={
           composerControlsInStrip
-            ? "min-w-13 shrink text-xs! @max-[640px]/composer-surface:[&_[data-chat-provider-model-picker-label]]:w-0 @max-[640px]/composer-surface:[&_[data-chat-provider-model-picker-label]]:flex-none"
+            ? "shrink text-xs!"
             : composerControlsCompact
               ? cn("-ms-1.5", composerCompactControlClassName)
               : "-ms-2.5"

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { resolveContextStripLabelsCompact } from "./BranchToolbar.logic";
+import { resolveContextStripLabelsCompact, resolveContextStripLayout } from "./BranchToolbar.logic";
 import {
   COMPOSER_FOOTER_COMPACT_BREAKPOINT_PX,
   COMPOSER_FOOTER_WIDE_ACTIONS_COMPACT_BREAKPOINT_PX,
@@ -9,6 +9,7 @@ import {
   resolveComposerTimelineInset,
   resolveScrollToEndClearance,
   resolveRestingComposerControlsLayout,
+  resolveRestingComposerControlsMinimumWidth,
   resolveRestingComposerControlsNaturalWidth,
   shouldAnimateComposerRestingTransition,
   shouldUseCompactComposerPrimaryActions,
@@ -279,26 +280,40 @@ describe("context strip labels and resting composer controls", () => {
     return stripWidth - chromeWidth - (compact ? 0 : labelWidth);
   }
 
-  it("keeps the labels compact when the full controls only fit beside compact labels", () => {
-    // Compact labels leave 599px, so the composer shows every block.
+  it("squishes the labels so the full controls fit, and settles there", () => {
+    // Squished to their minimum scale the labels need 164px: 64 for the
+    // workspace label and 100 for the branch name.
+    const stripLayout = (labelsRenderedWidth: number) =>
+      resolveContextStripLayout({
+        compact: false,
+        availableWidth: stripWidth,
+        contentWidth: chromeWidth + labelsRenderedWidth,
+        labelsRenderedWidth,
+        collapsibleLabelsMinimumWidth: 64,
+        pinnedLabelsMinimumWidth: 100,
+        hostNaturalWidth: naturalWidth,
+        hostMinimumWidth: resolveRestingComposerControlsMinimumWidth(measurement),
+      });
+
+    // Natural labels leave the controls too little, so the host reserves
+    // their natural width (plus the pixel of slack) and the labels squish.
+    const first = stripLayout(labelWidth);
+    expect(first).toEqual({ compact: false, squeezed: false, hostReserveWidth: 365 });
     const layout = resolveRestingComposerControlsLayout({
       ...measurement,
-      hostWidth: hostWidth(true),
+      hostWidth: first.hostReserveWidth,
     });
     expect(layout).toEqual({ hiddenCount: 0, visible: true });
 
-    // The strip reserves the natural controls width, so expanding the
-    // labels is off the table: 125 + 327 + 364 > 724.
-    const compact = resolveContextStripLabelsCompact({
-      compact: true,
-      neededWidth: chromeWidth + labelWidth + naturalWidth,
-      availableWidth: stripWidth,
-    });
-    expect(compact).toBe(true);
-
-    // The next pass sees the same inputs and lands on the same answer.
+    // The next pass sees the squished labels and lands on the same answer.
+    const squishedLabelWidth = stripWidth - chromeWidth - first.hostReserveWidth;
+    expect(stripLayout(squishedLabelWidth)).toEqual(first);
     expect(
-      resolveRestingComposerControlsLayout({ ...measurement, hostWidth: hostWidth(compact) }),
+      resolveRestingComposerControlsLayout({
+        ...measurement,
+        hostWidth: first.hostReserveWidth,
+        previous: { hiddenCount: 1, visible: true },
+      }),
     ).toEqual(layout);
   });
 
