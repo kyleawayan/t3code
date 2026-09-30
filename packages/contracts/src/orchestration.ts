@@ -728,6 +728,10 @@ export const ThreadRecapSummary = Schema.Struct({
   steps: Schema.Array(ThreadRecapStep),
   links: Schema.Array(ThreadRecapLink).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   linearIssueIds: Schema.Array(TrimmedNonEmptyString),
+  /** Linear workspace slug, so clients can link issue IDs to `linear.app/<slug>/issue/<id>`. */
+  linearWorkspace: Schema.NullOr(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   /** Newest message the summary covers; clients mark it stale past this point. */
   basedOnMessageId: Schema.NullOr(MessageId),
   generatedAt: IsoDateTime,

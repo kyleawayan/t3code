@@ -61,6 +61,16 @@ export function safeRecapLinkUrl(url: string): string | null {
   }
 }
 
+const LINEAR_WORKSPACE_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const LINEAR_ISSUE_ID_PATTERN = /^[A-Za-z][A-Za-z0-9]*-[0-9]+$/;
+
+/** Issue page for a Linear ID, or null when either part could not be a real slug or key. */
+export function linearIssueUrl(workspace: string | null, issueId: string): string | null {
+  if (workspace === null || !LINEAR_WORKSPACE_PATTERN.test(workspace)) return null;
+  if (!LINEAR_ISSUE_ID_PATTERN.test(issueId)) return null;
+  return `https://linear.app/${workspace}/issue/${issueId.toUpperCase()}`;
+}
+
 /** Distinct openable links in a summary, across the link list and the steps. */
 export function countRecapLinks(summary: {
   readonly links: ReadonlyArray<{ readonly url: string }>;

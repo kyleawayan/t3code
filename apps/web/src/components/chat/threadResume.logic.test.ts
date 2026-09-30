@@ -8,6 +8,7 @@ import {
   countRecapLinks,
   insertLeftOffDividerRow,
   LEFT_OFF_ROW_ID,
+  linearIssueUrl,
   recapStepSourceLabel,
   safeRecapLinkUrl,
 } from "./threadResume.logic";
@@ -98,6 +99,19 @@ describe("deriveRecapFreshness", () => {
     expect(
       deriveRecapFreshness({ basedOnMessageId: null, latestMessageId: newer, isWorking: false }),
     ).toBe("stale");
+  });
+});
+
+describe("linearIssueUrl", () => {
+  it("links an issue only when the workspace slug and issue key are well formed", () => {
+    expect(linearIssueUrl("my-workspace", "ABC-123")).toBe(
+      "https://linear.app/my-workspace/issue/ABC-123",
+    );
+    expect(linearIssueUrl(null, "ABC-123")).toBeNull();
+    expect(linearIssueUrl("My Workspace", "ABC-123")).toBeNull();
+    expect(linearIssueUrl("my-workspace/../evil", "ABC-123")).toBeNull();
+    expect(linearIssueUrl("my-workspace", "ABC-123/../../x")).toBeNull();
+    expect(linearIssueUrl("my-workspace", "not an id")).toBeNull();
   });
 });
 

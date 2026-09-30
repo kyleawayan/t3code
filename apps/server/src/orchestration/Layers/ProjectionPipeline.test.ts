@@ -4706,6 +4706,7 @@ engineLayer("OrchestrationProjectionPipeline via engine dispatch", (it) => {
         ],
         links: [{ label: "Login issue", url: "https://linear.app/acme/issue/ENG-42" }],
         linearIssueIds: ["ENG-42"],
+        linearWorkspace: "acme",
         basedOnMessageId: MessageId.make("message-recap"),
         generatedAt: createdAt,
       };

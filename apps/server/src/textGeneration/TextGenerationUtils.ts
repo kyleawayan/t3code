@@ -87,6 +87,23 @@ const LINEAR_ISSUE_ID = /^[A-Z][A-Z0-9]{1,9}-\d+$/;
 // What may follow a URL that ends there: sentence punctuation, then a delimiter or the end.
 const URL_END = /^[.,;:!?]*(?:[\s<>"'`)\]}]|$)/;
 
+// Clients build `https://linear.app/<slug>/issue/<id>`, so a slug must be one plain path segment.
+const LINEAR_WORKSPACE_SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const LINEAR_ISSUE_URL_WORKSPACE = /https?:\/\/linear\.app\/([^/\s?#]+)\/issue\//gi;
+
+function linearWorkspaceSlug(value: string | null | undefined): string | undefined {
+  const slug = value?.trim();
+  return slug && LINEAR_WORKSPACE_SLUG.test(slug) ? slug : undefined;
+}
+
+function linearWorkspaceInText(text: string): string | undefined {
+  for (const match of text.matchAll(LINEAR_ISSUE_URL_WORKSPACE)) {
+    const slug = linearWorkspaceSlug(match[1]);
+    if (slug !== undefined) return slug;
+  }
+  return undefined;
+}
+
 /** Whether `url` appears in `text` as a whole URL, not as the start of a longer one. */
 function containsWholeUrl(text: string, url: string): boolean {
   for (let index = text.indexOf(url); index !== -1; index = text.indexOf(url, index + 1)) {
@@ -127,6 +144,7 @@ export interface GeneratedThreadRecap {
     readonly blockedBy: ReadonlyArray<string>;
   }>;
   readonly links: ReadonlyArray<{ readonly label: string; readonly url: string }>;
+  readonly linearWorkspace: string | null;
 }
 
 /**
@@ -223,6 +241,14 @@ export function finalizeThreadRecap(
       ],
     })),
     links: [...links.values()],
+    // The model only knows the slug from a lookup. Fall back to Linear URLs the thread or an
+    // earlier recap contained, then to the earlier recap's slug.
+    linearWorkspace:
+      linearWorkspaceSlug(generated.linearWorkspace) ??
+      linearWorkspaceInText(input.message) ??
+      linearWorkspaceInText([...previousUrls].join("\n")) ??
+      linearWorkspaceSlug(input.previousSummary?.linearWorkspace) ??
+      null,
   });
 }
 

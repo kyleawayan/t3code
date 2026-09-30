@@ -9698,8 +9698,12 @@ export default function ChatView(props: ChatViewProps) {
                       </div>
                     </div>
                   ) : null}
-                  {activeThreadRecapEnabled && isServerThread && !isDraftHeroState ? (
+                  {!isDraftHeroState ? (
                     <ThreadResumeStrip
+                      project={activeProject}
+                      branch={activeThread.branch}
+                      title={isServerThread ? activeThread.title : null}
+                      recapEnabled={activeThreadRecapEnabled}
                       summary={activeThreadRecap?.summary ?? null}
                       whoseMove={resumeWhoseMove}
                       freshness={resumeRecapFreshness}

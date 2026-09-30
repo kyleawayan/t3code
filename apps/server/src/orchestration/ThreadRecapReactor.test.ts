@@ -44,6 +44,7 @@ const GENERATED: ThreadRecapGenerationResult = {
   blocked: null,
   steps: [],
   links: [],
+  linearWorkspace: null,
 };
 
 function message(id: string, role: OrchestrationMessage["role"], text: string) {

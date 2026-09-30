@@ -1,10 +1,11 @@
 /**
- * Resume map right-panel surface: the thread's recap steps as one column in
- * dependency order, with dependency lines in a narrow left gutter like a
- * git-log graph. Layout lives in `recapMapLayout.logic`. Status always reads
- * from a shape and a word, never color alone; green marks only the current
- * step and amber only blocked ones. Everything is static: no pulses or
- * spinners, since the summary only changes between turns.
+ * Resume map right-panel surface, read like a quest map: the thread's steps
+ * in one column in dependency order, with arrows in a narrow left gutter from
+ * each prerequisite to the step it unlocks. Layout lives in
+ * `recapMapLayout.logic`. Status always reads from a shape and a word, never
+ * color alone; green marks only the current step and amber only blocked or
+ * waiting ones. Everything is static: no pulses or spinners, since the
+ * summary only changes between turns.
  */
 import type {
   ScopedThreadRef,
@@ -17,8 +18,11 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
-  Link2,
+  Hourglass,
+  Lock,
   Map as MapIcon,
+  MapPin,
+  Signpost,
 } from "lucide-react";
 import {
   memo,
@@ -36,57 +40,125 @@ import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { Button } from "~/components/ui/button";
 import { ScrollArea } from "~/components/ui/scroll-area";
-import { SquishText } from "~/components/ui/squish-text";
 import { toastManager } from "~/components/ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+import { MarkdownLinkFavicon } from "./ChatMarkdown";
+import { resolveExternalWebLinkHost } from "./chat/externalLinkContextMenu";
 import {
   layoutRecapPath,
   type RecapGutterCell,
   type RecapPathRow,
-  type RecapRowMarker,
 } from "./chat/recapMapLayout.logic";
-import { safeRecapLinkUrl } from "./chat/threadResume.logic";
+import { linearIssueUrl, safeRecapLinkUrl } from "./chat/threadResume.logic";
 
 const EMPTY_STEPS: ReadonlyArray<ThreadRecapStep> = [];
 const EMPTY_CELL: RecapGutterCell = {
   through: [],
   arrivals: [],
   down: false,
-  dashedArrival: false,
 };
 
-const LANE_WIDTH = 14;
+const LANE_WIDTH = 16;
 const laneX = (lane: number) => LANE_WIDTH / 2 + lane * LANE_WIDTH;
 // Vertical center of a row's first text line; the row paddings below are sized to match.
 const MARKER_Y = 17.5;
 const NOW_MARKER_Y = 22;
+/** Clearance around a marker, where arrowheads stop. */
+const MARKER_RADIUS = 6;
+const ARROW_LENGTH = 5;
+const ARROW_HALF_WIDTH = 3.25;
 const CORNER_RADIUS = 5;
-const LINE_CLASS = "stroke-muted-foreground/45";
+const LINE_CLASS = "stroke-muted-foreground/60";
+const ARROW_CLASS = "fill-muted-foreground";
 
-function MarkerShape({ marker, x, y }: { marker: RecapRowMarker; x: number; y: number }) {
-  switch (marker) {
+type ArrowDirection = "down" | "left" | "right";
+
+function Arrowhead({ x, y, direction }: { x: number; y: number; direction: ArrowDirection }) {
+  const points =
+    direction === "down"
+      ? `${x - ARROW_HALF_WIDTH},${y - ARROW_LENGTH} ${x + ARROW_HALF_WIDTH},${y - ARROW_LENGTH} ${x},${y}`
+      : direction === "right"
+        ? `${x - ARROW_LENGTH},${y - ARROW_HALF_WIDTH} ${x - ARROW_LENGTH},${y + ARROW_HALF_WIDTH} ${x},${y}`
+        : `${x + ARROW_LENGTH},${y - ARROW_HALF_WIDTH} ${x + ARROW_LENGTH},${y + ARROW_HALF_WIDTH} ${x},${y}`;
+  return <polygon points={points} className={ARROW_CLASS} />;
+}
+
+/** An arrow from the top of `fromLane` that turns into the marker from the side. */
+function SideArrow({
+  from,
+  to,
+  markerY,
+  dashed = false,
+}: {
+  from: number;
+  to: number;
+  markerY: number;
+  dashed?: boolean;
+}) {
+  const direction = to > from ? 1 : -1;
+  const tipX = to - direction * MARKER_RADIUS;
+  return (
+    <>
+      <path
+        d={`M ${from} 0 V ${markerY - CORNER_RADIUS} Q ${from} ${markerY} ${from + direction * CORNER_RADIUS} ${markerY} H ${tipX - direction * ARROW_LENGTH}`}
+        strokeDasharray={dashed ? "3 3" : undefined}
+        className={LINE_CLASS}
+      />
+      <Arrowhead x={tipX} y={markerY} direction={direction > 0 ? "right" : "left"} />
+    </>
+  );
+}
+
+function MarkerShape({ row, x, y }: { row: RecapPathRow; x: number; y: number }) {
+  switch (row.kind) {
     case "now":
-      return <circle cx={x} cy={y} r={5} className="fill-success" />;
-    case "next":
+      return <circle cx={x} cy={y} r={5.5} className="fill-success" />;
+    case "side-quest":
+    case "ready":
       return (
         <circle
           cx={x}
           cy={y}
-          r={4.25}
-          strokeWidth={1.5}
+          r={4.5}
+          strokeWidth={1.75}
           className="fill-background stroke-muted-foreground"
         />
       );
-    case "blocked":
+    case "locked": {
+      // A padlock: shackle over a body. Amber only when the step reports itself blocked.
+      const tone = row.marker === "blocked" ? "warning" : "muted-foreground";
       return (
-        <rect x={x - 4.5} y={y - 4.5} width={9} height={9} rx={1.5} className="fill-warning" />
+        <>
+          <path
+            d={`M ${x - 2.5} ${y - 1} V ${y - 3} A 2.5 2.5 0 0 1 ${x + 2.5} ${y - 3} V ${y - 1}`}
+            strokeWidth={1.5}
+            className={tone === "warning" ? "stroke-warning" : "stroke-muted-foreground"}
+          />
+          <rect
+            x={x - 4}
+            y={y - 1}
+            width={8}
+            height={6}
+            rx={1.25}
+            className={tone === "warning" ? "fill-warning" : "fill-muted-foreground"}
+          />
+        </>
+      );
+    }
+    case "waiting":
+      // An hourglass: the self-crossing outline fills as two triangles.
+      return (
+        <path
+          d={`M ${x - 4} ${y - 5} H ${x + 4} L ${x - 4} ${y + 5} H ${x + 4} Z`}
+          className="fill-warning"
+        />
       );
     case "unknown":
       return (
         <circle
           cx={x}
           cy={y}
-          r={4.25}
+          r={4.5}
           strokeWidth={1.25}
           strokeDasharray="2 2"
           className="fill-background stroke-muted-foreground"
@@ -97,26 +169,25 @@ function MarkerShape({ marker, x, y }: { marker: RecapRowMarker; x: number; y: n
 
 /** One row's slice of the gutter. Lines run to "100%" so the row can grow with its label. */
 function GutterCell({
+  row,
   cell,
-  lane,
   laneCount,
-  marker,
   markerY,
 }: {
+  row: RecapPathRow;
   cell: RecapGutterCell;
-  lane: number;
   laneCount: number;
-  marker: RecapRowMarker;
   markerY: number;
 }) {
-  const x = laneX(lane);
+  const x = laneX(row.lane);
+  const arrowTipY = markerY - MARKER_RADIUS;
   return (
     <div
       aria-hidden
       className="relative shrink-0 self-stretch"
       style={{ width: laneCount * LANE_WIDTH }}
     >
-      <svg className="absolute inset-0 size-full overflow-visible" fill="none" strokeWidth={1.5}>
+      <svg className="absolute inset-0 size-full overflow-visible" fill="none" strokeWidth={1.75}>
         {cell.through.map((through) => (
           <line
             key={`through-${through}`}
@@ -130,43 +201,36 @@ function GutterCell({
         {cell.arrivals.map((arrival) => {
           const from = laneX(arrival.lane);
           if (arrival.continues) {
+            // Branch off a line that keeps going down.
+            const direction = x > from ? 1 : -1;
+            const tipX = x - direction * MARKER_RADIUS;
             return (
-              <line
-                key={`arrival-${arrival.lane}`}
-                x1={from}
-                x2={x}
-                y1={markerY}
-                y2={markerY}
-                className={LINE_CLASS}
-              />
+              <g key={`arrival-${arrival.lane}`}>
+                <line
+                  x1={from}
+                  x2={tipX - direction * ARROW_LENGTH}
+                  y1={markerY}
+                  y2={markerY}
+                  className={LINE_CLASS}
+                />
+                <Arrowhead x={tipX} y={markerY} direction={direction > 0 ? "right" : "left"} />
+              </g>
             );
           }
-          if (arrival.lane === lane) {
+          if (arrival.lane === row.lane) {
             return (
-              <line
-                key={`arrival-${arrival.lane}`}
-                x1={x}
-                x2={x}
-                y1={0}
-                y2={markerY}
-                className={LINE_CLASS}
-              />
+              <g key={`arrival-${arrival.lane}`}>
+                <line x1={x} x2={x} y1={0} y2={arrowTipY - ARROW_LENGTH} className={LINE_CLASS} />
+                <Arrowhead x={x} y={arrowTipY} direction="down" />
+              </g>
             );
           }
-          const direction = x > from ? 1 : -1;
-          return (
-            <path
-              key={`arrival-${arrival.lane}`}
-              d={`M ${from} 0 V ${markerY - CORNER_RADIUS} Q ${from} ${markerY} ${from + direction * CORNER_RADIUS} ${markerY} H ${x}`}
-              className={LINE_CLASS}
-            />
-          );
+          return <SideArrow key={`arrival-${arrival.lane}`} from={from} to={x} markerY={markerY} />;
         })}
-        {cell.dashedArrival ? (
-          <line x1={x} x2={x} y1={0} y2={markerY} strokeDasharray="2 3" className={LINE_CLASS} />
+        {cell.down ? (
+          <line x1={x} x2={x} y1={markerY + MARKER_RADIUS} y2="100%" className={LINE_CLASS} />
         ) : null}
-        {cell.down ? <line x1={x} x2={x} y1={markerY} y2="100%" className={LINE_CLASS} /> : null}
-        <MarkerShape marker={marker} x={x} y={markerY} />
+        <MarkerShape row={row} x={x} y={markerY} />
       </svg>
     </div>
   );
@@ -174,34 +238,95 @@ function GutterCell({
 
 type OpenRecapLink = (url: string, event: ReactMouseEvent) => void;
 
-function RowWord({ row }: { row: RecapPathRow }) {
-  switch (row.marker) {
+function RowTag({ row }: { row: RecapPathRow }) {
+  switch (row.kind) {
     case "now":
-      return <span className="font-semibold text-success-foreground">NOW</span>;
-    case "blocked":
       return (
-        <span className="text-warning-foreground">
-          {row.after.length > 0 ? `after ${row.after.join(", ")}` : "blocked"}
+        <span className="inline-flex items-center gap-1 font-semibold text-success-foreground">
+          <MapPin aria-hidden className="size-3" />
+          You are here
         </span>
       );
-    case "next":
-      return row.canStartNow ? (
-        <span className="text-foreground/80">can start now</span>
-      ) : (
-        <span className="text-muted-foreground">after {row.after.join(", ")}</span>
+    case "side-quest":
+      return <span className="text-foreground/80">side quest · can start now</span>;
+    case "ready":
+      return <span className="text-foreground/80">can start now</span>;
+    case "locked":
+      return (
+        <span
+          className={cn(
+            "inline-flex items-center gap-1",
+            row.marker === "blocked" ? "text-warning-foreground" : "text-muted-foreground",
+          )}
+        >
+          <Lock aria-hidden className="size-3" />
+          unlocks after {row.after.join(", ")}
+        </span>
+      );
+    case "waiting":
+      return (
+        <span className="inline-flex items-center gap-1 text-warning-foreground">
+          <Hourglass aria-hidden className="size-3" />
+          waiting
+        </span>
       );
     case "unknown":
-      return <span className="text-muted-foreground">?</span>;
+      return <span className="text-muted-foreground">? unknown</span>;
   }
 }
 
-function StepBadges({ step }: { step: ThreadRecapStep }) {
+function LinearChip({
+  issueId,
+  workspace,
+  onOpenLink,
+  size,
+}: {
+  issueId: string;
+  workspace: string | null;
+  onOpenLink: OpenRecapLink;
+  size: "row" | "header";
+}) {
+  const url = linearIssueUrl(workspace, issueId);
+  const className = cn(
+    "inline-flex shrink-0 items-center rounded border border-border font-mono text-muted-foreground",
+    size === "row" ? "px-1 text-[10px] leading-4" : "rounded-md px-1.5 py-0.5 text-[11px]",
+  );
+  if (url === null) return <span className={className}>{issueId}</span>;
+  const host = resolveExternalWebLinkHost(url);
+  return (
+    <button
+      type="button"
+      aria-label={`Open ${issueId} in Linear`}
+      onClick={(event) => onOpenLink(url, event)}
+      className={cn(
+        className,
+        "hover:bg-accent hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+    >
+      {host ? <MarkdownLinkFavicon host={host} /> : null}
+      {issueId}
+    </button>
+  );
+}
+
+function StepBadges({
+  step,
+  workspace,
+  onOpenLink,
+}: {
+  step: ThreadRecapStep;
+  workspace: string | null;
+  onOpenLink: OpenRecapLink;
+}) {
   return (
     <>
       {step.source === "linear" && step.linearIssueId ? (
-        <span className="shrink-0 rounded border border-border px-1 font-mono text-[10px] leading-4 text-muted-foreground">
-          {step.linearIssueId}
-        </span>
+        <LinearChip
+          issueId={step.linearIssueId}
+          workspace={workspace}
+          onOpenLink={onOpenLink}
+          size="row"
+        />
       ) : null}
       {step.source === "inferred" ? (
         <span className="shrink-0 rounded border border-dashed border-muted-foreground/50 px-1 text-[10px] leading-4 text-muted-foreground">
@@ -216,30 +341,33 @@ function PathRow({
   row,
   cell,
   laneCount,
+  workspace,
   onOpenLink,
   rowRef,
 }: {
   row: RecapPathRow;
   cell: RecapGutterCell;
   laneCount: number;
+  workspace: string | null;
   onOpenLink: OpenRecapLink;
   rowRef?: ((element: HTMLLIElement | null) => void) | undefined;
 }) {
-  const isNow = row.marker === "now";
+  const isNow = row.kind === "now";
+  const isFog = row.kind === "unknown";
   const url = row.step.url === undefined ? null : safeRecapLinkUrl(row.step.url);
   return (
     <li ref={rowRef} className="flex min-h-9 items-stretch gap-2">
       <GutterCell
+        row={row}
         cell={cell}
-        lane={row.lane}
         laneCount={laneCount}
-        marker={row.marker}
         markerY={isNow ? NOW_MARKER_Y : MARKER_Y}
       />
       <div
         className={cn(
-          "flex min-w-0 flex-1 items-start gap-2 rounded-md border px-1.5",
-          isNow ? "border-success/50 bg-success/8 py-3" : "border-transparent pt-2.5 pb-1",
+          "mb-1 flex min-w-0 flex-1 items-start gap-2 rounded-md border px-1.5",
+          isNow ? "border-success/60 bg-success/8 py-3" : "border-transparent pt-2.5 pb-1.5",
+          isFog && "border-dashed border-muted-foreground/40 bg-muted/40",
           row.step.source === "inferred" && "border-dashed border-muted-foreground/40",
         )}
       >
@@ -251,71 +379,66 @@ function PathRow({
         >
           {row.number}
         </span>
-        {isNow ? (
-          // The current step is the one thing the reader must not lose, so it wraps in full.
-          <p className="min-w-0 flex-1 text-sm font-medium leading-5 text-foreground [overflow-wrap:anywhere]">
-            {row.step.label}
-          </p>
-        ) : (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <p
-                  className={cn(
-                    "line-clamp-2 min-w-0 flex-1 text-xs leading-[15px] [overflow-wrap:anywhere]",
-                    row.marker === "unknown" ? "text-muted-foreground" : "text-foreground/90",
-                  )}
-                />
-              }
-            >
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          {isNow ? (
+            // The current step is the one thing the reader must not lose, so it wraps in full.
+            <p className="text-sm font-medium leading-5 text-foreground [overflow-wrap:anywhere]">
               {row.step.label}
-            </TooltipTrigger>
-            <TooltipPopup side="top" className="max-w-72 whitespace-normal">
-              {row.step.label}
-            </TooltipPopup>
-          </Tooltip>
-        )}
-        <span
-          className={cn(
-            "flex shrink-0 items-center gap-1.5 text-[11px]",
-            isNow ? "leading-5" : "leading-[15px]",
+            </p>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <p
+                    className={cn(
+                      "line-clamp-2 text-xs leading-[15px] [overflow-wrap:anywhere]",
+                      isFog ? "text-muted-foreground" : "text-foreground/90",
+                    )}
+                  />
+                }
+              >
+                {row.step.label}
+              </TooltipTrigger>
+              <TooltipPopup side="top" className="max-w-72 whitespace-normal">
+                {row.step.label}
+              </TooltipPopup>
+            </Tooltip>
           )}
-        >
-          <StepBadges step={row.step} />
-          <RowWord row={row} />
-          {url ? (
-            <button
-              type="button"
-              aria-label={`Open link for ${row.step.label}`}
-              onClick={(event) => onOpenLink(url, event)}
-              className="rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <ExternalLink aria-hidden className="size-3" />
-            </button>
-          ) : null}
-        </span>
+          <span className="flex flex-wrap items-center gap-1.5 text-[11px] leading-4">
+            <RowTag row={row} />
+            <StepBadges step={row.step} workspace={workspace} onOpenLink={onOpenLink} />
+            {url ? (
+              <button
+                type="button"
+                aria-label={`Open link for ${row.step.label}`}
+                onClick={(event) => onOpenLink(url, event)}
+                className="rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ExternalLink aria-hidden className="size-3" />
+              </button>
+            ) : null}
+          </span>
+        </div>
       </div>
     </li>
   );
 }
 
 function HeaderLine({
-  shape,
+  icon,
   word,
   wordClass,
   children,
 }: {
-  shape: ReactNode;
+  icon: ReactNode;
   word: string;
   wordClass: string;
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 items-start gap-2">
-      <svg aria-hidden className="mt-1 size-3 shrink-0 overflow-visible" viewBox="0 0 12 12">
-        {shape}
-      </svg>
-      <span className={cn("w-10 shrink-0 text-[11px] font-semibold leading-5", wordClass)}>
+    <div className="flex min-w-0 items-start gap-1.5">
+      <span className={cn("flex h-5 shrink-0 items-center", wordClass)}>{icon}</span>
+      <span className={cn("w-[5.25rem] shrink-0 text-[11px] font-semibold leading-5", wordClass)}>
         {word}
       </span>
       {children}
@@ -332,7 +455,7 @@ function LinkChips({
 }) {
   const openable = links.flatMap((link) => {
     const url = safeRecapLinkUrl(link.url);
-    return url === null ? [] : [{ label: link.label, url }];
+    return url === null ? [] : [{ label: link.label, url, host: resolveExternalWebLinkHost(url) }];
   });
   if (openable.length === 0) return null;
   return (
@@ -342,9 +465,9 @@ function LinkChips({
           key={link.url}
           type="button"
           onClick={(event) => onOpenLink(link.url, event)}
-          className="inline-flex max-w-full items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-[11px] text-foreground/90 hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex max-w-full items-center rounded-md border border-border px-1.5 py-0.5 text-[11px] text-foreground/90 hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <Link2 aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+          {link.host ? <MarkdownLinkFavicon host={link.host} /> : null}
           <span className="max-w-48 truncate">{link.label}</span>
         </button>
       ))}
@@ -428,19 +551,25 @@ export const RecapMapPanel = memo(function RecapMapPanel({
     );
   }
 
-  const { done, rows, cells, laneCount, now, canStart, wait } = layout;
+  const { done, rows, cells, laneCount, now, canStart, waiting, wait } = layout;
   const firstNowIndex = now === null ? -1 : rows.indexOf(now);
+  const waitingText =
+    waiting !== null
+      ? waiting.step.label
+      : wait !== null
+        ? `${wait.count} ${wait.count === 1 ? "step waits" : "steps wait"} on step ${wait.cause.number}: ${wait.cause.step.label}`
+        : summary.blocked;
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex flex-col gap-1 border-b border-border/60 px-3 py-2.5">
         {layout.totalCount > 0 ? (
           <p className="text-[11px] text-muted-foreground tabular-nums">
-            {done.length} of {layout.totalCount} done
+            {done.length} of {layout.totalCount} cleared
           </p>
         ) : null}
         <HeaderLine
-          shape={<circle cx={6} cy={6} r={5} className="fill-success" />}
-          word="NOW"
+          icon={<MapPin aria-hidden className="size-3.5" />}
+          word="You are here"
           wordClass="text-success-foreground"
         >
           <p className="min-w-0 flex-1 text-sm font-medium leading-5 [overflow-wrap:anywhere]">
@@ -449,34 +578,24 @@ export const RecapMapPanel = memo(function RecapMapPanel({
         </HeaderLine>
         {canStart ? (
           <HeaderLine
-            shape={
-              <circle
-                cx={6}
-                cy={6}
-                r={4.25}
-                strokeWidth={1.5}
-                className="fill-background stroke-muted-foreground"
-              />
-            }
-            word="ALSO"
+            icon={<Signpost aria-hidden className="size-3.5" />}
+            word="Side quest"
             wordClass="text-muted-foreground"
           >
-            <SquishText className="flex-1 text-xs leading-5">
-              {`${canStart.step.label} (can start now)`}
-            </SquishText>
+            <p className="line-clamp-2 min-w-0 flex-1 text-xs leading-5 [overflow-wrap:anywhere]">
+              {canStart.step.label} <span className="text-muted-foreground">(can start now)</span>
+            </p>
           </HeaderLine>
         ) : null}
-        {wait !== null || summary.blocked ? (
+        {waitingText ? (
           <HeaderLine
-            shape={<rect x={1.5} y={1.5} width={9} height={9} rx={1.5} className="fill-warning" />}
-            word="WAIT"
+            icon={<Hourglass aria-hidden className="size-3.5" />}
+            word="Waiting"
             wordClass="text-warning-foreground"
           >
-            <SquishText className="flex-1 text-xs leading-5">
-              {wait !== null
-                ? `${wait.count} ${wait.count === 1 ? "step waits" : "steps wait"} on step ${wait.cause.number}: ${wait.cause.step.label}`
-                : (summary.blocked ?? "")}
-            </SquishText>
+            <p className="line-clamp-2 min-w-0 flex-1 text-xs leading-5 [overflow-wrap:anywhere]">
+              {waitingText}
+            </p>
           </HeaderLine>
         ) : null}
       </header>
@@ -485,19 +604,22 @@ export const RecapMapPanel = memo(function RecapMapPanel({
         {summary.linearIssueIds.length > 0 ? (
           <div className="flex flex-wrap gap-1">
             {summary.linearIssueIds.map((issueId) => (
-              <span
+              <LinearChip
                 key={issueId}
-                className="rounded-md border border-border px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
-              >
-                {issueId}
-              </span>
+                issueId={issueId}
+                workspace={summary.linearWorkspace}
+                onOpenLink={openRecapLink}
+                size="header"
+              />
             ))}
           </div>
         ) : null}
-        <SquishText className="text-[11px] text-muted-foreground">{`Goal: ${summary.goal}`}</SquishText>
+        <p className="line-clamp-2 text-[11px] text-muted-foreground [overflow-wrap:anywhere]">
+          Goal: {summary.goal}
+        </p>
       </div>
       {/* About eight rows tall: more than that scrolls rather than filling the panel. */}
-      <ScrollArea className="h-auto max-h-[25rem] min-h-0 shrink">
+      <ScrollArea className="h-auto max-h-[28rem] min-h-0 shrink">
         <div className="px-3 py-2">
           {done.length > 0 ? (
             <div className="mb-1">
@@ -513,9 +635,10 @@ export const RecapMapPanel = memo(function RecapMapPanel({
                 >
                   <Check aria-hidden className="size-3.5 text-muted-foreground" />
                 </span>
-                <SquishText className="flex-1">
-                  {`${done.length} done: ${done.map((entry) => entry.step.label).join(", ")}`}
-                </SquishText>
+                <span className="shrink-0 font-medium">{done.length} cleared</span>
+                <span className="min-w-0 flex-1 truncate">
+                  {done.map((entry) => entry.step.label).join(", ")}
+                </span>
                 {doneExpanded ? (
                   <ChevronDown aria-hidden className="size-3 shrink-0" />
                 ) : (
@@ -536,7 +659,11 @@ export const RecapMapPanel = memo(function RecapMapPanel({
                       <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                         {entry.step.label}
                       </span>
-                      <StepBadges step={entry.step} />
+                      <StepBadges
+                        step={entry.step}
+                        workspace={summary.linearWorkspace}
+                        onOpenLink={openRecapLink}
+                      />
                     </li>
                   ))}
                 </ol>
@@ -551,6 +678,7 @@ export const RecapMapPanel = memo(function RecapMapPanel({
                   row={row}
                   cell={cells?.[index] ?? EMPTY_CELL}
                   laneCount={laneCount}
+                  workspace={summary.linearWorkspace}
                   onOpenLink={openRecapLink}
                   rowRef={index === firstNowIndex ? scrollNowRowIntoView : undefined}
                 />

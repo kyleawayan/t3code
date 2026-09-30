@@ -97,7 +97,7 @@ export interface ThreadRecapGenerationInput {
 /** The model-written part of a recap. The caller adds issue IDs, coverage, and timestamp. */
 export type ThreadRecapGenerationResult = Pick<
   ThreadRecapSummary,
-  "goal" | "done" | "now" | "next" | "blocked" | "steps" | "links"
+  "goal" | "done" | "now" | "next" | "blocked" | "steps" | "links" | "linearWorkspace"
 >;
 
 /**

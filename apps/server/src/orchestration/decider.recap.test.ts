@@ -34,6 +34,7 @@ const SUMMARY: ThreadRecapSummary = {
   ],
   links: [],
   linearIssueIds: [],
+  linearWorkspace: null,
   basedOnMessageId: MessageId.make("message-1"),
   generatedAt: UPDATED_AT,
 };

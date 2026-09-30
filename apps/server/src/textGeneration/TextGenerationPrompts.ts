@@ -345,7 +345,7 @@ export interface ThreadRecapPromptInput {
 // Rules follow task-resumption guidance: milestone level, anchored to the goal,
 // one concrete next action, and wording that stays put between turns.
 const THREAD_RECAP_PROMPT = `Write a resume recap for a T3 Code thread. The user reads it after a break and must see within seconds what the task is, where it stands, and what to do next.
-Return only a JSON object with keys goal, done, now, next, blocked, steps, and links.
+Return only a JSON object with keys goal, done, now, next, blocked, steps, links, and linearWorkspace.
 
 Summarize at the level of the task's milestones, anchored to the goal. The goal comes from the first user message and any Linear issues listed below. Do not narrate the last turn's tool calls, file reads, searches, or commands.
 
@@ -364,6 +364,7 @@ Fields:
   - url: the URL from the thread this step is about, such as its Linear issue, PR, or Slack thread. null when none.
   - blockedBy: ids of the steps this step depends on. [] only when it can start on its own.
 - links: links from the thread that help the user resume, at most 8. Each is {"label": short human label of at most 6 words, "url": the URL}. Include specific Linear issue URLs, Slack thread URLs, PRs, docs, and any other URL the user pasted. [] when there are none.
+- linearWorkspace: the Linear workspace slug, the path segment right after linear.app/ in an issue URL a Linear lookup returned, such as "acme" in https://linear.app/acme/issue/ENG-42. null when no lookup returned one. Never guess it.
 
 Links:
 - Copy every URL exactly as it appears in the thread, character for character. Never invent, shorten, complete, or rewrite a URL.
@@ -389,7 +390,7 @@ Stability matters more than polish:
 - Add or remove steps only when the plan changed.
 
 Example for a thread about moving an app to a new UI library, where the user pasted a migration doc:
-{"goal":"Migrate to the new UI library","done":"E2E tests written","now":"Migrating Modal and Button components","next":"Get the E2E suite passing on the new UI","blocked":null,"steps":[{"id":"write-e2e-tests","label":"Write E2E tests","status":"done","source":"chat","linearIssueId":null,"url":null,"blockedBy":[]},{"id":"migrate-components","label":"Migrate Modal and Button","status":"now","source":"chat","linearIssueId":null,"url":"https://docs.example.com/ui-migration","blockedBy":[]},{"id":"pass-e2e-suite","label":"Pass E2E suite on the new UI","status":"next","source":"inferred","linearIssueId":null,"url":null,"blockedBy":["write-e2e-tests","migrate-components"]}],"links":[{"label":"UI migration guide","url":"https://docs.example.com/ui-migration"}]}`;
+{"goal":"Migrate to the new UI library","done":"E2E tests written","now":"Migrating Modal and Button components","next":"Get the E2E suite passing on the new UI","blocked":null,"steps":[{"id":"write-e2e-tests","label":"Write E2E tests","status":"done","source":"chat","linearIssueId":null,"url":null,"blockedBy":[]},{"id":"migrate-components","label":"Migrate Modal and Button","status":"now","source":"chat","linearIssueId":null,"url":"https://docs.example.com/ui-migration","blockedBy":[]},{"id":"pass-e2e-suite","label":"Pass E2E suite on the new UI","status":"next","source":"inferred","linearIssueId":null,"url":null,"blockedBy":["write-e2e-tests","migrate-components"]}],"links":[{"label":"UI migration guide","url":"https://docs.example.com/ui-migration"}],"linearWorkspace":null}`;
 
 const nullDefault = Effect.succeed(null);
 
@@ -411,6 +412,7 @@ export function buildThreadRecapPrompt(input: ThreadRecapPromptInput) {
           blockedBy: step.blockedBy,
         })),
         links: input.previousSummary.links,
+        linearWorkspace: input.previousSummary.linearWorkspace,
       })
     : "none";
   const prompt = [
@@ -447,6 +449,7 @@ export function buildThreadRecapPrompt(input: ThreadRecapPromptInput) {
     links: Schema.Array(Schema.Struct({ label: Schema.String, url: Schema.String })).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
     ),
+    linearWorkspace: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefault(nullDefault)),
   });
 
   return { prompt, outputSchema };

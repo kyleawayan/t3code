@@ -1,21 +1,31 @@
 import type { ThreadRecapStep } from "@t3tools/contracts";
 
 /**
- * Single-column resume map, drawn like a git-log graph: one row per step in
- * dependency order so every line points down, with dependency lines in a
- * narrow gutter of at most `RECAP_MAX_LANES` lanes. Small graphs (about a
- * dozen steps) only, so every pass is a plain loop over all steps.
+ * Single-column resume map, drawn like a quest map: one row per step in
+ * dependency order so every arrow points down, from a prerequisite to the
+ * step it unlocks, in a narrow gutter of at most `RECAP_MAX_LANES` lanes.
+ * Small graphs (about a dozen steps) only, so every pass is a plain loop over
+ * all steps.
  */
 
 export const RECAP_MAX_LANES = 3;
 
 export type RecapRowMarker = Exclude<ThreadRecapStep["status"], "done">;
 
+/**
+ * What a row means to the reader. `locked` waits on another step here;
+ * `waiting` is blocked with no step to wait on, so on a person or outside
+ * event. `side-quest` can start now beside the current step; `ready` can
+ * start now when there is no current step.
+ */
+export type RecapRowKind = "now" | "side-quest" | "ready" | "locked" | "waiting" | "unknown";
+
 export interface RecapPathRow {
   readonly step: ThreadRecapStep;
   /** 1-based across every step, done steps first; what "after N" refers to. */
   readonly number: number;
   readonly marker: RecapRowMarker;
+  readonly kind: RecapRowKind;
   /** A next step whose blockers are all done. */
   readonly canStartNow: boolean;
   /** Numbers of the unfinished steps this one waits on, ascending. */
@@ -23,6 +33,11 @@ export interface RecapPathRow {
   readonly lane: number;
 }
 
+/**
+ * Every segment in a cell is part of a real `blockedBy` edge. A step with no
+ * unfinished dependency gets no incoming line, so a marker may sit alone in
+ * its lane: an unconnected neighbor above must never read as a prerequisite.
+ */
 export interface RecapGutterCell {
   /** Lanes whose line crosses this row without touching its marker. */
   readonly through: ReadonlyArray<number>;
@@ -33,8 +48,6 @@ export interface RecapGutterCell {
   readonly arrivals: ReadonlyArray<{ readonly lane: number; readonly continues: boolean }>;
   /** The marker starts a line down to its dependents. */
   readonly down: boolean;
-  /** An unknown step with no known dependency: a dashed connector from above. */
-  readonly dashedArrival: boolean;
 }
 
 export interface RecapPathLayout {
@@ -46,6 +59,8 @@ export interface RecapPathLayout {
   readonly totalCount: number;
   readonly now: RecapPathRow | null;
   readonly canStart: RecapPathRow | null;
+  /** The first step waiting on a person or outside event. */
+  readonly waiting: RecapPathRow | null;
   /** The unfinished step the most other steps wait on, directly or through others. */
   readonly wait: { readonly count: number; readonly cause: RecapPathRow } | null;
 }
@@ -148,6 +163,18 @@ export function layoutRecapPath(steps: ReadonlyArray<ThreadRecapStep>): RecapPat
       .map((dep) => numberById.get(dep)!)
       .toSorted((a, b) => a - b);
     const canStartNow = step.status === "next" && after.length === 0;
+    const kind: RecapRowKind =
+      step.status === "now"
+        ? "now"
+        : step.status === "unknown"
+          ? "unknown"
+          : after.length > 0
+            ? "locked"
+            : step.status === "blocked"
+              ? "waiting"
+              : hasNow
+                ? "side-quest"
+                : "ready";
     const busy = new Set(busyAt(rowIndex).map((owner) => owner.lane));
     // Parallel work gets its own lane beside the current step's line.
     let lane = canStartNow && hasNow ? 1 : 0;
@@ -159,6 +186,7 @@ export function layoutRecapPath(steps: ReadonlyArray<ThreadRecapStep>): RecapPat
       step,
       number: numberById.get(id)!,
       marker: step.status as RecapRowMarker,
+      kind,
       canStartNow,
       after,
       lane,
@@ -178,8 +206,6 @@ export function layoutRecapPath(steps: ReadonlyArray<ThreadRecapStep>): RecapPat
             continues: lastChildRow(parent) > rowIndex,
           })),
           down: childrenById.get(id)!.length > 0,
-          dashedArrival:
-            stepsById.get(id)!.status === "unknown" && parents.length === 0 && rowIndex > 0,
         };
       })
     : null;
@@ -209,6 +235,7 @@ export function layoutRecapPath(steps: ReadonlyArray<ThreadRecapStep>): RecapPat
     totalCount: ids.length,
     now: rows.find((row) => row.marker === "now") ?? null,
     canStart: rows.find((row) => row.canStartNow) ?? null,
+    waiting: rows.find((row) => row.kind === "waiting") ?? null,
     wait,
   };
 }
