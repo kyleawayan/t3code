@@ -64,13 +64,10 @@ function makeFakeClaudeBinary(dir: string) {
         'if (!argv.includes("--disable-slash-commands")) {',
         '  fail("text generation must disable skills", 8);',
         "}",
-        'const allowedToolsIndex = argv.indexOf("--allowedTools");',
-        "if (allowedToolsIndex !== -1) {",
-        "  const readOnlyLinear = /^mcp__(plugin_linear_linear|linear)__(get_issue|list_issues|list_comments)$/;",
-        '  if (!argv[allowedToolsIndex + 1].split(",").every((tool) => readOnlyLinear.test(tool))) {',
-        '    fail("text generation may only allow read-only Linear tools", 13);',
-        "  }",
-        '} else if (!argv.includes("--strict-mcp-config")) {',
+        'if (argv.includes("--allowedTools")) {',
+        '  fail("text generation must not allow any tools", 13);',
+        "}",
+        'if (!argv.includes("--strict-mcp-config")) {',
         '  fail("text generation must not load configured MCP servers", 9);',
         "}",
         'const settingsIndex = argv.indexOf("--settings");',
@@ -435,7 +432,7 @@ it.layer(ClaudeTextGenerationTestLayer)("ClaudeTextGeneration", (it) => {
     ),
   );
 
-  it.effect("lets recaps read Linear issues and nothing else", () =>
+  it.effect("generates recaps from the conversation alone, without tools or MCP servers", () =>
     withFakeClaudeEnv(
       {
         // @effect-diagnostics-next-line preferSchemaOverJson:off
@@ -450,8 +447,6 @@ it.layer(ClaudeTextGenerationTestLayer)("ClaudeTextGeneration", (it) => {
             links: [{ label: "Issue", url: "https://linear.app/acme/issue/ENG-42" }],
           },
         }),
-        argsMustContain: "--allowedTools mcp__plugin_linear_linear__get_issue",
-        argsMustNotContain: "--strict-mcp-config",
         stdinMustContain: "Linear issues in this thread: ENG-42",
       },
       (textGeneration) =>

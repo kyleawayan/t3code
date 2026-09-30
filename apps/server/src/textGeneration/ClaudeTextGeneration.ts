@@ -54,11 +54,6 @@ import { makeClaudeEnvironment } from "../provider/Drivers/ClaudeHome.ts";
 
 const CLAUDE_TIMEOUT_MS = 180_000;
 
-/** Covers the official Linear plugin and a standalone MCP server named `linear`. */
-const LINEAR_READ_TOOLS = ["mcp__plugin_linear_linear", "mcp__linear"].flatMap((server) =>
-  ["get_issue", "list_issues", "list_comments"].map((tool) => `${server}__${tool}`),
-);
-
 /**
  * Schema for the wrapper JSON returned by `claude -p --output-format json`.
  * Verbose mode wraps the result in an array of conversation messages.
@@ -222,11 +217,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
           "--tools",
           "",
           "--disable-slash-commands",
-          // Recaps may read the thread's Linear issues through the user's own Linear MCP
-          // server. Only the read tools are allowed; dontAsk denies everything else.
-          ...(operation === "generateThreadRecap"
-            ? ["--allowedTools", LINEAR_READ_TOOLS.join(",")]
-            : ["--strict-mcp-config"]),
+          "--strict-mcp-config",
           "--permission-mode",
           "dontAsk",
         ],

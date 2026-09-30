@@ -355,26 +355,20 @@ Fields:
 - now: the milestone in progress as verb + object, at most 10 words.
 - next: exactly one concrete next action, at most 12 words, naming the artifact. null when the goal is complete.
 - blocked: the blocker, only when the conversation explicitly states one. Otherwise null. Do not guess blockers.
-- steps: the task's milestones in order, at most 12. Each step is an object with:
+- steps: the task's milestones in order, at most 12. Exactly one step has status "now", and it is the same task as now. Each step is an object with:
   - id: short kebab-case id. Reuse the previous summary's id for the same step.
   - label: the milestone, at most 8 words.
   - status: "done", "now", "next", "blocked", or "unknown". Use "unknown" when unsure. A step with no stated blocker is not automatically ready.
-  - source: "chat" when the conversation states the step, "linear" only for a Linear issue listed below or read in a Linear lookup, otherwise "inferred".
-  - linearIssueId: a Linear issue ID listed below or read in a Linear lookup, or null.
+  - source: "chat" when the conversation states the step, "linear" only for a Linear issue listed below, otherwise "inferred".
+  - linearIssueId: one of the Linear issue IDs listed below, or null.
   - url: the URL from the thread this step is about, such as its Linear issue, PR, or Slack thread. null when none.
   - blockedBy: ids of the steps this step depends on. [] only when it can start on its own.
 - links: links from the thread that help the user resume, at most 8. Each is {"label": short human label of at most 6 words, "url": the URL}. Include specific Linear issue URLs, Slack thread URLs, PRs, docs, and any other URL the user pasted. [] when there are none.
-- linearWorkspace: the Linear workspace slug, the path segment right after linear.app/ in an issue URL a Linear lookup returned, such as "acme" in https://linear.app/acme/issue/ENG-42. null when no lookup returned one. Never guess it.
+- linearWorkspace: the Linear workspace slug, the path segment right after linear.app/ in a Linear issue URL in the thread, such as "acme" in https://linear.app/acme/issue/ENG-42. null when the thread has no such URL. Never guess it.
 
 Links:
 - Copy every URL exactly as it appears in the thread, character for character. Never invent, shorten, complete, or rewrite a URL.
 - Prefer URLs the user pasted over URLs the assistant found.
-
-Linear lookups:
-- When Linear issue IDs are listed below and Linear tools are available, you may look those issues up, read-only, for their title, status, sub-issues, and blocking relations.
-- Use what you read for the goal, for steps (source "linear" with that linearIssueId), and for blockedBy edges between those steps.
-- If the tools are unavailable or a lookup fails, continue from the thread alone.
-- Never create, update, or comment on anything in Linear.
 
 The steps are drawn as a dependency diagram, so map the dependencies:
 - For every step after the first, list in blockedBy the ids of the steps it depends on whenever the conversation implies an order or a prerequisite.
@@ -382,12 +376,17 @@ The steps are drawn as a dependency diagram, so map the dependencies:
 - Work that can happen at the same time must not depend on each other (for example, setting up monitoring while waiting on a content review). Leave those as separate branches so the diagram shows them in parallel.
 - When a step waits on a person or an outside event (a review, an approval, access), give it status "blocked" and name what it waits on in its label. Steps that do not need that outcome stay unblocked.
 - An edge you infer rather than read in the conversation is fine, but set that step's source to "inferred" unless the conversation or a Linear issue states the step itself.
-- Never invent Linear issue IDs or relationships between Linear issues. Use only IDs and relations from the thread or a Linear lookup.
+- Never invent Linear issue IDs or relationships between Linear issues. Use only IDs and relations stated in the thread.
 
 Stability matters more than polish:
 - Keep wording identical to the previous summary unless the underlying state changed.
 - For a step that already exists, reuse its id and label exactly and update only its status and dependencies.
 - Add or remove steps only when the plan changed.
+
+Cancelled steps override stability:
+- When the conversation says a step is cancelled, dropped, skipped, or no longer needed (for example "ok cancelling this task" or "skip the approval"), remove that step from steps, even if the previous summary had it.
+- Remove its id from every other step's blockedBy so the steps that waited on it are unblocked.
+- Do not mention it in blocked or next.
 
 Example for a thread about moving an app to a new UI library, where the user pasted a migration doc:
 {"goal":"Migrate to the new UI library","done":"E2E tests written","now":"Migrating Modal and Button components","next":"Get the E2E suite passing on the new UI","blocked":null,"steps":[{"id":"write-e2e-tests","label":"Write E2E tests","status":"done","source":"chat","linearIssueId":null,"url":null,"blockedBy":[]},{"id":"migrate-components","label":"Migrate Modal and Button","status":"now","source":"chat","linearIssueId":null,"url":"https://docs.example.com/ui-migration","blockedBy":[]},{"id":"pass-e2e-suite","label":"Pass E2E suite on the new UI","status":"next","source":"inferred","linearIssueId":null,"url":null,"blockedBy":["write-e2e-tests","migrate-components"]}],"links":[{"label":"UI migration guide","url":"https://docs.example.com/ui-migration"}],"linearWorkspace":null}`;

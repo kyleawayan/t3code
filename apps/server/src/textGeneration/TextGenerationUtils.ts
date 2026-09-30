@@ -83,7 +83,6 @@ const MAX_RECAP_TEXT_CHARS = 160;
 const MAX_RECAP_STEPS = 12;
 const MAX_RECAP_LINKS = 8;
 const HTTP_URL = /^https?:\/\/\S+$/i;
-const LINEAR_ISSUE_ID = /^[A-Z][A-Z0-9]{1,9}-\d+$/;
 // What may follow a URL that ends there: sentence punctuation, then a delimiter or the end.
 const URL_END = /^[.,;:!?]*(?:[\s<>"'`)\]}]|$)/;
 
@@ -149,7 +148,7 @@ export interface GeneratedThreadRecap {
 
 /**
  * Normalize model output into recap fields that satisfy the contract. Drops
- * Linear IDs from teams the thread never mentioned, URLs the thread text never
+ * Linear IDs the thread never mentioned, URLs the thread text never
  * contained, and dependencies on unknown steps.
  */
 export function finalizeThreadRecap(
@@ -182,16 +181,19 @@ export function finalizeThreadRecap(
       ? url
       : undefined;
   };
-  // Linear lookups can surface sub-issues the thread never names. Accept those only
-  // from a team whose key the thread did mention, so a guessed ID from nowhere is dropped.
-  const knownIssueKeys = new Set(
-    input.linearIssueIds.map((id) => id.slice(0, id.indexOf("-")).toUpperCase()),
+  // Only Linear IDs the thread or an earlier recap named survive. Models invent plausible IDs.
+  const knownIssueIds = new Set(
+    [
+      ...input.linearIssueIds,
+      ...(input.previousSummary?.linearIssueIds ?? []),
+      ...(input.previousSummary?.steps.flatMap((step) =>
+        step.linearIssueId ? [step.linearIssueId] : [],
+      ) ?? []),
+    ].map((id) => id.toUpperCase()),
   );
   const linearIssueIdFor = (raw: string | null) => {
     const id = raw?.trim().toUpperCase();
-    return id && LINEAR_ISSUE_ID.test(id) && knownIssueKeys.has(id.slice(0, id.indexOf("-")))
-      ? id
-      : undefined;
+    return id && knownIssueIds.has(id) ? id : undefined;
   };
   const usedIds = new Set<string>();
   const steps: Array<Omit<ThreadRecapStep, "blockedBy"> & { blockedBy: ReadonlyArray<string> }> =
@@ -215,6 +217,45 @@ export function finalizeThreadRecap(
       ...(url !== undefined ? { url } : {}),
       blockedBy: step.blockedBy,
     });
+  }
+
+  // The map marks the single step with status "now", and `now` names the same task.
+  const nowIndexes = steps.flatMap((step, index) => (step.status === "now" ? [index] : []));
+  if (nowIndexes.length > 1) {
+    for (const index of nowIndexes.slice(1)) steps[index] = { ...steps[index]!, status: "next" };
+  } else if (nowIndexes.length === 0) {
+    const isNowTask = (label: string) => label.toLowerCase() === now.toLowerCase();
+    const matching = steps.findIndex((step) => isNowTask(step.label));
+    if (matching !== -1) {
+      steps[matching] = { ...steps[matching]!, status: "now" };
+    } else {
+      if (steps.length >= MAX_RECAP_STEPS) {
+        const dropIndex = [
+          steps.findLastIndex((step) => step.status === "unknown"),
+          steps.findLastIndex((step) => step.status === "next"),
+          steps.findIndex((step) => step.status === "done"),
+          steps.length - 1,
+        ].find((index) => index !== -1)!;
+        usedIds.delete(steps[dropIndex]!.id);
+        steps.splice(dropIndex, 1);
+      }
+      // Reuse the earlier recap's id for the same task so the map keeps its layout.
+      const previousId = input.previousSummary?.steps.find((step) => isNowTask(step.label))?.id;
+      const baseId =
+        previousId !== undefined && !usedIds.has(previousId)
+          ? previousId
+          : `now-${recapStepIdFromLabel(now) || "step"}`;
+      let id = baseId;
+      for (let suffix = 2; usedIds.has(id); suffix += 1) id = `${baseId}-${suffix}`;
+      usedIds.add(id);
+      steps.splice(steps.findLastIndex((step) => step.status === "done") + 1, 0, {
+        id,
+        label: now,
+        status: "now",
+        source: "chat",
+        blockedBy: [],
+      });
+    }
   }
 
   const links = new Map<string, { label: string; url: string }>();
