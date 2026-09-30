@@ -54,15 +54,19 @@ import {
 } from "../Services/ProjectionPipeline.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import { ServerConfig } from "../../config.ts";
+import * as ServerSettings from "../../serverSettings.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
 const asMessageId = (value: string): MessageId => MessageId.make(value);
 const asTurnId = (value: string): TurnId => TurnId.make(value);
 const asCheckpointRef = (value: string): CheckpointRef => CheckpointRef.make(value);
 
+type SettingsLayer = ReturnType<typeof ServerSettings.layerTest>;
+
 function makeOrchestrationLayer(
   databasePath?: string,
   repositoryIdentityResolver?: RepositoryIdentityResolver.RepositoryIdentityResolver["Service"],
+  settingsLayer: SettingsLayer = ServerSettings.layerTest(),
 ) {
   const persistence = databasePath
     ? makeSqlitePersistenceLive(databasePath)
@@ -92,20 +96,24 @@ function makeOrchestrationLayer(
     Layer.provide(persistence),
     Layer.provideMerge(ServerConfigLayer),
     Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(settingsLayer),
   );
 }
 
 async function createOrchestrationSystem(
   databasePath?: string,
   repositoryIdentityResolver?: RepositoryIdentityResolver.RepositoryIdentityResolver["Service"],
+  settingsLayer?: SettingsLayer,
 ) {
   const runtime = ManagedRuntime.make(
-    makeOrchestrationLayer(databasePath, repositoryIdentityResolver),
+    makeOrchestrationLayer(databasePath, repositoryIdentityResolver, settingsLayer),
   );
   const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
   const snapshotQuery = await runtime.runPromise(Effect.service(ProjectionSnapshotQuery));
+  const settings = await runtime.runPromise(Effect.service(ServerSettings.ServerSettingsService));
   return {
     engine,
+    settings,
     readModel: () => runtime.runPromise(snapshotQuery.getSnapshot()),
     readThread: (threadId: ThreadId) =>
       runtime.runPromise(snapshotQuery.getThreadDetailById(threadId)),
@@ -131,8 +139,8 @@ const hasMetricSnapshot = (
 
 describe("OrchestrationEngine", () => {
   describe("agent concurrency limit", () => {
-    async function setup(databasePath?: string) {
-      const system = await createOrchestrationSystem(databasePath);
+    async function setup(databasePath?: string, settingsLayer?: SettingsLayer) {
+      const system = await createOrchestrationSystem(databasePath, undefined, settingsLayer);
       for (let index = 0; index < 3; index++) {
         const projectId = ProjectId.make(`limit-project-${index}`);
         await system.run(
@@ -217,11 +225,31 @@ describe("OrchestrationEngine", () => {
         const rejectedIndex = results.findIndex((result) => result.status === "rejected");
         expect(results[rejectedIndex]).toMatchObject({
           status: "rejected",
-          reason: { message: expect.stringContaining("Two agents are already working") },
+          reason: { message: expect.stringContaining("2 agents are already working") },
         });
         const thread = await system.readThread(ThreadId.make(`limit-thread-${rejectedIndex}`));
         expect(Option.isSome(thread) && thread.value.messages).toEqual([]);
         await system.run(system.engine.dispatch(start((rejectedIndex + 1) % 3, "follow-up")));
+      } finally {
+        await system.dispose();
+      }
+    });
+
+    it("applies max agent setting changes to the next start without a restart", async () => {
+      const system = await setup(undefined, ServerSettings.layerTest({ maxConcurrentAgents: 1 }));
+      const updateSettings = (patch: { maxConcurrentAgents: number | null }) =>
+        system.run(system.settings.updateSettings(patch));
+      try {
+        await system.run(system.engine.dispatch(start(0)));
+        await expect(system.run(system.engine.dispatch(start(1)))).rejects.toThrow(
+          "An agent is already working",
+        );
+        await updateSettings({ maxConcurrentAgents: null });
+        await system.run(system.engine.dispatch(start(1, "unlimited")));
+        await updateSettings({ maxConcurrentAgents: 2 });
+        await expect(system.run(system.engine.dispatch(start(2)))).rejects.toThrow(
+          "2 agents are already working",
+        );
       } finally {
         await system.dispose();
       }
@@ -238,7 +266,7 @@ describe("OrchestrationEngine", () => {
           }
           await system.run(system.engine.dispatch(start(0, "follow-up")));
           await expect(system.run(system.engine.dispatch(start(2)))).rejects.toThrow(
-            "Two agents are already working",
+            "2 agents are already working",
           );
           await system.run(system.engine.dispatch(session(0, status)));
           await system.run(system.engine.dispatch(start(2, "retry")));
@@ -266,7 +294,7 @@ describe("OrchestrationEngine", () => {
           }),
         );
         await expect(system.run(system.engine.dispatch(start(2)))).rejects.toThrow(
-          "Two agents are already working",
+          "2 agents are already working",
         );
         await expect(
           system.run(
@@ -282,7 +310,7 @@ describe("OrchestrationEngine", () => {
               createdAt: now(),
             }),
           ),
-        ).rejects.toThrow("Two agents are already working");
+        ).rejects.toThrow("2 agents are already working");
         await system.run(system.engine.dispatch(start(1)));
         await system.run(system.engine.dispatch(session(1, "error")));
         await system.run(system.engine.dispatch(start(2, "retry")));
@@ -298,7 +326,7 @@ describe("OrchestrationEngine", () => {
         await system.run(system.engine.dispatch(start(1)));
         await system.run(system.engine.dispatch(session(1, "ready")));
         await expect(system.run(system.engine.dispatch(start(2)))).rejects.toThrow(
-          "Two agents are already working",
+          "2 agents are already working",
         );
         await system.run(
           system.engine.dispatch({
@@ -364,7 +392,7 @@ describe("OrchestrationEngine", () => {
               createdAt: now(),
             }),
           ),
-        ).rejects.toThrow("Two agents are already working");
+        ).rejects.toThrow("2 agents are already working");
         const thread = await system.readThread(threadId);
         expect(Option.isSome(thread) && thread.value.messages).toEqual([]);
         expect(
@@ -405,7 +433,7 @@ describe("OrchestrationEngine", () => {
         await system.dispose();
         system = await createOrchestrationSystem(databasePath);
         await expect(system.run(system.engine.dispatch(start(2)))).rejects.toThrow(
-          "Two agents are already working",
+          "2 agents are already working",
         );
       } finally {
         await system.dispose();

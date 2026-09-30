@@ -31,6 +31,7 @@ import {
   MAX_CODE_FONT_SIZE,
   MAX_GLASS_OPACITY,
   MAX_INTERFACE_FONT_SIZE,
+  MAX_MAX_CONCURRENT_AGENTS,
   MAX_PANEL_ANIMATION_DURATION_MS,
   MAX_PROMPT_FONT_SIZE,
   MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
@@ -39,6 +40,7 @@ import {
   MIN_APPEARANCE_CONTRAST,
   MIN_GLASS_OPACITY,
   MIN_INTERFACE_FONT_SIZE,
+  MIN_MAX_CONCURRENT_AGENTS,
   MIN_PANEL_ANIMATION_DURATION_MS,
   MIN_PROMPT_FONT_SIZE,
   MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS,
@@ -602,6 +604,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       DEFAULT_UNIFIED_SETTINGS.continueThreadsAfterServerUpdate
         ? ["Continue threads after restarts"]
         : []),
+      ...(settings.maxConcurrentAgents !== DEFAULT_UNIFIED_SETTINGS.maxConcurrentAgents
+        ? ["Max agents allowed to run"]
+        : []),
       ...(isBackgroundActivityDirty ? ["Background activity"] : []),
       ...(settings.defaultThreadEnvMode !== DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode
         ? ["New thread mode"]
@@ -669,6 +674,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.responseStreamingMode,
       settings.enableProviderUpdateChecks,
       settings.continueThreadsAfterServerUpdate,
+      settings.maxConcurrentAgents,
       settings.sidebarAutoSettleAfterDays,
       settings.sidebarAutoSettleOnMerge,
       settings.sidebarProjectGroupingMode,
@@ -773,6 +779,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       responseStreamingMode: DEFAULT_UNIFIED_SETTINGS.responseStreamingMode,
       enableProviderUpdateChecks: DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks,
       continueThreadsAfterServerUpdate: DEFAULT_UNIFIED_SETTINGS.continueThreadsAfterServerUpdate,
+      maxConcurrentAgents: DEFAULT_UNIFIED_SETTINGS.maxConcurrentAgents,
       backgroundActivity: DEFAULT_UNIFIED_SETTINGS.backgroundActivity,
       backgroundActivityProfile: DEFAULT_UNIFIED_SETTINGS.backgroundActivityProfile,
       automaticGitFetchInterval: DEFAULT_UNIFIED_SETTINGS.automaticGitFetchInterval,
@@ -1960,12 +1967,18 @@ function FontFamilySettingsRow({
 
 const AUTO_SETTLE_DEFAULT_DAYS = DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays ?? 3;
 
-function AutoSettleDaysInput({
+function BoundedIntegerInput({
   value,
+  min,
+  max,
   onCommit,
+  "aria-label": ariaLabel,
 }: {
   value: number;
-  onCommit: (days: number) => void;
+  min: number;
+  max: number;
+  onCommit: (value: number) => void;
+  "aria-label": string;
 }) {
   // Local draft so the field can be emptied mid-edit; the setting only moves
   // on valid input and snaps back to the persisted value on blur.
@@ -1978,8 +1991,8 @@ function AutoSettleDaysInput({
     <Input
       size="sm"
       type="number"
-      min={MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS}
-      max={MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS}
+      min={min}
+      max={max}
       className="w-full sm:w-24"
       value={draft}
       onChange={(event) => {
@@ -1988,17 +2001,75 @@ function AutoSettleDaysInput({
         // committed 3 while the field shows 3.5) — commit only when the
         // persisted value matches the displayed one.
         const parsed = Number(event.target.value);
-        if (
-          Number.isInteger(parsed) &&
-          parsed >= MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS &&
-          parsed <= MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS
-        ) {
+        if (Number.isInteger(parsed) && parsed >= min && parsed <= max) {
           onCommit(parsed);
         }
       }}
       onBlur={() => setDraft(String(value))}
-      aria-label="Days of inactivity before auto-settle"
+      aria-label={ariaLabel}
     />
+  );
+}
+
+const DEFAULT_MAX_CONCURRENT_AGENTS = DEFAULT_UNIFIED_SETTINGS.maxConcurrentAgents ?? 2;
+
+function MaxConcurrentAgentsSettings() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  // Turning the limit back on restores the count it had when switched off.
+  const lastLimit = useRef(settings.maxConcurrentAgents ?? DEFAULT_MAX_CONCURRENT_AGENTS);
+
+  return (
+    <>
+      <SettingsRow
+        {...searchableSetting("max-concurrent-agents")}
+        serverScoped
+        settingKeys={["maxConcurrentAgents"]}
+        description="Block new work while this many agents are running. Changes apply to the next message."
+        resetAction={
+          settings.maxConcurrentAgents !== DEFAULT_UNIFIED_SETTINGS.maxConcurrentAgents ? (
+            <SettingResetButton
+              label="max agents allowed to run"
+              onClick={() =>
+                updateSettings({
+                  maxConcurrentAgents: DEFAULT_UNIFIED_SETTINGS.maxConcurrentAgents,
+                })
+              }
+            />
+          ) : null
+        }
+        control={
+          <ScopedSwitch
+            settingKeys={["maxConcurrentAgents"]}
+            checked={settings.maxConcurrentAgents !== null}
+            onCheckedChange={(checked) => {
+              if (!checked && settings.maxConcurrentAgents !== null) {
+                lastLimit.current = settings.maxConcurrentAgents;
+              }
+              updateSettings({ maxConcurrentAgents: checked ? lastLimit.current : null });
+            }}
+            aria-label="Max agents allowed to run"
+          />
+        }
+      />
+      {settings.maxConcurrentAgents !== null ? (
+        <SettingsRow
+          serverScoped
+          settingKeys={["maxConcurrentAgents"]}
+          title={searchableSetting("max-concurrent-agents-count").title}
+          description="Follow-ups to an agent that is already working never count against the limit."
+          control={
+            <BoundedIntegerInput
+              value={settings.maxConcurrentAgents}
+              min={MIN_MAX_CONCURRENT_AGENTS}
+              max={MAX_MAX_CONCURRENT_AGENTS}
+              onCommit={(count) => updateSettings({ maxConcurrentAgents: count })}
+              aria-label="Agents allowed at once"
+            />
+          }
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -2287,9 +2358,12 @@ export function GeneralSettingsPanel() {
                 title={searchableSetting("days-before-auto-settle").title}
                 description="Any new activity un-settles a thread automatically."
                 control={
-                  <AutoSettleDaysInput
+                  <BoundedIntegerInput
                     value={settings.sidebarAutoSettleAfterDays}
+                    min={MIN_SIDEBAR_AUTO_SETTLE_AFTER_DAYS}
+                    max={MAX_SIDEBAR_AUTO_SETTLE_AFTER_DAYS}
                     onCommit={(days) => updateSettings({ sidebarAutoSettleAfterDays: days })}
+                    aria-label="Days of inactivity before auto-settle"
                   />
                 }
               />
@@ -2713,6 +2787,8 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+
+        <MaxConcurrentAgentsSettings />
 
         <SettingsRow
           serverScoped

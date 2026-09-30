@@ -334,6 +334,21 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "max-concurrent-agents",
+    title: "Max agents allowed to run",
+    to: "/settings/general",
+    scope: "project-defaults",
+    searchTerms: ["limit concurrency parallel running working at once overwhelm"],
+  },
+  {
+    id: "max-concurrent-agents-count",
+    title: "Agents allowed at once",
+    to: "/settings/general",
+    targetId: "max-concurrent-agents",
+    scope: "project-defaults",
+    searchTerms: ["max limit number count concurrency parallel running"],
+  },
+  {
     id: "background-activity",
     title: "Background activity",
     to: "/settings/general",
