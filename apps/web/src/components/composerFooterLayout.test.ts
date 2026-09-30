@@ -5,7 +5,9 @@ import {
   COMPOSER_FOOTER_COMPACT_BREAKPOINT_PX,
   COMPOSER_FOOTER_WIDE_ACTIONS_COMPACT_BREAKPOINT_PX,
   COMPOSER_RESTING_EXPANSION_MIN_PX,
+  composerFooterLabelVariant,
   getRestingComposerImagePreviewCounts,
+  resolveComposerFooterLabelStage,
   resolveComposerTimelineInset,
   resolveScrollToEndClearance,
   resolveRestingComposerControlsLayout,
@@ -462,5 +464,100 @@ describe("resolveScrollToEndClearance", () => {
         overlayHeight,
       );
     }
+  });
+});
+
+describe("resolveComposerFooterLabelStage", () => {
+  // A narrow expanded footer. Each label control is its chrome plus a 4px gap
+  // and the floor of the variant it shows:
+  //   model   30 chrome, "Claude Opus 5.5" floor 52, "Opus 5.5" floor 30
+  //   traits  10 chrome, "Extra High · 1M" floor 48, "XHigh·1M" floor 30
+  //   mode    30 chrome, "Auto" floor 14, icon only
+  // plus the 28px plan toggle and three 4px gaps. The stages need
+  // 236, 218, 200, and 178px.
+  function controls(rendered: { model?: number; mode?: number } = {}) {
+    const model = rendered.model ?? 100;
+    const mode = rendered.mode ?? 28;
+    return [
+      {
+        width: 34 + model,
+        label: { control: "model" as const, rendered: model, gap: 4, floors: [52, 30] as const },
+      },
+      {
+        width: 109,
+        label: { control: "traits" as const, rendered: 95, gap: 4, floors: [48, 30] as const },
+      },
+      {
+        width: mode > 0 ? 34 + mode : 30,
+        label: { control: "mode" as const, rendered: mode, gap: 4, floors: [14, 0] as const },
+      },
+      { width: 28 },
+    ];
+  }
+  const stageAt = (
+    availableWidth: number,
+    stage = 0,
+    rendered: { model?: number; mode?: number } = {},
+  ) =>
+    resolveComposerFooterLabelStage({
+      stage,
+      availableWidth,
+      gap: 4,
+      controls: controls(rendered),
+    });
+
+  it("keeps every full label while it fits squished to its floor", () => {
+    expect(stageAt(240)).toBe(0);
+  });
+
+  it("turns the runtime mode into its icon before shortening any text", () => {
+    const stage = stageAt(230);
+    expect(stage).toBe(1);
+    expect(composerFooterLabelVariant("mode", stage)).toBe(1);
+    expect(composerFooterLabelVariant("traits", stage)).toBe(0);
+    expect(composerFooterLabelVariant("model", stage)).toBe(0);
+  });
+
+  it("shortens the effort before the model", () => {
+    const stage = stageAt(210);
+    expect(stage).toBe(2);
+    expect(composerFooterLabelVariant("traits", stage)).toBe(1);
+    expect(composerFooterLabelVariant("model", stage)).toBe(0);
+  });
+
+  it("shortens the model last", () => {
+    const stage = stageAt(190);
+    expect(stage).toBe(3);
+    expect(composerFooterLabelVariant("model", stage)).toBe(1);
+  });
+
+  it("lets the row scroll rather than squeeze a label past its floor", () => {
+    // Even the short variants need 178px. The stage stops at the last step
+    // and the labels keep their floors, so "Opus 5.5" never loses its ".5".
+    expect(stageAt(150)).toBe(3);
+  });
+
+  it("gives the same answer however the labels are showing now", () => {
+    for (const rendered of [{ model: 52 }, { model: 75, mode: 0 }, { mode: 14 }]) {
+      expect(stageAt(240, 0, rendered)).toBe(0);
+      expect(stageAt(230, 0, rendered)).toBe(1);
+      expect(stageAt(190, 0, rendered)).toBe(3);
+    }
+  });
+
+  it("needs a few pixels of room before a longer variant comes back", () => {
+    expect(stageAt(238, 1)).toBe(1);
+    expect(stageAt(240, 1)).toBe(0);
+  });
+
+  it("does nothing without label variants to switch", () => {
+    expect(
+      resolveComposerFooterLabelStage({
+        stage: 0,
+        availableWidth: 10,
+        gap: 4,
+        controls: [{ width: 28 }],
+      }),
+    ).toBe(0);
   });
 });

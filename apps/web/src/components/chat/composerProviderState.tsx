@@ -55,6 +55,7 @@ type TraitsRenderInput = {
   planModeEnabled: boolean;
   size?: ComposerControlSize;
   compact?: boolean;
+  shortLabel?: boolean;
   hidden?: boolean;
   triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
   triggerClassName?: string;
@@ -179,6 +180,7 @@ function renderTraitsControl(
     planModeEnabled,
     size,
     compact,
+    shortLabel,
     hidden,
     triggerVariant,
     triggerClassName,
@@ -219,6 +221,7 @@ function renderTraitsControl(
       planModeEnabled={planModeEnabled}
       {...(size !== undefined ? { size } : {})}
       {...(compact !== undefined ? { compact } : {})}
+      {...(shortLabel ? { shortLabel } : {})}
       {...(hidden !== undefined ? { hidden } : {})}
       {...(triggerVariant !== undefined ? { triggerVariant } : {})}
       {...(triggerClassName !== undefined ? { triggerClassName } : {})}

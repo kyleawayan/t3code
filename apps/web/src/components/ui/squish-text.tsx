@@ -57,6 +57,47 @@ export function measureSquishText(element: HTMLElement): SquishTextMeasurement |
   return { rendered: root.offsetWidth, natural: text.offsetWidth, minimum };
 }
 
+/**
+ * Invisible copies of the shorter texts a SquishText may switch to, so a
+ * layout can read each one's floor before choosing it. Place it inside the
+ * control, which must be positioned, so the copies share the label's font.
+ */
+export function SquishTextProbe({
+  variants,
+  ...props
+}: Omit<ComponentProps<"span">, "children"> & { variants: readonly string[] }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-squish-probe=""
+      className="pointer-events-none invisible absolute start-0 top-0 flex w-max select-none flex-col items-start"
+      {...props}
+    >
+      {variants.map((variant, index) => {
+        const [head, tail] = splitSquishTextHalves(variant);
+        return (
+          // Variants are positional: the layout reads them by index.
+          // oxlint-disable-next-line react/no-array-index-key
+          <span key={index} data-squish-probe-variant="" className="flex">
+            <span className="inline-block whitespace-pre">{head}</span>
+            <span className="inline-block whitespace-pre">{tail}</span>
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+/**
+ * The floor of each probed variant: the wider half, which is where a
+ * SquishText showing that text stops squishing. An empty variant reads 0.
+ */
+export function measureSquishTextProbe(probe: HTMLElement): number[] {
+  return Array.from(probe.querySelectorAll<HTMLElement>("[data-squish-probe-variant]"), (variant) =>
+    Math.max(0, ...Array.from(variant.children, (half) => (half as HTMLElement).offsetWidth)),
+  );
+}
+
 export interface SquishTarget {
   root: HTMLElement;
   text: HTMLElement;

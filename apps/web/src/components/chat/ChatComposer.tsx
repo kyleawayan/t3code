@@ -183,14 +183,19 @@ import { replaceComposerContextReferences } from "@t3tools/shared/composerContex
 import {
   COMPOSER_FOOTER_COMPACT_BREAKPOINT_PX,
   COMPOSER_FOOTER_WIDE_ACTIONS_COMPACT_BREAKPOINT_PX,
+  composerFooterLabelVariant,
   getRestingComposerImagePreviewCounts,
+  resolveComposerFooterLabelStage,
   resolveRestingComposerControlsLayout,
   shouldAnimateComposerRestingTransition,
   shouldUseCompactComposerPrimaryActions,
   shouldUseCompactComposerFooter,
   shouldUseRestingComposerLayout,
 } from "../composerFooterLayout";
-import { measureRestingComposerControls } from "./restingComposerControlsMeasurement";
+import {
+  measureComposerFooterControls,
+  measureRestingComposerControls,
+} from "./restingComposerControlsMeasurement";
 import { observeResponsiveBreakpointFade, usePanelAnimationSettings } from "../../panelAnimations";
 import { type ComposerPromptEditorHandle, ComposerPromptEditor } from "../ComposerPromptEditor";
 import {
@@ -922,7 +927,7 @@ function ComposerCommandMenuLayer(props: { anchor: HTMLElement | null; children:
 }
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectValue } from "../ui/select";
-import { SquishText } from "../ui/squish-text";
+import { SquishText, SquishTextProbe } from "../ui/squish-text";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import {
@@ -1041,6 +1046,8 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
    * separators, icon-only build/plan toggle, and less horizontal padding.
    */
   compact?: boolean;
+  /** The tightest compact footer shows the runtime mode as its icon alone. */
+  iconOnly?: boolean;
   hidden?: boolean;
   onToggleInteractionMode: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
@@ -1048,6 +1055,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
   const size = props.size ?? "sm";
   const composerFloatingLayerProps = useComposerMenuProps();
   const compact = props.compact === true;
+  const iconOnly = compact && props.iconOnly === true;
   const [open, setOpen] = useComposerMenuState(props.hidden);
   const runtimeModeOption = runtimeModeConfig[props.runtimeMode];
   const RuntimeModeIcon = runtimeModeOption.icon;
@@ -1122,18 +1130,24 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
                   // min-w-min holds the squished label at its minimum scale.
                   compact && cn("min-w-min shrink", composerCompactControlClassName),
                 )}
-                aria-label="Runtime mode"
+                aria-label={iconOnly ? `Runtime mode: ${runtimeModeOption.label}` : "Runtime mode"}
               />
             }
           >
             <ComposerControlIcon icon={RuntimeModeIcon} size={size} />
-            {compact ? (
+            {iconOnly ? null : compact ? (
               <SelectValue className="flex min-w-0">
                 <SquishText>{runtimeModeOption.compactLabel}</SquishText>
               </SelectValue>
             ) : (
               <SelectValue>{runtimeModeOption.label}</SelectValue>
             )}
+            {compact ? (
+              <SquishTextProbe
+                data-composer-footer-label="mode"
+                variants={[runtimeModeOption.compactLabel, ""]}
+              />
+            ) : null}
           </TooltipTrigger>
           <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
             {runtimeModeOptions.map((mode) => {
@@ -1157,7 +1171,11 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
             })}
           </SelectPopup>
         </Select>
-        <TooltipPopup side="top">{runtimeModeOption.description}</TooltipPopup>
+        <TooltipPopup side="top">
+          {iconOnly
+            ? `${runtimeModeOption.label}: ${runtimeModeOption.description}`
+            : runtimeModeOption.description}
+        </TooltipPopup>
       </Tooltip>
 
       {interactionModeToggle}
@@ -2072,6 +2090,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
+  const [composerFooterLabelStage, setComposerFooterLabelStage] = useState(0);
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
   const isMobileViewport = useMediaQuery("max-sm");
@@ -3199,6 +3218,40 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     panelAnimationDurationMs,
     panelAnimationsActive,
   ]);
+
+  // Switch footer labels to their short variants, in give-way order, when
+  // the controls overflow even with every label squished to its floor.
+  // Otherwise the overflow scrolls the runtime mode out of view. The footer's
+  // width moves with the send actions, and its labels with the model and
+  // traits, so watch both the box and its text.
+  const composerFooterLabelStageRef = useRef(0);
+  useLayoutEffect(() => {
+    const container = composerFooterControlsRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      if (container.clientWidth === 0) return;
+      const stage = resolveComposerFooterLabelStage({
+        ...measureComposerFooterControls(container),
+        stage: composerFooterLabelStageRef.current,
+      });
+      if (stage === composerFooterLabelStageRef.current) return;
+      composerFooterLabelStageRef.current = stage;
+      setComposerFooterLabelStage(stage);
+    };
+    measure();
+    const resizeObserver = new ResizeObserver(measure);
+    resizeObserver.observe(container);
+    const mutationObserver = new MutationObserver(measure);
+    mutationObserver.observe(container, { childList: true, subtree: true, characterData: true });
+    document.fonts.addEventListener("loadingdone", measure);
+    return () => {
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      document.fonts.removeEventListener("loadingdone", measure);
+    };
+    // Not read inside: the footer unmounts and remounts with these, and the
+    // observers must follow the new element.
+  }, [activeThreadId, isComposerApprovalState, isComposerCollapsedMobile]);
 
   // ------------------------------------------------------------------
   // Image persist effect
@@ -4869,7 +4922,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     hidden: composerControlsHidden || restingHiddenBlockCount > 1,
   });
   const compactProviderTraitsPicker = composerControlsCompact
-    ? renderProviderTraitsPicker({ ...providerTraitsPickerInput, compact: true })
+    ? renderProviderTraitsPicker({
+        ...providerTraitsPickerInput,
+        compact: true,
+        shortLabel: composerFooterLabelVariant("traits", composerFooterLabelStage) === 1,
+      })
     : providerTraitsPicker;
   const restingBlockDefs = [
     ...(providerTraitsPicker
@@ -4898,6 +4955,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           runtimeMode={runtimeMode}
           size={composerControlsInStrip ? "xs" : "sm"}
           compact={composerControlsCompact}
+          iconOnly={
+            composerControlsCompact &&
+            composerFooterLabelVariant("mode", composerFooterLabelStage) === 1
+          }
           hidden={composerControlsHidden || restingHiddenBlockCount > 0}
           onToggleInteractionMode={toggleInteractionMode}
           onRuntimeModeChange={handleRuntimeModeChange}
@@ -4936,6 +4997,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ) : null}
       <ProviderModelPicker
         compact={composerControlsCompact}
+        shortLabel={
+          composerControlsCompact &&
+          composerFooterLabelVariant("model", composerFooterLabelStage) === 1
+        }
         isComposerOwned
         disabled={providerCatalogPending}
         activeInstanceId={

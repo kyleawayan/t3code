@@ -59,3 +59,23 @@ export function getTriggerDisplayModelName(model: ModelEsque): string {
 export function getTriggerDisplayModelLabel(model: ModelEsque): string {
   return getTriggerDisplayModelName(model);
 }
+
+// The provider's own brand, which its icon already shows beside the name.
+const PROVIDER_BRAND_PREFIX: Partial<Record<ProviderDriverKind, string>> = {
+  [ProviderDriverKind.make("claudeAgent")]: "Claude",
+  [ProviderDriverKind.make("antigravity")]: "Gemini",
+  [ProviderDriverKind.make("grok")]: "Grok",
+};
+
+/**
+ * A shorter model label for tight footers: the provider's brand word goes,
+ * since the icon beside it already says it ("Claude Opus 5.5" → "Opus 5.5").
+ * The brand stays when the rest would lead with the version ("Gemini 3 Pro"),
+ * so the version always keeps a name in front of it.
+ */
+export function getShortTriggerModelLabel(label: string, driverKind: ProviderDriverKind): string {
+  const brand = PROVIDER_BRAND_PREFIX[driverKind];
+  if (!brand || !label.startsWith(`${brand} `)) return label;
+  const rest = label.slice(brand.length + 1).trimStart();
+  return /^\p{L}/u.test(rest) ? rest : label;
+}

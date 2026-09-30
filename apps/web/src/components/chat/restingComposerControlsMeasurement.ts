@@ -1,5 +1,8 @@
-import type { RestingComposerControlsMeasurement } from "../composerFooterLayout";
-import { measureSquishText } from "../ui/squish-text";
+import type {
+  ComposerFooterControlWidths,
+  RestingComposerControlsMeasurement,
+} from "../composerFooterLayout";
+import { measureSquishText, measureSquishTextProbe } from "../ui/squish-text";
 
 function elementOuterWidth(element: HTMLElement): number {
   const width = element.getBoundingClientRect().width;
@@ -82,5 +85,52 @@ export function measureRestingComposerControls(
     minimumFixedWidth: leadingWidths.minimum + separatorAndGapWidth,
     blockWidths: blocks.map(elementOuterWidth),
     overflowWidth: overflow ? elementOuterWidth(overflow) : 0,
+  };
+}
+
+/**
+ * Read the expanded footer's controls for resolveComposerFooterLabelStage:
+ * each in-flow control's width and, where it probes label variants, the label
+ * as laid out now and each variant's floor.
+ */
+export function measureComposerFooterControls(container: HTMLElement): {
+  availableWidth: number;
+  gap: number;
+  controls: ComposerFooterControlWidths[];
+} {
+  const style = getComputedStyle(container);
+  const controls: ComposerFooterControlWidths[] = [];
+  for (const child of container.children) {
+    const element = child as HTMLElement;
+    if (element.offsetWidth === 0) continue;
+    const elementStyle = getComputedStyle(element);
+    if (elementStyle.position === "absolute" || elementStyle.position === "fixed") continue;
+    const control: ComposerFooterControlWidths = {
+      width: element.offsetWidth + elementInlineMarginWidth(element),
+    };
+    const probe = element.querySelector<HTMLElement>("[data-composer-footer-label]");
+    const labelControl = probe?.dataset.composerFooterLabel;
+    if (
+      probe &&
+      (labelControl === "model" || labelControl === "traits" || labelControl === "mode")
+    ) {
+      const [fullFloor = 0, shortFloor = 0] = measureSquishTextProbe(probe);
+      const label = element.querySelector<HTMLElement>("[data-squish-text]");
+      control.label = {
+        control: labelControl,
+        rendered: label ? (measureSquishText(label)?.rendered ?? 0) : 0,
+        gap: Number.parseFloat(elementStyle.columnGap) || 0,
+        floors: [fullFloor, shortFloor],
+      };
+    }
+    controls.push(control);
+  }
+  return {
+    availableWidth:
+      container.clientWidth -
+      (Number.parseFloat(style.paddingInlineStart) || 0) -
+      (Number.parseFloat(style.paddingInlineEnd) || 0),
+    gap: Number.parseFloat(style.columnGap) || 0,
+    controls,
   };
 }

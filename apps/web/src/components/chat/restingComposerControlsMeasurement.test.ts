@@ -4,7 +4,10 @@ import {
   resolveRestingComposerControlsLayout,
   resolveRestingComposerControlsNaturalWidth,
 } from "../composerFooterLayout";
-import { measureRestingComposerControls } from "./restingComposerControlsMeasurement";
+import {
+  measureComposerFooterControls,
+  measureRestingComposerControls,
+} from "./restingComposerControlsMeasurement";
 
 // A 100px picker whose label is squished into 40px. At full scale the label
 // is 90px; its widest sizer run, the floor it squishes down to, is 46px.
@@ -73,5 +76,52 @@ describe("measureRestingComposerControls", () => {
 
   it("keeps a length min-width that holds the picker wider than its squished label", () => {
     expect(measurePicker({ minWidth: "110px" }).minimumFixedWidth).toBe(110);
+  });
+});
+
+describe("measureComposerFooterControls", () => {
+  it("reads each control's width and the floors of its label variants", () => {
+    const squishText = {
+      offsetWidth: 40,
+      querySelector: () => ({ offsetWidth: 90 }),
+      querySelectorAll: () => [],
+    };
+    // Each probed variant is two halves; its floor is the wider half.
+    const variant = (...halves: number[]) => ({
+      children: halves.map((offsetWidth) => ({ offsetWidth })),
+    });
+    const probe = {
+      dataset: { composerFooterLabel: "model" },
+      querySelectorAll: () => [variant(44, 46), variant(26, 24)],
+    };
+    const picker = {
+      offsetWidth: 100,
+      querySelector: (selector: string) =>
+        selector === "[data-composer-footer-label]"
+          ? probe
+          : { matches: () => true, ...squishText },
+    };
+    const hiddenSeparator = { offsetWidth: 0 };
+    const planToggle = { offsetWidth: 28, querySelector: () => null };
+    const container = {
+      clientWidth: 218,
+      children: [picker, hiddenSeparator, planToggle],
+    };
+    vi.stubGlobal("getComputedStyle", (element: unknown) =>
+      element === container
+        ? { columnGap: "4px", paddingInlineStart: "14px", paddingInlineEnd: "4px" }
+        : element === picker
+          ? { position: "static", columnGap: "4px", marginInlineStart: "-6px" }
+          : { position: "static" },
+    );
+
+    expect(measureComposerFooterControls(container as unknown as HTMLElement)).toEqual({
+      availableWidth: 200,
+      gap: 4,
+      controls: [
+        { width: 94, label: { control: "model", rendered: 40, gap: 4, floors: [46, 26] } },
+        { width: 28 },
+      ],
+    });
   });
 });

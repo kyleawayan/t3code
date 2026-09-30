@@ -203,6 +203,84 @@ export function resolveRestingComposerControlsLayout(
   return { hiddenCount, visible };
 }
 
+export type ComposerFooterLabelControl = "model" | "traits" | "mode";
+
+/**
+ * The order the footer labels switch to their short variant as the footer
+ * narrows: the runtime mode goes icon-only, then the effort shortens, then
+ * the model drops its brand prefix. Each variant still squishes to its floor,
+ * but never clips.
+ */
+const COMPOSER_FOOTER_LABEL_GIVE_WAY: readonly ComposerFooterLabelControl[] = [
+  "mode",
+  "traits",
+  "model",
+];
+
+/** Which variant a control shows at a give-way stage: 0 full, 1 short. */
+export function composerFooterLabelVariant(
+  control: ComposerFooterLabelControl,
+  stage: number,
+): 0 | 1 {
+  return stage > COMPOSER_FOOTER_LABEL_GIVE_WAY.indexOf(control) ? 1 : 0;
+}
+
+export interface ComposerFooterControlWidths {
+  /** Laid-out width, inline margins included. */
+  width: number;
+  /** Present on a control whose label has a short variant. */
+  label?: {
+    control: ComposerFooterLabelControl;
+    /** The label as laid out now; 0 when the control shows none. */
+    rendered: number;
+    /** The flex gap the label adds beside its siblings. */
+    gap: number;
+    /** Each variant's floor, full then short. 0 means no label (icon only). */
+    floors: readonly [number, number];
+  };
+}
+
+// Rounding moves each control's measured chrome by a pixel as its label
+// squishes, so a longer variant needs a margin before it comes back.
+const FOOTER_LABEL_STAGE_HYSTERESIS_PX = 4;
+
+/**
+ * The fewest give-way steps that fit every footer control with its labels at
+ * their floor. Past the last step the row scrolls, which beats clipping a
+ * label mid-text into something that reads like another model.
+ *
+ * Built from each control's chrome and its variants' floors, never from how
+ * squished the labels are now, so switching a variant cannot flip the answer.
+ */
+export function resolveComposerFooterLabelStage(input: {
+  stage: number;
+  availableWidth: number;
+  gap: number;
+  controls: ReadonlyArray<ComposerFooterControlWidths>;
+}): number {
+  if (!input.controls.some((control) => control.label)) return 0;
+  const widthAt = (stage: number) => {
+    let width = input.gap * Math.max(0, input.controls.length - 1);
+    for (const control of input.controls) {
+      const { label } = control;
+      if (!label) {
+        width += control.width;
+        continue;
+      }
+      const chrome = control.width - (label.rendered > 0 ? label.rendered + label.gap : 0);
+      const floor = label.floors[composerFooterLabelVariant(label.control, stage)];
+      width += chrome + (floor > 0 ? label.gap + floor : 0);
+    }
+    return width;
+  };
+  const lastStage = COMPOSER_FOOTER_LABEL_GIVE_WAY.length;
+  for (let stage = 0; stage < lastStage; stage += 1) {
+    const slack = stage < input.stage ? FOOTER_LABEL_STAGE_HYSTERESIS_PX : 0;
+    if (widthAt(stage) <= input.availableWidth - slack) return stage;
+  }
+  return lastStage;
+}
+
 export function resolveScrollToEndClearance(input: {
   overlayHeight: number;
   mainSurfaceTop: number;

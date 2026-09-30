@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 import { ProviderDriverKind, type ProviderOptionDescriptor } from "@t3tools/contracts";
-import { buildTraitsTriggerDisplay, buildUnavailableModelOptionDescriptors } from "./TraitsPicker";
+import {
+  buildTraitsTriggerDisplay,
+  buildUnavailableModelOptionDescriptors,
+  compactTraitsTriggerLabel,
+} from "./TraitsPicker";
 
 function selectDescriptor(
   id: string,
@@ -186,5 +190,18 @@ describe("buildUnavailableModelOptionDescriptors", () => {
         currentValue: true,
       },
     ]);
+  });
+});
+
+describe("compactTraitsTriggerLabel", () => {
+  it("abbreviates long efforts and keeps the context window whole", () => {
+    expect(compactTraitsTriggerLabel("Extra High · 1M")).toBe("XHigh·1M");
+    expect(compactTraitsTriggerLabel("Max · 1M")).toBe("Max·1M");
+    expect(compactTraitsTriggerLabel("Medium · 200k")).toBe("Med·200k");
+  });
+
+  it("leaves a single short trait alone", () => {
+    expect(compactTraitsTriggerLabel("High")).toBe("High");
+    expect(compactTraitsTriggerLabel("")).toBe("");
   });
 });

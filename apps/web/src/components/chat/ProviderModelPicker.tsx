@@ -9,13 +9,14 @@ import type { VariantProps } from "class-variance-authority";
 import { Badge } from "../ui/badge";
 import { buttonVariants } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
-import { SquishText } from "../ui/squish-text";
+import { SquishText, SquishTextProbe } from "../ui/squish-text";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
 import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import {
   ModelEsque,
+  getShortTriggerModelLabel,
   getTriggerDisplayModelLabel,
   getTriggerDisplayModelName,
 } from "./providerIconUtils";
@@ -30,6 +31,8 @@ import { shortcutLabelForCommand } from "../../keybindings";
 
 export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   compact?: boolean | undefined;
+  /** A tight compact footer drops the brand the provider icon already shows. */
+  shortLabel?: boolean | undefined;
   /**
    * The instance currently selected in the composer. Drives the trigger
    * icon, label and the default-highlighted combobox row.
@@ -93,6 +96,11 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const triggerLabel = selectedModel
     ? `${getTriggerDisplayModelLabel(selectedModel)}${selectedModel.isUnavailable ? " (Unavailable)" : ""}`
     : triggerTitle;
+  const fullTriggerText = props.triggerLabel ?? triggerTitle;
+  const shortTriggerText =
+    activeEntry && props.triggerLabel === undefined
+      ? getShortTriggerModelLabel(fullTriggerText, activeEntry.driverKind)
+      : fullTriggerText;
   const showInstanceBadge =
     activeEntry !== null && shouldShowInstanceBadge(activeEntry, props.instanceEntries);
 
@@ -220,7 +228,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                 />
               }
             >
-              <SquishText>{props.triggerLabel ?? triggerTitle}</SquishText>
+              <SquishText>{props.shortLabel ? shortTriggerText : fullTriggerText}</SquishText>
             </TooltipTrigger>
             <TooltipPopup side="top">{triggerTooltipContent}</TooltipPopup>
           </Tooltip>
@@ -233,6 +241,12 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         <span aria-hidden="true" className="flex items-center">
           <ComposerControlChevron size={size} />
         </span>
+        {props.compact ? (
+          <SquishTextProbe
+            data-composer-footer-label="model"
+            variants={[fullTriggerText, shortTriggerText]}
+          />
+        ) : null}
       </PopoverTrigger>
       <PopoverPopup
         {...(props.isComposerOwned ? composerFloatingLayerProps : {})}
