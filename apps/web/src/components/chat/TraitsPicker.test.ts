@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import { ProviderDriverKind, type ProviderOptionDescriptor } from "@t3tools/contracts";
-import { buildTraitsTriggerDisplay, buildUnavailableModelOptionDescriptors } from "./TraitsPicker";
+import {
+  buildTraitsTriggerDisplay,
+  buildUnavailableModelOptionDescriptors,
+  compactTraitsTriggerLabel,
+  effortOnlyTraitsLabel,
+} from "./TraitsPicker";
 
 function selectDescriptor(
   id: string,
@@ -186,5 +191,35 @@ describe("buildUnavailableModelOptionDescriptors", () => {
         currentValue: true,
       },
     ]);
+  });
+});
+
+describe("compactTraitsTriggerLabel", () => {
+  it("abbreviates long efforts and keeps the context window whole", () => {
+    expect(compactTraitsTriggerLabel("Extra High · 1M")).toBe("XHigh·1M");
+    expect(compactTraitsTriggerLabel("Max · 1M")).toBe("Max·1M");
+    expect(compactTraitsTriggerLabel("Medium · 200k")).toBe("Med·200k");
+  });
+
+  it("tightens further for the narrowest footers without touching the context window", () => {
+    expect(compactTraitsTriggerLabel("Extra High · 1M", "tight")).toBe("XH·1M");
+    expect(compactTraitsTriggerLabel("High · 200k", "tight")).toBe("Hi·200k");
+    expect(compactTraitsTriggerLabel("Max · 1M", "tight")).toBe("Max·1M");
+  });
+
+  it("leaves a single short trait alone", () => {
+    expect(compactTraitsTriggerLabel("High")).toBe("High");
+    expect(compactTraitsTriggerLabel("")).toBe("");
+  });
+});
+
+describe("effortOnlyTraitsLabel", () => {
+  it("keeps only the tightened effort level", () => {
+    expect(effortOnlyTraitsLabel("Extra High · 1M", "Extra High")).toBe("XH");
+    expect(effortOnlyTraitsLabel("Max · 1M", "Max")).toBe("Max");
+  });
+
+  it("falls back to the first trait without an effort", () => {
+    expect(effortOnlyTraitsLabel("Medium · 200k", null)).toBe("Med");
   });
 });

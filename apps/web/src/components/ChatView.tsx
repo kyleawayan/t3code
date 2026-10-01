@@ -167,6 +167,7 @@ import {
 } from "../types";
 import { useTheme } from "../hooks/useTheme";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
+import { useTurnPulse } from "../hooks/useTurnPulse";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { subscribeSnapShotComposerFocus } from "../lib/desktopSnapShot";
 import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
@@ -193,6 +194,7 @@ import { ThreadPreviewMiniPlayer } from "./preview/ThreadPreviewMiniPlayer";
 import { subscribePreviewAction } from "./preview/previewActionBus";
 import { getConfiguredPreviewUrls } from "./preview/previewEmptyStateLogic";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
+import { shouldRefreshOpenFile } from "./files/projectFilesQueryState";
 import {
   isSameSidebarThreadRef,
   useSidebarPendingFileDropStore,
@@ -209,6 +211,15 @@ import { PullRequestDetailGhost } from "./pullRequest/PullRequestGhosts";
 import { PullRequestsUnavailableState } from "./pullRequest/PullRequestsUnavailableState";
 import { RightPanelTabs } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
+import { RecapMapPanel } from "./RecapMapPanel";
+import { ThreadResumeStrip } from "./chat/ThreadResumeStrip";
+import {
+  deriveRecapFreshness,
+  deriveResumeWhoseMove,
+  latestRecapMessageId,
+  recapCoveredAt,
+  type LeftOffSnapshot,
+} from "./chat/threadResume.logic";
 import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
 import { ThreadPullRequestsPanel } from "./pullRequest/ThreadPullRequestsPanel";
 import { useDeviceState } from "~/state/device";
@@ -258,6 +269,7 @@ import {
   useEnvironmentSettings,
 } from "../hooks/useSettings";
 import { useNowMinute } from "../hooks/useNowMinute";
+import { useSetThreadRecapEnabled } from "../hooks/useThreadRecap";
 import { usePanelAnimationSettings, usePanelPresence } from "../panelAnimations";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useRemoveClonedProject } from "../hooks/useRemoveClonedProject";
@@ -3030,6 +3042,9 @@ export default function ChatView(props: ChatViewProps) {
     () => deriveActivePlanState(threadActivities, activeLatestTurn?.turnId ?? undefined),
     [activeLatestTurn?.turnId, threadActivities],
   );
+  // Live liveness for the open thread: whether output is arriving right now,
+  // which is the one thing a spinner cannot tell you.
+  const turnPulse = useTurnPulse(activeThreadRef);
   const showPlanFollowUpPrompt = shouldShowPlanFollowUpPrompt({
     pendingUserInputCount: pendingUserInputs.length,
     interactionMode,
@@ -3181,9 +3196,10 @@ export default function ChatView(props: ChatViewProps) {
         return payload?.requestId === pendingCompactionMessage.id;
       }));
   const isCompacting =
-    (isSendBusy || phase === "connecting" || phase === "running") &&
-    compactRequestIsActive &&
-    !compactionSettled;
+    turnPulse.kind === "compacting" ||
+    ((isSendBusy || phase === "connecting" || phase === "running") &&
+      compactRequestIsActive &&
+      !compactionSettled);
   // The server records a running worktree setup on the thread for the whole
   // bootstrap window. That record, with no turn yet, is how a reload or another
   // client sees a worktree still being prepared, so it counts as working like
@@ -3581,6 +3597,22 @@ export default function ChatView(props: ChatViewProps) {
     attachDraftHeroComposerAnchorRef,
     captureDraftHeroComposerRect,
   ] = useDraftHeroLayoutTransition(isDraftHeroState);
+  // When the latest turn changed the open file (and the user is not editing it),
+  // hand the file preview a token so it re-reads and shows the agent's edits.
+  // The path is folded in so switching files re-triggers a stale read too.
+  const fileExternalRefreshToken = useMemo(() => {
+    const openPath =
+      activeRightPanelSurface?.kind === "file" ? activeRightPanelSurface.relativePath : null;
+    const latest = activeThread?.checkpoints.at(-1) ?? null;
+    if (openPath === null || latest === null) return null;
+    return shouldRefreshOpenFile({
+      openPath,
+      isDirty: pendingFileSurfaceIds.has(`file:${openPath}`),
+      changedPaths: latest.files.map((changed) => changed.path),
+    })
+      ? `${latest.turnId}:${latest.checkpointTurnCount}:${openPath}`
+      : null;
+  }, [activeRightPanelSurface, activeThread, pendingFileSurfaceIds]);
 
   const gitCwd = activeProject
     ? projectScriptCwd({
@@ -4510,6 +4542,34 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "agents");
   }, [activeThreadRef]);
+  const addRecapMapSurface = useCallback(() => {
+    if (!activeThreadRef || !isServerThread) return;
+    useRightPanelStore.getState().open(activeThreadRef, "recap");
+  }, [activeThreadRef, isServerThread]);
+  const setThreadRecapEnabled = useSetThreadRecapEnabled();
+  const setActiveThreadRecapEnabled = useCallback(
+    (enabled: boolean) => {
+      if (!activeThreadRef || !isServerThread) return;
+      void setThreadRecapEnabled(activeThreadRef, enabled);
+    },
+    [activeThreadRef, isServerThread, setThreadRecapEnabled],
+  );
+  const activeThreadRecap = activeThreadShell?.recap ?? null;
+  const activeThreadRecapEnabled = activeThreadRecap?.enabled === true;
+  const resumeWhoseMove = deriveResumeWhoseMove({
+    hasPendingApproval: activePendingApproval !== null,
+    hasPendingUserInput: pendingUserInputs.length > 0,
+    isWorking,
+  });
+  const resumeRecapFreshness = deriveRecapFreshness({
+    basedOnMessageId: activeThreadRecap?.summary?.basedOnMessageId ?? null,
+    latestMessageId: latestRecapMessageId(activeServerThread?.messages ?? []),
+    isWorking,
+  });
+  const activeRecapSummary = activeThreadRecap?.summary ?? null;
+  const activeRecapCoveredAt = activeRecapSummary
+    ? recapCoveredAt(activeRecapSummary, activeServerThread?.messages ?? [])
+    : null;
   const supportsThreadPullRequests =
     serverConfig?.environment.capabilities.threadPullRequests === true;
   const visiblePullRequestCount = visibleThreadPullRequests(
@@ -5950,6 +6010,20 @@ export default function ChatView(props: ChatViewProps) {
   const activeThreadLastVisitedAt = useUiStateStore((store) =>
     activeThreadKey === null ? undefined : store.threadLastVisitedAtById[activeThreadKey],
   );
+  // Captured on the first render for a thread, before the visit effect above
+  // moves the stamp, so "You left off here" stays put for the whole visit.
+  const [leftOffSnapshot, setLeftOffSnapshot] = useState<{
+    readonly threadKey: string | null;
+    readonly snapshot: LeftOffSnapshot | null;
+  }>({ threadKey: null, snapshot: null });
+  if (leftOffSnapshot.threadKey !== activeThreadKey) {
+    setLeftOffSnapshot({
+      threadKey: activeThreadKey,
+      snapshot: activeThreadLastVisitedAt
+        ? { visitedAt: activeThreadLastVisitedAt, openedAt: new Date().toISOString() }
+        : null,
+    });
+  }
   const activeThreadWokeVisible = useMemo(() => {
     if (activeThreadWokeAt === null) return false;
     if (activeThreadShell?.settledOverride === "settled") return false;
@@ -8174,6 +8248,25 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
 
+  const requestGitAgentAction = useCallback(
+    (prompt: string) => {
+      if (!activeThreadKey) return;
+      // Use the queue so header actions preserve the composer and respect pending approvals.
+      useQueuedMessageStore.getState().enqueue(activeThreadKey, {
+        prompt,
+        images: [],
+        files: [],
+        terminalContexts: [],
+        previewAnnotations: [],
+        reviewComments: [],
+        submissionIntent: "foreground",
+        queuedAfterToolActivityId: latestCompletedToolActivityId(threadActivities),
+        createdAt: new Date().toISOString(),
+      });
+    },
+    [activeThreadKey, threadActivities],
+  );
+
   // Sends the oldest queued message once it is due: a tool call finished
   // after it was queued, or the turn ended. Only one leaves per boundary; the
   // take inside onSend re-anchors the rest.
@@ -9251,6 +9344,16 @@ export default function ChatView(props: ChatViewProps) {
         environmentId={activeThreadRef?.environmentId ?? null}
         threadId={activeThreadRef?.threadId ?? null}
       />
+    ) : renderedRightPanelSurface?.kind === "recap" ? (
+      <RecapMapPanel
+        key={activeThreadKey}
+        recap={activeThreadRecap}
+        coveredAt={activeRecapCoveredAt}
+        threadRef={activeThreadRef}
+        project={activeProject}
+        branch={activeThread.branch}
+        onSetEnabled={isServerThread ? setActiveThreadRecapEnabled : null}
+      />
     ) : renderedRightPanelSurface?.kind === "device" ? (
       <Suspense fallback={null}>
         <DevicePanel
@@ -9308,6 +9411,7 @@ export default function ChatView(props: ChatViewProps) {
             pendingFileSurfaceIds.has(renderedRightPanelSurface.id)
           }
           workspaceMutationId={workspaceMutationId}
+          externalRefreshToken={fileExternalRefreshToken}
         />
       </Suspense>
     ) : null
@@ -9366,6 +9470,7 @@ export default function ChatView(props: ChatViewProps) {
           ) : null}
           {!rightPanelControlsAtRoot && !rightPanelControlsInPanel ? panelLayoutControls : null}
           <ChatHeader
+            onRequestGitAgentAction={requestGitAgentAction}
             {...(!supportsPullRequests || activeProjectRepository === null
               ? {}
               : { onOpenPullRequest: openProjectPullRequest })}
@@ -9374,6 +9479,7 @@ export default function ChatView(props: ChatViewProps) {
             {...(routeKind === "draft" && draftId ? { draftId } : {})}
             activeThreadTitle={activeThread.title}
             isServerThread={isServerThread}
+            recapEnabled={activeThreadRecapEnabled}
             activeProject={activeProject}
             openInCwd={gitCwd}
             activeProjectScripts={activeProjectScripts}
@@ -9458,6 +9564,16 @@ export default function ChatView(props: ChatViewProps) {
                 onCancelWorktreeSetup={onCancelWorktreeSetup}
                 {...(draftId ? { onWorktreeSetupWorkLocally } : {})}
                 {...(onOpenWorktreeSetupTerminal ? { onOpenWorktreeSetupTerminal } : {})}
+                turnPulse={paintOnlyDisplayedTimeline ? { kind: "hidden" } : turnPulse}
+                turnMascot={
+                  paintOnlyDisplayedTimeline
+                    ? undefined
+                    : activeThread.session?.providerName === "codex"
+                      ? "codey"
+                      : activeThread.session?.providerName === "claudeAgent"
+                        ? "claude"
+                        : undefined
+                }
                 listRef={legendListRef}
                 timelineEntries={displayedTimeline.entries}
                 latestTurn={paintOnlyDisplayedTimeline ? null : activeLatestTurn}
@@ -9521,6 +9637,11 @@ export default function ChatView(props: ChatViewProps) {
                   { context: { terminalFocus: false } },
                 )}
                 onRemoveQueuedMessage={onRemoveQueuedMessage}
+                leftOff={
+                  paintOnlyDisplayedTimeline || leftOffSnapshot.threadKey !== activeThreadKey
+                    ? null
+                    : leftOffSnapshot.snapshot
+                }
               />
 
               {/* scroll to end pill — shown when user has scrolled away from the live edge */}
@@ -9564,7 +9685,7 @@ export default function ChatView(props: ChatViewProps) {
               >
                 <div
                   data-chat-composer-stack="true"
-                  className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-3xl"
+                  className="group/composer-stack pointer-events-auto relative z-10 me-auto w-full max-w-3xl"
                 >
                   {isDraftHeroState ? (
                     <div className="absolute inset-x-0 bottom-full z-0">
@@ -9585,6 +9706,16 @@ export default function ChatView(props: ChatViewProps) {
                         />
                       </div>
                     </div>
+                  ) : null}
+                  {!isDraftHeroState && isServerThread && activeThreadRecapEnabled ? (
+                    <ThreadResumeStrip
+                      summary={activeRecapSummary}
+                      coveredAt={activeRecapCoveredAt}
+                      refreshStartedAt={activeThreadRecap?.refreshStartedAt}
+                      whoseMove={resumeWhoseMove}
+                      freshness={resumeRecapFreshness}
+                      onOpenMap={addRecapMapSurface}
+                    />
                   ) : null}
                   <div
                     className="relative"
@@ -9615,6 +9746,7 @@ export default function ChatView(props: ChatViewProps) {
                             promptHistoryMessages={timelineMessages}
                             isServerThread={isServerThread}
                             isLocalDraftThread={isLocalDraftThread}
+                            placeholderProject={activeProject}
                             forceExpandedOnMobile={forceExpandedMobileComposer && isDraftHeroState}
                             projectSelectionRequired={isLocalDraftThread && activeProject === null}
                             phase={phase}
@@ -9869,7 +10001,6 @@ export default function ChatView(props: ChatViewProps) {
       {rightPanelPresent && !shouldUseRightPanelSheet && activeThreadRef ? (
         <RightPanelTabs
           mode="inline"
-          widthStorageKey={`t3code:preview-panel-width:${activeThreadKey}`}
           open={rightPanelOpen}
           maximized={rightPanelMaximized}
           surfaces={renderedRightPanelSurfaces}
@@ -9898,6 +10029,7 @@ export default function ChatView(props: ChatViewProps) {
           onAddPullRequest={addPullRequestSurface}
           onAddPullRequests={addPullRequestsSurface}
           onAddAgents={addAgentsSurface}
+          onAddRecapMap={addRecapMapSurface}
           onAddDevice={addDeviceSurface}
           browserAvailable={isPreviewSupportedInRuntime()}
           terminalAvailable={activeProject !== null}
@@ -9906,6 +10038,7 @@ export default function ChatView(props: ChatViewProps) {
           pullRequestAvailable={pullRequestSurfaceAvailable}
           pullRequestsAvailable={pullRequestsSurfaceAvailable}
           agentsAvailable
+          recapMapAvailable={isServerThread}
           deviceAvailable={activeThreadRef !== null}
           liveAgentCount={agentPanelModel.liveCount}
         >
@@ -9936,7 +10069,6 @@ export default function ChatView(props: ChatViewProps) {
             pendingSurfaceIds={pendingFileSurfaceIds}
             previewSessions={activePreviewState.sessions}
             desktopByTabId={activePreviewState.desktopByTabId}
-            previewRuntimeTabId={resolvePreviewRuntimeTabId}
             terminalLabelsById={activeTerminalLabelsById}
             onActivate={activateRightPanelSurface}
             onCloseSurface={closeRightPanelSurface}
@@ -9956,6 +10088,7 @@ export default function ChatView(props: ChatViewProps) {
             onAddPullRequest={addPullRequestSurface}
             onAddPullRequests={addPullRequestsSurface}
             onAddAgents={addAgentsSurface}
+            onAddRecapMap={addRecapMapSurface}
             onAddDevice={addDeviceSurface}
             browserAvailable={isPreviewSupportedInRuntime()}
             terminalAvailable={activeProject !== null}
@@ -9964,6 +10097,7 @@ export default function ChatView(props: ChatViewProps) {
             pullRequestAvailable={pullRequestSurfaceAvailable}
             pullRequestsAvailable={pullRequestsSurfaceAvailable}
             agentsAvailable
+            recapMapAvailable={isServerThread}
             deviceAvailable={activeThreadRef !== null}
             liveAgentCount={agentPanelModel.liveCount}
           >

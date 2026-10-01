@@ -235,6 +235,7 @@ import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
+import { SquishText } from "./ui/squish-text";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import {
   composerDraftHasUserContent,
@@ -247,6 +248,8 @@ import {
 
 // Settled-tail paging: recent history is the common lookup; the deep tail
 // stays behind an explicit Show more.
+// Titles squish only this far, where they still read at a glance, then end in "…".
+const THREAD_TITLE_SQUISH_SCALE = 0.8;
 const SETTLED_TAIL_INITIAL_COUNT = 10;
 const SETTLED_TAIL_PAGE_COUNT = 25;
 // Fresh keys deliberately reset both shelves to collapsed for existing users.
@@ -657,7 +660,7 @@ function SidebarSectionHeader(props: {
 }) {
   const snoozed = props.marker === "snoozed-header";
   const className = cn(
-    "flex h-full w-full items-center gap-2 px-2 text-left text-xs font-medium",
+    "flex h-full w-full items-center gap-2 px-[var(--sidebar-row-content-inset)] text-left text-xs font-medium",
     snoozed ? "text-blue-600 dark:text-blue-400" : "text-sidebar-muted-foreground/60",
     props.dragging && "text-sidebar-foreground/80",
     props.isDropTarget && "text-primary",
@@ -687,7 +690,7 @@ function SidebarSectionHeader(props: {
     <SortableSidebarMarker
       marker={props.marker}
       data-testid={`sidebar-${props.marker}`}
-      className={cn("mx-0.5 h-8", props.className)}
+      className={cn("h-8", props.className)}
     >
       <button
         type="button"
@@ -798,7 +801,14 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
               </Tooltip>
             </span>
           </div>
-          <div className="mt-0.5 truncate text-sm font-medium text-foreground/90">{preview}</div>
+          <div className="mt-0.5 flex min-w-0">
+            <SquishText
+              ellipsisScale={THREAD_TITLE_SQUISH_SCALE}
+              className="flex-1 text-sm font-medium text-foreground/90"
+            >
+              {preview}
+            </SquishText>
+          </div>
         </div>
       </div>
     </li>
@@ -1463,23 +1473,21 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       className="min-w-0 flex-1 rounded-sm border border-input bg-card px-1 text-sm font-medium text-card-foreground outline-none focus:border-foreground"
     />
   ) : (
-    <span
+    <SquishText
+      ellipsisScale={THREAD_TITLE_SQUISH_SCALE}
       className={cn(
-        "min-w-0 flex-1 text-sm transition-opacity motion-reduce:transition-none",
+        "flex-1 text-sm transition-opacity motion-reduce:transition-none",
         shouldRecede ? "font-normal" : "font-medium",
         variant === "card"
-          ? cn(
-              "truncate",
-              shouldRecede
-                ? "text-secondary-label"
-                : isUnread || isWoke || status === "input"
-                  ? "text-foreground"
-                  : status === "failed"
-                    ? "text-foreground/95"
-                    : "text-foreground/90",
-            )
+          ? shouldRecede
+            ? "text-secondary-label"
+            : isUnread || isWoke || status === "input"
+              ? "text-foreground"
+              : status === "failed"
+                ? "text-foreground/95"
+                : "text-foreground/90"
           : cn(
-              "truncate group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
+              "group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
               shouldRecede
                 ? "text-secondary-label/70"
                 : props.isActive || isWoke || status === "input"
@@ -1492,7 +1500,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       )}
     >
       {thread.title}
-    </span>
+    </SquishText>
   );
 
   // Stacks show their layer count; multiple unrelated links show their total count.
@@ -4263,6 +4271,14 @@ export default function Sidebar() {
       if (event.defaultPrevented || event.repeat || isCommandPaletteOpen() || isModelPickerOpen()) {
         return;
       }
+      // Skip while a keybinding is being recorded so ⌘1..9 registers as the new
+      // binding instead of jumping threads.
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.closest("[data-keybinding-capture]")
+      ) {
+        return;
+      }
       const command = resolveShortcutCommand(event, keybindings, {
         platform: navigator.platform,
         context: {
@@ -4295,8 +4311,10 @@ export default function Sidebar() {
       if (jumpIndex === null) return;
       navigateToThreadKey(orderedThreadKeys[jumpIndex] ?? null);
     };
-    window.addEventListener("keydown", onWindowKeyDown);
-    return () => window.removeEventListener("keydown", onWindowKeyDown);
+    // Capture phase so the focused terminal's stopPropagation (it encodes ⌘1..9
+    // as input) can't swallow the thread-jump shortcuts.
+    window.addEventListener("keydown", onWindowKeyDown, true);
+    return () => window.removeEventListener("keydown", onWindowKeyDown, true);
   }, [
     keybindings,
     navigateToThread,

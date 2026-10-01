@@ -309,6 +309,7 @@ function createTextGeneration(
       Effect.succeed({
         title: "Update workflow",
       }),
+    generateThreadRecap: () => Effect.die("generateThreadRecap is not used by git tests"),
     ...overrides,
   };
 
@@ -346,6 +347,7 @@ function createTextGeneration(
             }),
         ),
       ),
+    generateThreadRecap: (input) => implementation.generateThreadRecap(input),
     generateThreadTitle: (input) =>
       implementation.generateThreadTitle(input).pipe(
         Effect.mapError(

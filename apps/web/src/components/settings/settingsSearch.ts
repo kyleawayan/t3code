@@ -244,10 +244,23 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["notification sound alert completion input approval desktop"],
   },
   {
+    id: "notification-sound",
+    title: "Notification sound",
+    desktopOnly: true,
+    to: "/settings/general",
+    searchTerms: ["custom audio upload file preview reset completion input approval failure alert"],
+  },
+  {
     id: "in-app-notifications",
     title: "In-app notifications",
     to: "/settings/general",
     searchTerms: ["notification toast popup completion input approval failure"],
+  },
+  {
+    id: "notification-position",
+    title: "Notification position",
+    to: "/settings/general",
+    searchTerms: ["toast placement corner top bottom left right center command menu"],
   },
   {
     id: "time-format",
@@ -319,6 +332,28 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [
       "resume running active interrupted work restart reboot machine crash desktop update automatically",
     ],
+  },
+  {
+    id: "max-concurrent-agents",
+    title: "Max agents allowed to run",
+    to: "/settings/general",
+    scope: "project-defaults",
+    searchTerms: ["limit concurrency parallel running working at once overwhelm"],
+  },
+  {
+    id: "max-concurrent-agents-count",
+    title: "Agents allowed at once",
+    to: "/settings/general",
+    targetId: "max-concurrent-agents",
+    scope: "project-defaults",
+    searchTerms: ["max limit number count concurrency parallel running"],
+  },
+  {
+    id: "recap-enabled-by-default",
+    title: "Resume map for new threads",
+    to: "/settings/general",
+    scope: "project-defaults",
+    searchTerms: ["recap map summary note goal resume default on new thread"],
   },
   {
     id: "background-activity",

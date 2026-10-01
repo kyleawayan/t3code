@@ -971,6 +971,18 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         thread.branch !== command.expectedBranch
           ? thread.branch
           : command.branch;
+      const recapWasEnabled = thread.recap?.enabled === true;
+      // Turning a recap on or refreshing it asks for a forced run. A refresh of a recap that
+      // is off does nothing.
+      const recapRequested =
+        (command.recapEnabled ?? recapWasEnabled) &&
+        ((command.recapEnabled === true && !recapWasEnabled) || command.refreshRecap === true);
+      const refreshOnly =
+        command.refreshRecap === true &&
+        Object.entries(command).every(
+          ([key, value]) =>
+            ["type", "commandId", "threadId", "refreshRecap"].includes(key) || value === undefined,
+        );
       const occurredAt = yield* nowIso;
       return {
         ...(yield* withEventBase({
@@ -1018,7 +1030,13 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           ...(command.linkedPullRequest !== undefined
             ? { linkedPullRequest: command.linkedPullRequest }
             : {}),
-          updatedAt: occurredAt,
+          // Turning off keeps the last summary so turning back on shows it right away.
+          ...(command.recapEnabled !== undefined
+            ? { recap: { enabled: command.recapEnabled, summary: thread.recap?.summary ?? null } }
+            : {}),
+          ...(recapRequested ? { recapRequested: true as const } : {}),
+          // A refresh alone is not activity, so it leaves the thread's place in the list.
+          updatedAt: refreshOnly ? thread.updatedAt : occurredAt,
         },
       };
     }
@@ -1237,6 +1255,56 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
                   source: "generated" as const,
                   version: command.commandId,
                   needsRefinement: command.needsRefinement,
+                },
+              }
+            : {}),
+          updatedAt: thread.updatedAt,
+        },
+      };
+    }
+
+    case "thread.recap.update": {
+      const thread = yield* requireThread({ readModel, command, threadId: command.threadId });
+      // A recap turned off while generating stays off; the stale result is dropped.
+      const current = thread.deletedAt === null && thread.recap?.enabled === true;
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: yield* nowIso,
+          commandId: command.commandId,
+        })),
+        type: "thread.meta-updated",
+        payload: {
+          threadId: command.threadId,
+          ...(current ? { recap: { enabled: true, summary: command.summary } } : {}),
+          updatedAt: thread.updatedAt,
+        },
+      };
+    }
+
+    case "thread.recap.refresh-state": {
+      const thread = yield* requireThread({ readModel, command, threadId: command.threadId });
+      const recap =
+        thread.deletedAt === null && thread.recap?.enabled === true ? thread.recap : null;
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: yield* nowIso,
+          commandId: command.commandId,
+        })),
+        type: "thread.meta-updated",
+        payload: {
+          threadId: command.threadId,
+          ...(recap
+            ? {
+                recap: {
+                  enabled: true,
+                  summary: recap.summary,
+                  ...(command.refreshStartedAt !== null
+                    ? { refreshStartedAt: command.refreshStartedAt }
+                    : {}),
                 },
               }
             : {}),

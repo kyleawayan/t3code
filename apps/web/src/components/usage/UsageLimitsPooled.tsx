@@ -22,6 +22,8 @@ import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
 import { Button } from "../ui/button";
 import { Alert, AlertTitle } from "../ui/alert";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { sampleSubscriptionAccounts, useDevSubscriptionPreview } from "./subscriptionPreview";
+import { UsageWindowCard } from "./UsageWindowCard";
 import {
   PaceIcon,
   ResetCreditDialog,
@@ -224,6 +226,7 @@ function PoolSegment({
   color,
   now,
   index,
+  compact = false,
 }: {
   readonly account: LimitAccount;
   readonly window: LimitPoolMember["window"];
@@ -232,6 +235,7 @@ function PoolSegment({
   readonly now: number;
   /** 1-based position in the bar, shown on the strip and its legend row to tie them together. */
   readonly index: number;
+  readonly compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const remaining = remainingPercent(window);
@@ -246,7 +250,10 @@ function PoolSegment({
             type="button"
             style={{ gridColumn: index, gridRow: 1 }}
             aria-label={`${account.displayName ?? (account.email ? accountInitials(account.email) : account.driver)}: ${remaining}% left${resetsIn ? `, ${resetsIn}` : ""}${credits ? `, ${credits} reset ${credits === 1 ? "credit" : "credits"} banked` : ""}`}
-            className="relative h-5 min-w-0 cursor-pointer overflow-hidden rounded-md bg-muted text-start outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[popup-open]:ring-1 data-[popup-open]:ring-border @2xl/pool:h-8"
+            className={cn(
+              "relative min-w-0 cursor-pointer overflow-hidden rounded-md bg-muted text-start outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[popup-open]:ring-1 data-[popup-open]:ring-border",
+              compact ? "h-2" : "h-5 @2xl/pool:h-8",
+            )}
           />
         }
       >
@@ -269,11 +276,19 @@ function PoolSegment({
         ) : null}
         <span
           aria-hidden
-          className="absolute inset-0 flex items-center justify-center text-[10px] leading-none font-semibold text-foreground/80 tabular-nums @2xl/pool:hidden"
+          className={cn(
+            "absolute inset-0 items-center justify-center text-[10px] leading-none font-semibold text-foreground/80 tabular-nums @2xl/pool:hidden",
+            compact ? "hidden" : "flex",
+          )}
         >
           {index}
         </span>
-        <div className="relative hidden h-full min-w-0 items-center gap-1.5 px-2 text-xs @2xl/pool:flex">
+        <div
+          className={cn(
+            "relative hidden h-full min-w-0 items-center gap-1.5 px-2 text-xs",
+            !compact && "@2xl/pool:flex",
+          )}
+        >
           <AccountName account={account} className="min-w-0 truncate font-medium text-foreground" />
           <span className="shrink-0 font-semibold text-foreground tabular-nums">{remaining}%</span>
           {/* Countdown and badge get their own plate: fill and hatching run under them otherwise. */}
@@ -295,7 +310,9 @@ function PoolSegment({
           </span>
         </div>
       </PopoverTrigger>
-      <LegendRow account={account} window={window} color={color} now={now} index={index} />
+      {compact ? null : (
+        <LegendRow account={account} window={window} color={color} now={now} index={index} />
+      )}
       {account.redeem ? (
         <RedeemableSegmentPopup
           account={account}
@@ -440,10 +457,12 @@ function PoolBar({
   pool,
   color,
   now,
+  compact = false,
 }: {
   readonly pool: LimitPoolWindow;
   readonly color: string;
   readonly now: number;
+  readonly compact?: boolean;
 }) {
   const restores = new Map(pool.resets.map((reset) => [reset.member.account.key, reset]));
   return (
@@ -462,6 +481,7 @@ function PoolBar({
               color={color}
               now={now}
               index={position + 1}
+              compact={compact}
             />
           ) : null,
         )}
@@ -478,41 +498,53 @@ function PoolWindowCard({
   pool,
   color,
   now,
+  compact = false,
 }: {
   readonly pool: LimitPoolWindow;
   readonly color: string;
   readonly now: number;
+  readonly compact?: boolean;
 }) {
   // The soonest reset that hands anything back; an untouched account resets to no effect.
   const nextRefill = pool.resets.find((reset) => reset.restoresPercent > 0);
+  const nextReset = nextRefill ?? pool.resets[0];
   return (
-    <div className="grid items-center gap-x-6 gap-y-3 rounded-lg border border-border/60 p-4 md:grid-cols-[11rem_minmax(0,1fr)]">
-      <div className="flex flex-col gap-1">
-        <span className="text-sm font-medium text-foreground">{pool.label}</span>
-        <span className="flex items-baseline gap-2">
-          <span className="text-3xl font-semibold text-foreground tabular-nums">
-            {pool.remainingPercent}%
-          </span>
-          <span className="text-sm text-muted-foreground">left</span>
-          {pool.pace ? <PaceIcon pace={pool.pace} /> : null}
-        </span>
-        {nextRefill ? (
-          <span className="text-xs text-muted-foreground tabular-nums">
+    <UsageWindowCard
+      label={pool.label}
+      percent={pool.remainingPercent}
+      compact={compact}
+      status={pool.pace ? <PaceIcon pace={pool.pace} /> : null}
+      detail={
+        compact ? (
+          nextReset ? (
+            `↻ ${nextReset.at <= now ? "now" : formatDuration(nextReset.at - now)}`
+          ) : null
+        ) : nextRefill ? (
+          <>
             <span className="font-medium text-foreground">↻ +{nextRefill.restoresPercent}%</span>{" "}
             {nextRefill.at <= now ? "now" : `in ${formatDuration(nextRefill.at - now)}`}
-          </span>
-        ) : null}
-      </div>
-      <PoolBar pool={pool} color={color} now={now} />
-    </div>
+          </>
+        ) : null
+      }
+    >
+      <PoolBar pool={pool} color={color} now={now} compact={compact} />
+    </UsageWindowCard>
   );
 }
 
-function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: number }) {
+function PoolSection({
+  pool,
+  now,
+  compact = false,
+}: {
+  readonly pool: LimitPool;
+  readonly now: number;
+  readonly compact?: boolean;
+}) {
   const color = barColor(pool.driver);
   const label = getDriverOption(pool.driver)?.label ?? String(pool.driver);
   return (
-    <section className="flex flex-col gap-3">
+    <section className={cn("flex min-w-0 flex-col", compact ? "gap-1.5" : "gap-3")}>
       <h2 className="flex items-center gap-2 text-sm font-medium text-foreground">
         <ProviderInstanceIcon
           driverKind={pool.driver}
@@ -524,7 +556,13 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
         {label}
       </h2>
       {pool.windows.map((window) => (
-        <PoolWindowCard key={`${window.kind}:${window.id}`} pool={window} color={color} now={now} />
+        <PoolWindowCard
+          key={`${window.kind}:${window.id}`}
+          pool={window}
+          color={color}
+          now={now}
+          compact={compact}
+        />
       ))}
     </section>
   );
@@ -538,21 +576,34 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
 export function UsageLimitsPooled({
   presentations,
   now,
+  compact = false,
 }: {
   readonly presentations: Parameters<typeof collectLimitAccounts>[0];
   readonly now: number;
+  readonly compact?: boolean;
 }) {
-  const pools = collectLimitPools(collectLimitAccounts(presentations), now);
-  const notices = collectLimitNotices(presentations);
+  const [previewEnabled] = useDevSubscriptionPreview();
+  const preview = import.meta.env.DEV && previewEnabled;
+  const pools = collectLimitPools(
+    preview ? sampleSubscriptionAccounts(now) : collectLimitAccounts(presentations),
+    now,
+  );
+  const notices = preview ? [] : collectLimitNotices(presentations);
+  if (compact && pools.length === 0) return null;
   return (
-    <div className="flex flex-col gap-8">
+    <div className={cn("flex min-w-0 flex-col", compact ? "gap-3" : "gap-8")}>
+      {preview ? (
+        <p className="text-xs text-muted-foreground" role="status">
+          Sample data
+        </p>
+      ) : null}
       {pools.length === 0 && notices.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No provider on the selected environments reports subscription limits.
         </p>
       ) : null}
       {pools.map((pool) => (
-        <PoolSection key={pool.driver} pool={pool} now={now} />
+        <PoolSection key={pool.driver} pool={pool} now={now} compact={compact} />
       ))}
       <LimitNotices notices={notices} />
     </div>

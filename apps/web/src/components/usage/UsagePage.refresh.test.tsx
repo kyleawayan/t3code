@@ -85,7 +85,23 @@ import { UsagePage } from "./UsagePage";
 let renderer: ReactTestRenderer;
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-11T12:00:00Z"));
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-09-11T12:00:00Z"));
+  const windowEvents = new EventTarget();
+  const documentEvents = new EventTarget();
+  vi.stubGlobal("window", {
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+    addEventListener: windowEvents.addEventListener.bind(windowEvents),
+    removeEventListener: windowEvents.removeEventListener.bind(windowEvents),
+  });
+  vi.stubGlobal("document", {
+    visibilityState: "visible",
+    addEventListener: documentEvents.addEventListener.bind(documentEvents),
+    removeEventListener: documentEvents.removeEventListener.bind(documentEvents),
+  });
   state.refreshProviders.mockClear();
   state.presentations = new Map([
     [
@@ -129,6 +145,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
   await act(() => renderer?.unmount());
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -142,7 +159,7 @@ it.each([0, 1])(
     expect(
       JSON.stringify(renderer.toJSON(), (key, value) => (key === "props" ? undefined : value)),
     ).toContain("in 2h 0m");
-    vi.mocked(Date.now).mockReturnValue(Date.parse("2026-09-11T12:30:00Z"));
+    vi.setSystemTime(new Date("2026-09-11T12:30:00Z"));
     await act(async () => {
       renderer.root
         .findAllByProps({ "aria-label": "Refresh limits" })
@@ -170,7 +187,7 @@ it("uses the current time when returning to limits from tokens", async () => {
       .props.onValueChange([metric]);
   };
   await act(() => selectMetric("tokens"));
-  vi.mocked(Date.now).mockReturnValue(Date.parse("2026-09-11T13:00:00Z"));
+  vi.setSystemTime(new Date("2026-09-11T13:00:00Z"));
   await act(() => selectMetric("limits"));
   expect(
     JSON.stringify(renderer.toJSON(), (key, value) => (key === "props" ? undefined : value)),

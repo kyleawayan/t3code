@@ -1,3 +1,4 @@
+import "../../lib/diffRendering";
 import { getSharedHighlighter } from "@pierre/diffs";
 import { toHtml } from "hast-util-to-html";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -10,10 +11,10 @@ describe("highlighted code lines", () => {
   it("preserves Shiki HTML, including colors, escaping, whitespace, and blank lines", async () => {
     const highlighter = await getSharedHighlighter({
       langs: ["typescript"],
-      themes: ["pierre-dark", "pierre-light"],
+      themes: ["xcode-hc-dark", "xcode-hc-light"],
       preferredHighlighter: "shiki-wasm",
     });
-    for (const theme of ["pierre-dark", "pierre-light"] as const) {
+    for (const theme of ["xcode-hc-dark", "xcode-hc-light"] as const) {
       const highlight = createIncrementalHighlightedDocument(highlighter, "typescript", theme);
       const code =
         'const html = "<img src=x onerror=alert(1)>";\n\n/* multi\nline */\n\tconst x = 1;\n';

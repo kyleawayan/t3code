@@ -60,6 +60,8 @@ import {
 import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { UsageLimitsSection } from "./UsageLimits";
+import { UsageBudget } from "./UsageBudget";
+import { DevSubscriptionPreviewSwitch } from "./DevSubscriptionPreviewSwitch";
 import { UsagePriceOverrides } from "./UsagePriceOverrides";
 import { UsageProviderChart, type UsageChartMetric } from "./UsageProviderChart";
 import { PROVIDER_ORDER, PROVIDER_PRESENTATION, providersWithUsage } from "./usageProviders";
@@ -346,6 +348,11 @@ export function UsagePage() {
 
         <ScrollArea className="min-h-0 flex-1">
           <WorkspacePageContainer width="wide">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <UsageBudget period="day" />
+              <UsageBudget period="month" />
+            </div>
+            {showingLimits && import.meta.env.DEV ? <DevSubscriptionPreviewSwitch /> : null}
             {selectedEnvironments.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 {environments.length === 0

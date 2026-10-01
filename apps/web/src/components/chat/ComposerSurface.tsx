@@ -22,6 +22,12 @@ function Shell({
         "before:pointer-events-none before:absolute before:inset-0 before:z-0 before:rounded-[22px] before:bg-[color-mix(in_srgb,var(--chat-composer-glass-surface)_var(--glass-opacity),transparent)] before:backdrop-blur-(--glass-blur) before:backdrop-saturate-(--glass-saturation)",
         "not-supports-[((backdrop-filter:blur(1px))_or_(-webkit-backdrop-filter:blur(1px)))]:before:bg-(--chat-composer-glass-surface)",
         "has-data-[composer-banner-surface=attached]:before:hidden",
+        // A comfortable banner row as tall as the icon column, the height of
+        // the stash and tasks tabs. While a reserved dock is empty the space
+        // sits above the composer as a gap, outside its glass and outline.
+        "[--composer-dock-row:calc(--spacing(2.5)+--spacing(7))] sm:[--composer-dock-row:calc(--spacing(2.5)+--spacing(6))]",
+        "has-data-[composer-dock=reserved]:not-has-[[data-composer-dock=reserved]_[data-composer-banner-surface=attached]]:pt-(--composer-dock-row)",
+        "has-data-[composer-dock=reserved]:not-has-[[data-composer-dock=reserved]_[data-composer-banner-surface=attached]]:before:top-(--composer-dock-row)",
         contextStrip && [
           "[--chat-composer-context-extension:2.25rem] sm:[--chat-composer-context-extension:2rem]",
           // Keep one continuous backdrop around the fixed-pixel corners and rem-sized strip inset.

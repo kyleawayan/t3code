@@ -165,6 +165,35 @@ describe("ClaudeSettings auto-compaction", () => {
 });
 
 describe("ClientSettings notifications", () => {
+  it("keeps top-left placement when saved settings omit the position", () => {
+    expect(decodeClientSettings({}).notificationPosition).toBe("top-left");
+    expect(decodeClientSettingsPatch({})).not.toHaveProperty("notificationPosition");
+  });
+
+  it.each([
+    "top-left",
+    "top-center",
+    "top-right",
+    "bottom-left",
+    "bottom-center",
+    "bottom-right",
+    "command-menu",
+  ])("round-trips the %s notification position", (notificationPosition) => {
+    const settings = decodeClientSettings({ notificationPosition });
+    expect(encodeClientSettings(settings).notificationPosition).toBe(notificationPosition);
+    expect(decodeClientSettingsPatch({ notificationPosition }).notificationPosition).toBe(
+      notificationPosition,
+    );
+  });
+
+  it.each(["middle", "", 1, null])(
+    "rejects invalid notification position %s",
+    (notificationPosition) => {
+      expect(() => decodeClientSettings({ notificationPosition })).toThrow();
+      expect(() => decodeClientSettingsPatch({ notificationPosition })).toThrow();
+    },
+  );
+
   it("requires opt-in when existing settings omit notification preferences", () => {
     expect(decodeClientSettings({}).notificationMode).toBe("off");
     expect(decodeClientSettings({}).inAppNotificationsEnabled).toBe(false);

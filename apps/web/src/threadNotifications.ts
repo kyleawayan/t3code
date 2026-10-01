@@ -1,5 +1,12 @@
 import type { ClientSettings } from "@t3tools/contracts/settings";
 
+import {
+  getCustomNotificationSound,
+  parseCustomNotificationSound,
+} from "./lib/customNotificationSound";
+
+import { isElectron } from "./env";
+
 import completionUrl from "./assets/notification-completion.mp3";
 import inputUrl from "./assets/notification-input.mp3";
 
@@ -70,7 +77,19 @@ const buffers = new Map<string, Promise<AudioBuffer>>();
 /** Called from a gesture so browsers allow later background playback. */
 export function unlockNotificationAudio() {
   audioContext ??= new AudioContext();
-  void audioContext.resume().catch(() => undefined);
+  return audioContext.resume().catch(() => undefined);
+}
+
+function customSoundBytes(url: string): ArrayBuffer {
+  // The desktop content policy disallows fetching data URLs.
+  const encoded = url.slice(url.indexOf(",") + 1);
+  return Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0)).buffer;
+}
+
+export async function validateNotificationSound(url: string) {
+  audioContext ??= new AudioContext();
+  const decoded = await audioContext.decodeAudioData(customSoundBytes(url));
+  if (decoded.duration > 30) throw new Error("Choose a sound no longer than 30 seconds.");
 }
 
 export async function playNotificationSound(
@@ -79,13 +98,19 @@ export async function playNotificationSound(
 ) {
   if (!audioContext || audioContext.state !== "running") return;
   const context = audioContext;
-  const url = kind === "completion" ? completionUrl : inputUrl;
+  const defaultUrl = kind === "completion" ? completionUrl : inputUrl;
+  const custom = isElectron ? parseCustomNotificationSound(getCustomNotificationSound()) : null;
+  const url = custom?.url ?? defaultUrl;
   try {
     let buffer = buffers.get(url);
     if (!buffer) {
-      buffer = fetch(url)
-        .then((response) => response.arrayBuffer())
-        .then((data) => context.decodeAudioData(data));
+      buffer = custom
+        ? context.decodeAudioData(customSoundBytes(custom.url))
+        : fetch(url)
+            .then((response) => response.arrayBuffer())
+            .then((data) => context.decodeAudioData(data));
+      // Retain only the active sounds, not every previously uploaded file.
+      if (buffers.size >= 2) buffers.clear();
       buffers.set(url, buffer);
     }
     const decoded = await buffer;

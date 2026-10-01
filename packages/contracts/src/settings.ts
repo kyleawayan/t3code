@@ -85,6 +85,13 @@ export const SidebarAutoSettleAfterDays = Schema.Number.check(
 );
 export type SidebarAutoSettleAfterDays = typeof SidebarAutoSettleAfterDays.Type;
 const DEFAULT_SIDEBAR_AUTO_SETTLE_AFTER_DAYS: SidebarAutoSettleAfterDays = 3;
+export const MIN_MAX_CONCURRENT_AGENTS = 1;
+export const MAX_MAX_CONCURRENT_AGENTS = 20;
+export const MaxConcurrentAgents = Schema.Int.check(
+  Schema.isBetween({ minimum: MIN_MAX_CONCURRENT_AGENTS, maximum: MAX_MAX_CONCURRENT_AGENTS }),
+);
+export type MaxConcurrentAgents = typeof MaxConcurrentAgents.Type;
+export const DEFAULT_MAX_CONCURRENT_AGENTS: MaxConcurrentAgents = 2;
 export const MIN_GLASS_OPACITY = 40;
 export const MAX_GLASS_OPACITY = 100;
 export const GlassOpacity = Schema.Int.check(
@@ -222,6 +229,17 @@ export const NotificationMode = Schema.Literals([
 ]);
 export type NotificationMode = typeof NotificationMode.Type;
 
+export const NotificationPosition = Schema.Literals([
+  "top-left",
+  "top-center",
+  "top-right",
+  "bottom-left",
+  "bottom-center",
+  "bottom-right",
+  "command-menu",
+]);
+export type NotificationPosition = typeof NotificationPosition.Type;
+
 export const QuitConfirmationMode = Schema.Literals(["direct", "hold", "double-click"]);
 export type QuitConfirmationMode = typeof QuitConfirmationMode.Type;
 const DEFAULT_QUIT_CONFIRMATION_MODE: QuitConfirmationMode = "hold";
@@ -292,6 +310,9 @@ export const ClientSettingsSchema = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed("off" as const)),
   ),
   inAppNotificationsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  notificationPosition: NotificationPosition.pipe(
+    Schema.withDecodingDefault(Effect.succeed("top-left" as const)),
+  ),
   diffColorScheme: DiffColorScheme.pipe(
     Schema.withDecodingDefault(Effect.succeed("red-green" as const)),
   ),
@@ -1087,6 +1108,15 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_AUTO_SETTLE_AFTER_DAYS)),
   ),
   sidebarAutoSettleOnMerge: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  /**
+   * Most agents that may work at once across every project; `null` turns the
+   * limit off. Read on each dispatch, so changes apply without a restart.
+   */
+  maxConcurrentAgents: Schema.NullOr(MaxConcurrentAgents).pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_MAX_CONCURRENT_AGENTS)),
+  ),
+  /** Turns on the resume map for each new thread. Existing threads keep their own switch. */
+  recapEnabledByDefault: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   backgroundActivity: BackgroundActivitySettings,
   // Legacy flat fields retained for old settings files and old clients. New
   // consumers should resolve `backgroundActivity` instead.
@@ -1381,6 +1411,8 @@ export const ServerSettingsPatch = Schema.Struct({
   deviceHosts: Schema.optionalKey(SshDeviceHostConfigs),
   sidebarAutoSettleAfterDays: Schema.optionalKey(Schema.NullOr(SidebarAutoSettleAfterDays)),
   sidebarAutoSettleOnMerge: Schema.optionalKey(Schema.Boolean),
+  maxConcurrentAgents: Schema.optionalKey(Schema.NullOr(MaxConcurrentAgents)),
+  recapEnabledByDefault: Schema.optionalKey(Schema.Boolean),
   backgroundActivity: Schema.optionalKey(
     Schema.Struct({
       schemaVersion: Schema.optionalKey(Schema.Literal(1)),
@@ -1443,6 +1475,7 @@ export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
 export const ClientSettingsPatch = Schema.Struct({
   notificationMode: Schema.optionalKey(NotificationMode),
   inAppNotificationsEnabled: Schema.optionalKey(Schema.Boolean),
+  notificationPosition: Schema.optionalKey(NotificationPosition),
   diffColorScheme: Schema.optionalKey(DiffColorScheme),
   loadBalancingEnabled: Schema.optionalKey(Schema.Boolean),
   loadBalancingWeights: Schema.optionalKey(LoadBalancingWeights),

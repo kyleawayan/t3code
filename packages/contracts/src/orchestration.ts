@@ -593,6 +593,61 @@ export const OrchestrationThreadActivityTone = Schema.Literals([
 ]);
 export type OrchestrationThreadActivityTone = typeof OrchestrationThreadActivityTone.Type;
 
+/**
+ * What a running turn is doing *right now*, at a granularity the durable
+ * activity log deliberately does not keep.
+ *
+ * The transcript records what happened; this records whether anything is
+ * happening. It exists because "Working" is indistinguishable from "wedged" —
+ * both render a spinner — and the difference is worth knowing in seconds, not
+ * minutes.
+ *
+ * Derived entirely from provider events every adapter already emits (content
+ * deltas, tool item lifecycle, request lifecycle), so a provider that streams
+ * reasoning gets a live pulse and one that does not still gets accurate tool
+ * and waiting states.
+ */
+export const TurnActivityState = Schema.Literals([
+  /** Tokens are arriving — reasoning or assistant text. */
+  "generating",
+  /** The turn should be producing tokens and none are arriving. */
+  "quiet",
+  /** A tool call is open; silence is expected until it returns. */
+  "tool",
+  /** Blocked on a person: an approval or a question. */
+  "waiting",
+  /** No turn is running. */
+  "idle",
+]);
+export type TurnActivityState = typeof TurnActivityState.Type;
+
+export const ThreadTurnActivity = Schema.Struct({
+  threadId: ThreadId,
+  state: TurnActivityState,
+  /** An active reasoning phase may be silent; this does not imply measurable progress. */
+  isThinking: Schema.optional(Schema.Boolean),
+  isCompacting: Schema.optional(Schema.Boolean),
+  /**
+   * Monotonic count of token chunks streamed during this turn. Clients advance
+   * the liveness pulse by its delta, so the pulse can only ever move on a token
+   * that actually arrived — a frozen pulse is a real stall, not a dropped
+   * frame.
+   */
+  tokenChunks: NonNegativeInt,
+  /**
+   * Provider's own running count of tokens generated this turn, when it
+   * reports one.
+   *
+   * Optional by design rather than by lowest common denominator: Claude sends
+   * it, the others do not, and a client that has it can move the pulse by real
+   * output volume instead of by frame count. Absent means fall back to
+   * `tokenChunks`, so nothing here is provider-specific.
+   */
+  generatedTokens: Schema.optional(NonNegativeInt),
+  updatedAt: IsoDateTime,
+});
+export type ThreadTurnActivity = typeof ThreadTurnActivity.Type;
+
 export const OrchestrationThreadActivity = Schema.Struct({
   id: EventId,
   tone: OrchestrationThreadActivityTone,
@@ -637,6 +692,63 @@ export const ThreadTitleRegeneration = Schema.Struct({
   startedAt: IsoDateTime,
 });
 export type ThreadTitleRegeneration = typeof ThreadTitleRegeneration.Type;
+
+export const ThreadRecapStepStatus = Schema.Literals(["done", "now", "next", "blocked", "unknown"]);
+export type ThreadRecapStepStatus = typeof ThreadRecapStepStatus.Type;
+
+export const ThreadRecapStep = Schema.Struct({
+  /** Stable across regenerations so the map keeps its layout between turns. */
+  id: TrimmedNonEmptyString,
+  label: TrimmedNonEmptyString,
+  status: ThreadRecapStepStatus,
+  /** Where the step came from; `inferred` steps are guesses and render as such. */
+  source: Schema.Literals(["chat", "linear", "inferred"]),
+  linearIssueId: Schema.optional(TrimmedNonEmptyString),
+  /** A link from the thread (issue, Slack thread, PR, doc) that this step is about. */
+  url: Schema.optional(TrimmedNonEmptyString),
+  blockedBy: Schema.Array(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
+});
+export type ThreadRecapStep = typeof ThreadRecapStep.Type;
+
+/** Links the user pasted into the thread; the server drops any the thread does not contain. */
+export const ThreadRecapLink = Schema.Struct({
+  label: TrimmedNonEmptyString,
+  url: TrimmedNonEmptyString,
+});
+export type ThreadRecapLink = typeof ThreadRecapLink.Type;
+
+export const ThreadRecapSummary = Schema.Struct({
+  goal: TrimmedNonEmptyString,
+  done: Schema.NullOr(TrimmedNonEmptyString),
+  now: TrimmedNonEmptyString,
+  next: Schema.NullOr(TrimmedNonEmptyString),
+  blocked: Schema.NullOr(TrimmedNonEmptyString),
+  steps: Schema.Array(ThreadRecapStep),
+  links: Schema.Array(ThreadRecapLink).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  linearIssueIds: Schema.Array(TrimmedNonEmptyString),
+  /** Linear workspace slug, so clients can link issue IDs to `linear.app/<slug>/issue/<id>`. */
+  linearWorkspace: Schema.NullOr(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  /** Newest message the summary covers; clients mark it stale past this point. */
+  basedOnMessageId: Schema.NullOr(MessageId),
+  generatedAt: IsoDateTime,
+});
+export type ThreadRecapSummary = typeof ThreadRecapSummary.Type;
+
+/** Per-thread resume recap. Off by default; generated after turns only while enabled. */
+export const ThreadRecap = Schema.Struct({
+  enabled: Schema.Boolean,
+  summary: Schema.NullOr(ThreadRecapSummary),
+  /**
+   * Set while the server writes a new summary. A crash can leave it behind,
+   * so clients stop trusting it after a few minutes.
+   */
+  refreshStartedAt: Schema.optional(IsoDateTime),
+});
+export type ThreadRecap = typeof ThreadRecap.Type;
 
 /**
  * Legacy single-PR link. Still emitted as the thread's derived current pull
@@ -776,6 +888,7 @@ export const OrchestrationThread = Schema.Struct({
   // Pending-only state. Optional so older servers remain compatible.
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
+  recap: Schema.optional(Schema.NullOr(ThreadRecap)),
   deletedAt: Schema.NullOr(IsoDateTime),
   messages: Schema.Array(OrchestrationMessage),
   proposedPlans: Schema.Array(OrchestrationProposedPlan).pipe(
@@ -845,6 +958,7 @@ export const OrchestrationThreadShell = Schema.Struct({
   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
+  recap: Schema.optional(Schema.NullOr(ThreadRecap)),
   session: Schema.NullOr(OrchestrationSession),
   latestUserMessageAt: Schema.NullOr(IsoDateTime),
   hasPendingApprovals: Schema.Boolean,
@@ -1169,6 +1283,9 @@ const ThreadMetaUpdateCommand = Schema.Struct({
   expectedBranch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
+  recapEnabled: Schema.optional(Schema.Boolean),
+  /** Regenerates an enabled recap now, even mid-turn or when it already covers the latest message. */
+  refreshRecap: Schema.optional(Schema.Literal(true)),
 }).check(
   Schema.makeFilter(
     (input) =>
@@ -1515,6 +1632,21 @@ const ThreadTitleGenerateCompleteCommand = Schema.Struct({
   needsRefinement: Schema.Boolean,
 });
 
+const ThreadRecapUpdateCommand = Schema.Struct({
+  type: Schema.Literal("thread.recap.update"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  summary: ThreadRecapSummary,
+});
+
+/** Marks a recap generation as started, or as ended without a new summary (null). */
+const ThreadRecapRefreshStateCommand = Schema.Struct({
+  type: Schema.Literal("thread.recap.refresh-state"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  refreshStartedAt: Schema.NullOr(IsoDateTime),
+});
+
 const ThreadTitleRefineCommand = Schema.Struct({
   type: Schema.Literal("thread.title.refine"),
   commandId: CommandId,
@@ -1572,6 +1704,8 @@ const InternalOrchestrationCommand = Schema.Union([
   ThreadTitleRegenerationCompleteCommand,
   ThreadTitleGenerateCompleteCommand,
   ThreadTitleRefineCommand,
+  ThreadRecapUpdateCommand,
+  ThreadRecapRefreshStateCommand,
   ThreadPullRequestSyncCommand,
   ThreadPullRequestLinkSyncCommand,
 ]);
@@ -1750,6 +1884,9 @@ export const ThreadMetaUpdatedPayload = Schema.Struct({
   /** Pending state shared with clients. Null clears a matching request. */
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
+  /** Replaces the thread's whole recap. `recapRequested` asks the recap reactor to regenerate. */
+  recap: Schema.optional(Schema.NullOr(ThreadRecap)),
+  recapRequested: Schema.optional(Schema.Literal(true)),
   modelSelection: Schema.optional(ModelSelection),
   branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),

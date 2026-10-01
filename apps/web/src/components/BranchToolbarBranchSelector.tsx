@@ -23,6 +23,7 @@ import {
   useState,
   useTransition,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
   type Ref,
 } from "react";
 
@@ -41,6 +42,10 @@ import { cn } from "../lib/utils";
 import { parsePullRequestReference } from "../pullRequestReference";
 import { getSourceControlPresentation } from "../sourceControlPresentation";
 import { useComposerMenuProps } from "./chat/composerEventScope";
+import {
+  ComposerContextLabel,
+  COMPOSER_CONTEXT_PINNED_CONTROL_CLASS_NAME,
+} from "./ComposerContextLabel";
 import {
   deriveLocalBranchNameFromRemoteRef,
   resolveBranchTriggerLabel,
@@ -92,6 +97,8 @@ interface BranchToolbarBranchSelectorProps {
   onStartFromOriginChange: (startFromOrigin: boolean) => void;
   onCheckoutPullRequestRequest?: (reference: string) => void;
   onComposerFocusRequest?: () => void;
+  /** Shown between the pull request badge and the branch, such as the project. */
+  leadingLabel?: ReactNode;
 }
 
 function toBranchActionErrorMessage(error: unknown): string {
@@ -112,6 +119,7 @@ export function BranchToolbarBranchSelector({
   onStartFromOriginChange,
   onCheckoutPullRequestRequest,
   onComposerFocusRequest,
+  leadingLabel,
 }: BranchToolbarBranchSelectorProps) {
   const composerFloatingLayerProps = useComposerMenuProps();
   const startFromOriginSwitchId = useId();
@@ -770,7 +778,11 @@ export function BranchToolbarBranchSelector({
       value={resolvedActiveBranch}
     >
       <div
-        className={cn("flex min-w-0 items-center gap-1", className)}
+        className={cn(
+          "flex items-center gap-1",
+          COMPOSER_CONTEXT_PINNED_CONTROL_CLASS_NAME,
+          className,
+        )}
         data-composer-context-control
       >
         <ThreadPullRequestBadgeControl
@@ -784,32 +796,26 @@ export function BranchToolbarBranchSelector({
             if (prUrl) openPrLink(event, prUrl);
           }}
         />
+        {leadingLabel}
         {/* Context menu lives on the wrapper: the disabled Button has
             pointer-events-none, so the trigger itself never sees right-clicks
             while refs are loading or a branch action is pending. */}
         <span
-          className="flex min-w-0"
+          className={cn("flex", COMPOSER_CONTEXT_PINNED_CONTROL_CLASS_NAME)}
           onContextMenu={(event) => handleBranchContextMenu(event, resolvedActiveBranch)}
         >
           <ComboboxTrigger
             render={<Button variant="ghost" size="xs" />}
             // No press-scale: the popup aligns live to this trigger, so a
             // momentary 0.97 shrink would drag the open popup ~3px sideways.
-            className="min-w-0 max-w-full font-normal text-muted-foreground/70 text-xs! hover:text-foreground/80 active:scale-100"
+            className={cn(
+              "max-w-full font-normal text-muted-foreground/70 text-xs! hover:text-foreground/80 active:scale-100",
+              COMPOSER_CONTEXT_PINNED_CONTROL_CLASS_NAME,
+            )}
             disabled={isInitialBranchesLoadPending || isBranchActionPending}
           >
             <GitBranchIcon className="size-3 shrink-0 opacity-70" />
-            <span
-              data-composer-label
-              className="min-w-0 max-w-[240px] group-data-[compact]/composer-context:max-w-0"
-            >
-              <span
-                data-composer-label-motion
-                className="block w-full min-w-0 max-w-[240px] truncate transition-opacity duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transition-none"
-              >
-                {triggerLabel}
-              </span>
-            </span>
+            <ComposerContextLabel>{triggerLabel}</ComposerContextLabel>
             <ChevronDownIcon className="size-3 shrink-0 opacity-50" />
           </ComboboxTrigger>
         </span>

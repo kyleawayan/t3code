@@ -7,8 +7,20 @@ export type ThreadTitleMessage = {
   readonly attachments?: ReadonlyArray<ChatAttachment> | undefined;
 };
 
-const MAX_CONTEXT = 8_000;
-const MAX_MESSAGE = 2_000;
+export interface ThreadContextBudget {
+  /** Characters for the whole context, including role prefixes. */
+  readonly total: number;
+  /** Characters one message may use before spare space is shared out. */
+  readonly perMessage: number;
+  /** Characters user messages leave for assistant findings. */
+  readonly assistantReserve: number;
+}
+
+const TITLE_CONTEXT_BUDGET: ThreadContextBudget = {
+  total: 8_000,
+  perMessage: 2_000,
+  assistantReserve: 2_000,
+};
 const OMITTED = "[Earlier content truncated]\n\n";
 const TRUNCATED = "\n[Content truncated]\n";
 
@@ -22,8 +34,15 @@ export function limitTitleMessage(text: string, budget: number): string {
   return `${text.slice(0, head)}${TRUNCATED}${tail > 0 ? text.slice(-tail) : ""}`;
 }
 
-/** Reserve space for user intent before adding assistant findings, in conversation order. */
 export function formatThreadTitleContext(messages: ReadonlyArray<ThreadTitleMessage>) {
+  return formatThreadContext(messages, TITLE_CONTEXT_BUDGET);
+}
+
+/** Reserve space for user intent before adding assistant findings, in conversation order. */
+export function formatThreadContext(
+  messages: ReadonlyArray<ThreadTitleMessage>,
+  budget: ThreadContextBudget,
+) {
   const sections = messages.flatMap((message, index) => {
     if (message.role === "system" || (!message.text.trim() && !message.attachments?.length))
       return [];
@@ -42,7 +61,7 @@ export function formatThreadTitleContext(messages: ReadonlyArray<ThreadTitleMess
     return contents;
   };
   const selected = new Map<number, string>();
-  let remaining = MAX_CONTEXT - OMITTED.length;
+  let remaining = budget.total - OMITTED.length;
   const add = (section: (typeof sections)[number], budget: number) => {
     if (selected.has(section.index)) return;
     const limit = Math.min(budget, remaining) - section.prefix.length - 2;
@@ -55,15 +74,15 @@ export function formatThreadTitleContext(messages: ReadonlyArray<ThreadTitleMess
   };
 
   const firstUser = sections.find((section) => section.message.role === "user");
-  if (firstUser) add(firstUser, MAX_MESSAGE);
-  // Up to 6,000 characters go to user messages. Assistant output cannot evict them.
+  if (firstUser) add(firstUser, budget.perMessage);
+  // User messages get all but the assistant reserve. Assistant output cannot evict them.
   for (const section of sections.toReversed()) {
     if (section.message.role === "user") {
-      add(section, Math.min(MAX_MESSAGE, remaining - 2_000));
+      add(section, Math.min(budget.perMessage, remaining - budget.assistantReserve));
     }
   }
   for (const section of sections.toReversed()) {
-    if (section.message.role === "assistant") add(section, MAX_MESSAGE);
+    if (section.message.role === "assistant") add(section, budget.perMessage);
   }
   // Use spare space when the conversation has only a few messages.
   for (const role of ["user", "assistant"] as const) {

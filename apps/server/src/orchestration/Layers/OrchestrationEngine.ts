@@ -5,7 +5,7 @@ import type {
   ProjectId,
   ThreadId,
 } from "@t3tools/contracts";
-import { OrchestrationCommand } from "@t3tools/contracts";
+import { DEFAULT_SERVER_SETTINGS, OrchestrationCommand } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
@@ -30,16 +30,19 @@ import {
   orchestrationCommandDuration,
 } from "../../observability/Metrics.ts";
 import { toPersistenceSqlError } from "../../persistence/Errors.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
 import { OrchestrationEventStore } from "../../persistence/Services/OrchestrationEventStore.ts";
 import { OrchestrationCommandReceiptRepository } from "../../persistence/Services/OrchestrationCommandReceipts.ts";
 import {
   isOrchestrationCommandRejection,
+  OrchestrationAgentConcurrencyLimitError,
   OrchestrationCommandIdConflictError,
   OrchestrationCommandInvariantError,
   OrchestrationCommandPreviouslyRejectedError,
   type OrchestrationDispatchError,
   type OrchestrationProjectorDecodeError,
 } from "../Errors.ts";
+import { agentConcurrencyBlockReason } from "../AgentConcurrency.ts";
 import { decideOrchestrationCommand } from "../decider.ts";
 import { createEmptyReadModel, projectEvent } from "../projector.ts";
 import { OrchestrationProjectionPipeline } from "../Services/ProjectionPipeline.ts";
@@ -88,6 +91,9 @@ const makeOrchestrationEngine = Effect.gen(function* () {
   const projectionPipeline = yield* OrchestrationProjectionPipeline;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const threadBackgroundLiveness = yield* ThreadBackgroundLivenessService;
+  // Optional so engine-only harnesses fall back to the default limit; the
+  // server provides it explicitly in `server.ts`.
+  const serverSettings = yield* Effect.serviceOption(ServerSettingsService);
   const crypto = yield* Crypto.Crypto;
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -261,6 +267,41 @@ const makeOrchestrationEngine = Effect.gen(function* () {
           ),
         );
         const plannedEvents = Array.isArray(eventBase) ? eventBase : [eventBase];
+        const startsWork = plannedEvents.find(
+          (event) =>
+            event.type === "thread.turn-start-requested" ||
+            (event.type === "thread.message-sent" && event.metadata.deferredTurn === true),
+        );
+        const agentLimit =
+          startsWork === undefined
+            ? null
+            : Option.isNone(serverSettings)
+              ? DEFAULT_SERVER_SETTINGS.maxConcurrentAgents
+              : yield* serverSettings.value.getSettings.pipe(
+                  Effect.map((settings) => settings.maxConcurrentAgents),
+                  Effect.orElseSucceed(() => DEFAULT_SERVER_SETTINGS.maxConcurrentAgents),
+                );
+        if (startsWork && agentLimit !== null) {
+          // The single command worker reserves pending starts in the same commit
+          // as the message, before another client can claim the remaining slot.
+          const activeThreads = yield* sql<{ threadId: string }>`
+            SELECT sessions.thread_id AS "threadId" FROM projection_thread_sessions AS sessions
+            JOIN projection_threads AS threads ON threads.thread_id = sessions.thread_id
+            WHERE sessions.status IN ('starting', 'running') AND threads.deleted_at IS NULL
+            UNION
+            SELECT turns.thread_id AS "threadId" FROM projection_turns AS turns
+            JOIN projection_threads AS threads ON threads.thread_id = turns.thread_id
+            WHERE turns.state = 'pending' AND threads.deleted_at IS NULL
+          `.pipe(Effect.mapError(toPersistenceSqlError("OrchestrationEngine.activeAgents")));
+          const reason = agentConcurrencyBlockReason(
+            activeThreads.map((thread) => thread.threadId),
+            startsWork.aggregateId,
+            agentLimit,
+          );
+          if (reason !== null) {
+            return yield* new OrchestrationAgentConcurrencyLimitError({ message: reason });
+          }
+        }
         // Stamp the dispatching client's origin onto every event the command
         // produced. The decider stays pure; attribution is an engine concern.
         const eventBases =

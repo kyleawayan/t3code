@@ -813,6 +813,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             ...(event.payload.titleState !== undefined
               ? { titleState: event.payload.titleState }
               : {}),
+            ...(event.payload.recap !== undefined ? { recap: event.payload.recap } : {}),
             ...(event.payload.titleRegeneration !== undefined
               ? {
                   titleRegenerationRequestId: event.payload.titleRegeneration?.requestId ?? null,
@@ -1347,6 +1348,14 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       if (event.type !== "thread.session-set") {
         return;
       }
+      if (event.payload.session.status === "ready") {
+        const previous = yield* projectionThreadSessionRepository.getByThreadId(event.payload);
+        if (Option.isSome(previous) && previous.value.status === "running") {
+          // Steering can consume a follow-up without starting another turn. Its
+          // pending placeholder must not retain a slot after that turn ends.
+          yield* projectionTurnRepository.deletePendingTurnStartByThreadId(event.payload);
+        }
+      }
       yield* projectionThreadSessionRepository.upsert({
         threadId: event.payload.threadId,
         status: event.payload.session.status,
@@ -1566,6 +1575,18 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         }
 
         case "thread.message-sent": {
+          if (event.metadata.deferredTurn === true && event.payload.role === "user") {
+            // Worktree preparation has accepted the message but has not dispatched
+            // its turn yet. Keep its concurrency slot until setup succeeds or fails.
+            yield* projectionTurnRepository.replacePendingTurnStart({
+              threadId: event.payload.threadId,
+              messageId: event.payload.messageId,
+              sourceProposedPlanThreadId: null,
+              sourceProposedPlanId: null,
+              requestedAt: event.payload.createdAt,
+            });
+            return;
+          }
           if (event.payload.turnId === null || event.payload.role !== "assistant") {
             return;
           }

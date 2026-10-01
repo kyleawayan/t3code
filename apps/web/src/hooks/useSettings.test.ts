@@ -37,6 +37,27 @@ afterEach(() => {
 });
 
 describe("client settings hydration", () => {
+  it("persists notification placement across reloads and restores the default", async () => {
+    await ensureClientSettingsHydrated();
+    await persistClientSettingsPatch({ notificationPosition: "command-menu" });
+    expect(getClientSettings().notificationPosition).toBe("command-menu");
+    const saved = persistenceMocks.setClientSettings.mock.lastCall?.[0];
+    expect(saved?.notificationPosition).toBe("command-menu");
+
+    __resetClientSettingsPersistenceForTests();
+    persistenceMocks.getClientSettings.mockResolvedValue(saved ?? null);
+    await ensureClientSettingsHydrated();
+    expect(getClientSettings().notificationPosition).toBe("command-menu");
+
+    await persistClientSettingsPatch({
+      notificationPosition: DEFAULT_CLIENT_SETTINGS.notificationPosition,
+    });
+    expect(getClientSettings().notificationPosition).toBe("top-left");
+    expect(persistenceMocks.setClientSettings.mock.lastCall?.[0].notificationPosition).toBe(
+      "top-left",
+    );
+  });
+
   const savedSettings = {
     ...DEFAULT_CLIENT_SETTINGS,
     timestampFormat: "12-hour" as const,

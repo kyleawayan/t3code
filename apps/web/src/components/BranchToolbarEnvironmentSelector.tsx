@@ -5,6 +5,7 @@ import { memo, useMemo } from "react";
 import type { EnvironmentOption } from "./BranchToolbar.logic";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { useComposerMenuProps } from "./chat/composerEventScope";
+import { ComposerContextLabel } from "./ComposerContextLabel";
 import {
   Select,
   SelectGroup,
@@ -60,24 +61,16 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
   if (envLocked || onEnvironmentChange === undefined) {
     return (
       <span
-        className="inline-flex h-7 min-w-0 max-w-full items-center gap-1 border border-transparent px-[calc(--spacing(2)-1px)] font-normal text-muted-foreground/70 text-xs sm:h-6"
+        className="inline-flex h-7 min-w-min max-w-full items-center gap-1 border border-transparent px-[calc(--spacing(2)-1px)] font-normal text-muted-foreground/70 text-xs sm:h-6"
         data-composer-context-control
       >
         <EnvironmentMachineIcon
           kind={activeEnvironment?.machine ?? "server"}
           className="size-3 shrink-0"
         />
-        <span
-          data-composer-label
-          className="min-w-0 max-w-[240px] group-data-[compact]/composer-context:max-w-0"
-        >
-          <span
-            data-composer-label-motion
-            className="block w-full min-w-0 max-w-[240px] truncate transition-opacity duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transition-none"
-          >
-            {activeEnvironment?.label ?? "Run on"}
-          </span>
-        </span>
+        <ComposerContextLabel collapsible>
+          {activeEnvironment?.label ?? "Run on"}
+        </ComposerContextLabel>
       </span>
     );
   }
@@ -94,7 +87,7 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
       <SelectTrigger
         variant="ghost"
         size="xs"
-        className="min-w-0 max-w-full font-normal text-xs!"
+        className="min-w-min max-w-full font-normal text-xs!"
         aria-label="Run on"
         data-composer-shortcut="composer.host"
         data-composer-context-control
@@ -107,17 +100,11 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
             className="size-3 shrink-0"
           />
         )}
-        <span
-          data-composer-label
-          className="min-w-0 max-w-[240px] group-data-[compact]/composer-context:max-w-0"
-        >
-          <span
-            data-composer-label-motion
-            className="block w-full min-w-0 max-w-[240px] truncate transition-opacity duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transition-none"
-          >
-            <SelectValue />
-          </span>
-        </span>
+        <SelectValue className="flex min-w-0">
+          <ComposerContextLabel collapsible>
+            {autoEnvironmentLabel ?? activeEnvironment?.label ?? "Run on"}
+          </ComposerContextLabel>
+        </SelectValue>
       </SelectTrigger>
       <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
         <SelectGroup>

@@ -54,15 +54,19 @@ import {
 } from "../Services/ProjectionPipeline.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import { ServerConfig } from "../../config.ts";
+import * as ServerSettings from "../../serverSettings.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
 const asMessageId = (value: string): MessageId => MessageId.make(value);
 const asTurnId = (value: string): TurnId => TurnId.make(value);
 const asCheckpointRef = (value: string): CheckpointRef => CheckpointRef.make(value);
 
+type SettingsLayer = ReturnType<typeof ServerSettings.layerTest>;
+
 function makeOrchestrationLayer(
   databasePath?: string,
   repositoryIdentityResolver?: RepositoryIdentityResolver.RepositoryIdentityResolver["Service"],
+  settingsLayer: SettingsLayer = ServerSettings.layerTest(),
 ) {
   const persistence = databasePath
     ? makeSqlitePersistenceLive(databasePath)
@@ -92,20 +96,24 @@ function makeOrchestrationLayer(
     Layer.provide(persistence),
     Layer.provideMerge(ServerConfigLayer),
     Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(settingsLayer),
   );
 }
 
 async function createOrchestrationSystem(
   databasePath?: string,
   repositoryIdentityResolver?: RepositoryIdentityResolver.RepositoryIdentityResolver["Service"],
+  settingsLayer?: SettingsLayer,
 ) {
   const runtime = ManagedRuntime.make(
-    makeOrchestrationLayer(databasePath, repositoryIdentityResolver),
+    makeOrchestrationLayer(databasePath, repositoryIdentityResolver, settingsLayer),
   );
   const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
   const snapshotQuery = await runtime.runPromise(Effect.service(ProjectionSnapshotQuery));
+  const settings = await runtime.runPromise(Effect.service(ServerSettings.ServerSettingsService));
   return {
     engine,
+    settings,
     readModel: () => runtime.runPromise(snapshotQuery.getSnapshot()),
     readThread: (threadId: ThreadId) =>
       runtime.runPromise(snapshotQuery.getThreadDetailById(threadId)),
@@ -130,6 +138,309 @@ const hasMetricSnapshot = (
   );
 
 describe("OrchestrationEngine", () => {
+  describe("agent concurrency limit", () => {
+    async function setup(databasePath?: string, settingsLayer?: SettingsLayer) {
+      const system = await createOrchestrationSystem(databasePath, undefined, settingsLayer);
+      for (let index = 0; index < 3; index++) {
+        const projectId = ProjectId.make(`limit-project-${index}`);
+        await system.run(
+          system.engine.dispatch({
+            type: "project.create",
+            commandId: CommandId.make(`limit-project-${index}`),
+            projectId,
+            title: "Concurrency test",
+            workspaceRoot: `/tmp/agent-limit-project-${index}`,
+            createdAt: now(),
+          }),
+        );
+        await system.run(
+          system.engine.dispatch({
+            type: "thread.create",
+            commandId: CommandId.make(`limit-thread-${index}`),
+            threadId: ThreadId.make(`limit-thread-${index}`),
+            projectId,
+            title: "Concurrency test",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make(index === 0 ? "codex" : "claude"),
+              model: "test-model",
+            },
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: null,
+            createdAt: now(),
+          }),
+        );
+      }
+      return system;
+    }
+
+    function start(index: number, suffix = "start"): OrchestrationCommand {
+      return {
+        type: "thread.turn.start",
+        commandId: CommandId.make(`limit-${index}-${suffix}`),
+        threadId: ThreadId.make(`limit-thread-${index}`),
+        message: {
+          messageId: MessageId.make(`limit-message-${index}-${suffix}`),
+          role: "user",
+          text: "Start work",
+          attachments: [],
+        },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        createdAt: now(),
+      };
+    }
+
+    function session(
+      index: number,
+      status: "starting" | "running" | "ready" | "error" | "stopped" | "interrupted",
+    ): OrchestrationCommand {
+      const threadId = ThreadId.make(`limit-thread-${index}`);
+      return {
+        type: "thread.session.set",
+        commandId: CommandId.make(`limit-session-${index}-${status}`),
+        threadId,
+        createdAt: now(),
+        session: {
+          threadId,
+          status,
+          providerName: index === 0 ? "codex" : "claude",
+          providerInstanceId: ProviderInstanceId.make(index === 0 ? "codex" : "claude"),
+          runtimeMode: "full-access",
+          activeTurnId: status === "running" ? TurnId.make(`limit-turn-${index}`) : null,
+          lastError: status === "error" ? "Start failed" : null,
+          updatedAt: now(),
+        },
+      };
+    }
+
+    it("admits only two simultaneous starts across projects before providers report running", async () => {
+      const system = await setup();
+      try {
+        const results = await Promise.allSettled(
+          [0, 1, 2].map((index) => system.run(system.engine.dispatch(start(index)))),
+        );
+        expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(2);
+        const rejectedIndex = results.findIndex((result) => result.status === "rejected");
+        expect(results[rejectedIndex]).toMatchObject({
+          status: "rejected",
+          reason: { message: expect.stringContaining("2 agents are already working") },
+        });
+        const thread = await system.readThread(ThreadId.make(`limit-thread-${rejectedIndex}`));
+        expect(Option.isSome(thread) && thread.value.messages).toEqual([]);
+        await system.run(system.engine.dispatch(start((rejectedIndex + 1) % 3, "follow-up")));
+      } finally {
+        await system.dispose();
+      }
+    });
+
+    it("applies max agent setting changes to the next start without a restart", async () => {
+      const system = await setup(undefined, ServerSettings.layerTest({ maxConcurrentAgents: 1 }));
+      const updateSettings = (patch: { maxConcurrentAgents: number | null }) =>
+        system.run(system.settings.updateSettings(patch));
+      try {
+        await system.run(system.engine.dispatch(start(0)));
+        await expect(system.run(system.engine.dispatch(start(1)))).rejects.toThrow(
+          "An agent is already working",
+        );
+        await updateSettings({ maxConcurrentAgents: null });
+        await system.run(system.engine.dispatch(start(1, "unlimited")));
+        await updateSettings({ maxConcurrentAgents: 2 });
+        await expect(system.run(system.engine.dispatch(start(2)))).rejects.toThrow(
+          "2 agents are already working",
+        );
+      } finally {
+        await system.dispose();
+      }
+    });
+
+    it.each(["ready", "error", "stopped", "interrupted"] as const)(
+      "allows follow-ups at capacity and frees a slot when a running agent becomes %s",
+      async (status) => {
+        const system = await setup();
+        try {
+          for (const index of [0, 1]) {
+            await system.run(system.engine.dispatch(start(index)));
+            await system.run(system.engine.dispatch(session(index, "running")));
+          }
+          await system.run(system.engine.dispatch(start(0, "follow-up")));
+          await expect(system.run(system.engine.dispatch(start(2)))).rejects.toThrow(
+            "2 agents are already working",
+          );
+          await system.run(system.engine.dispatch(session(0, status)));
+          await system.run(system.engine.dispatch(start(2, "retry")));
+        } finally {
+          await system.dispose();
+        }
+      },
+    );
+
+    it("reserves worktree bootstrap messages and releases failed preparation", async () => {
+      const system = await setup();
+      try {
+        await system.run(system.engine.dispatch(start(0)));
+        await system.run(
+          system.engine.dispatch({
+            type: "thread.message.user.append",
+            commandId: CommandId.make("limit-bootstrap-message"),
+            threadId: ThreadId.make("limit-thread-1"),
+            message: {
+              messageId: MessageId.make("limit-message-1-start"),
+              text: "Prepare worktree",
+              attachments: [],
+            },
+            createdAt: now(),
+          }),
+        );
+        await expect(system.run(system.engine.dispatch(start(2)))).rejects.toThrow(
+          "2 agents are already working",
+        );
+        await expect(
+          system.run(
+            system.engine.dispatch({
+              type: "thread.message.user.append",
+              commandId: CommandId.make("limit-rejected-bootstrap"),
+              threadId: ThreadId.make("limit-thread-2"),
+              message: {
+                messageId: MessageId.make("limit-rejected-message"),
+                text: "Prepare worktree",
+                attachments: [],
+              },
+              createdAt: now(),
+            }),
+          ),
+        ).rejects.toThrow("2 agents are already working");
+        await system.run(system.engine.dispatch(start(1)));
+        await system.run(system.engine.dispatch(session(1, "error")));
+        await system.run(system.engine.dispatch(start(2, "retry")));
+      } finally {
+        await system.dispose();
+      }
+    });
+
+    it("counts starting sessions and keeps pending slots across provider ready notifications", async () => {
+      const system = await setup();
+      try {
+        await system.run(system.engine.dispatch(session(0, "starting")));
+        await system.run(system.engine.dispatch(start(1)));
+        await system.run(system.engine.dispatch(session(1, "ready")));
+        await expect(system.run(system.engine.dispatch(start(2)))).rejects.toThrow(
+          "2 agents are already working",
+        );
+        await system.run(
+          system.engine.dispatch({
+            type: "thread.activity.append",
+            commandId: CommandId.make("limit-failed-start"),
+            threadId: ThreadId.make("limit-thread-1"),
+            createdAt: now(),
+            activity: {
+              id: EventId.make("limit-failed-start"),
+              kind: "provider.turn.start.failed",
+              summary: "Start failed",
+              tone: "error",
+              turnId: null,
+              createdAt: now(),
+              payload: { requestId: "limit-message-1-start" },
+            },
+          }),
+        );
+        await system.run(system.engine.dispatch(start(2, "retry")));
+      } finally {
+        await system.dispose();
+      }
+    });
+
+    it("does not let async answers start a third agent or consume the question on rejection", async () => {
+      const system = await setup();
+      try {
+        await system.run(system.engine.dispatch(start(0)));
+        await system.run(system.engine.dispatch(start(1)));
+        const threadId = ThreadId.make("limit-thread-2");
+        const requestId = ApprovalRequestId.make("limit-question");
+        await system.run(
+          system.engine.dispatch({
+            type: "thread.activity.append",
+            commandId: CommandId.make("limit-question"),
+            threadId,
+            createdAt: now(),
+            activity: {
+              id: EventId.make("limit-question"),
+              kind: "user-input.requested",
+              summary: "Choose an option",
+              tone: "info",
+              turnId: null,
+              createdAt: now(),
+              payload: {
+                requestId,
+                responseMode: "message",
+                questions: [
+                  { id: "choice", header: "Choice", question: "Which option?", options: [] },
+                ],
+              },
+            },
+          }),
+        );
+        await expect(
+          system.run(
+            system.engine.dispatch({
+              type: "thread.user-input.respond",
+              commandId: CommandId.make("limit-answer"),
+              threadId,
+              requestId,
+              answers: { choice: "First option" },
+              createdAt: now(),
+            }),
+          ),
+        ).rejects.toThrow("2 agents are already working");
+        const thread = await system.readThread(threadId);
+        expect(Option.isSome(thread) && thread.value.messages).toEqual([]);
+        expect(
+          Option.isSome(thread) &&
+            thread.value.activities.some((activity) => activity.kind === "user-input.resolved"),
+        ).toBe(false);
+      } finally {
+        await system.dispose();
+      }
+    });
+
+    it("releases a deleted bootstrap reservation", async () => {
+      const system = await setup();
+      try {
+        await system.run(system.engine.dispatch(start(0)));
+        await system.run(system.engine.dispatch(start(1)));
+        await system.run(system.engine.dispatch(session(1, "starting")));
+        await system.run(
+          system.engine.dispatch({
+            type: "thread.delete",
+            commandId: CommandId.make("limit-delete"),
+            threadId: ThreadId.make("limit-thread-1"),
+          }),
+        );
+        await system.run(system.engine.dispatch(start(2)));
+      } finally {
+        await system.dispose();
+      }
+    });
+
+    it("retains pending reservations after an engine restart", async () => {
+      const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-agent-limit-"));
+      const databasePath = NodePath.join(directory, "state.sqlite");
+      let system = await setup(databasePath);
+      try {
+        await system.run(system.engine.dispatch(start(0)));
+        await system.run(system.engine.dispatch(start(1)));
+        await system.dispose();
+        system = await createOrchestrationSystem(databasePath);
+        await expect(system.run(system.engine.dispatch(start(2)))).rejects.toThrow(
+          "2 agents are already working",
+        );
+      } finally {
+        await system.dispose();
+        await NodeFSP.rm(directory, { recursive: true, force: true });
+      }
+    });
+  });
   it.each(["running", "stopped"] as const)(
     "sends async answers with a %s session and rejects old duplicate replies",
     async (status) => {

@@ -262,6 +262,7 @@ export function applyThreadDetailEvent(
           ...(event.payload.titleRegeneration !== undefined
             ? { titleRegeneration: event.payload.titleRegeneration }
             : {}),
+          ...(event.payload.recap !== undefined ? { recap: event.payload.recap } : {}),
           ...(event.payload.modelSelection !== undefined
             ? { modelSelection: event.payload.modelSelection }
             : {}),

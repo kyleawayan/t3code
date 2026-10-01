@@ -26,7 +26,7 @@ import { useProject, useThreadShell, useThreadShellsForProjectRefs } from "../st
 import {
   type EnvMode,
   type EnvironmentOption,
-  resolveContextStripLabelsCompact,
+  resolveContextStripLayout,
   resolveCurrentWorkspaceLabel,
   resolveEnvModeLabel,
   resolveEffectiveEnvMode,
@@ -56,7 +56,17 @@ import { Separator } from "./ui/separator";
 import { ComposerSurface } from "./chat/ComposerSurface";
 import { useComposerMenuProps } from "./chat/composerEventScope";
 import { measureRestingComposerControls } from "./chat/restingComposerControlsMeasurement";
-import { resolveRestingComposerControlsNaturalWidth } from "./composerFooterLayout";
+import {
+  resolveRestingComposerControlsMinimumWidth,
+  resolveRestingComposerControlsNaturalWidth,
+} from "./composerFooterLayout";
+import {
+  ComposerContextLabel,
+  COMPOSER_CONTEXT_LABEL_MAX_WIDTH_PX,
+  COMPOSER_CONTEXT_PINNED_CONTROL_CLASS_NAME,
+} from "./ComposerContextLabel";
+import { ProjectFavicon } from "./ProjectFavicon";
+import { measureSquishText } from "./ui/squish-text";
 import { cn } from "~/lib/utils";
 
 export interface BranchToolbarHandle {
@@ -157,25 +167,17 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
   const triggerContent = (
     <>
       {icon}
-      <span
-        data-composer-label
-        className="min-w-0 max-w-[240px] group-data-[compact]/composer-context:max-w-0"
-      >
-        <span
-          data-composer-label-motion
-          className="block w-full min-w-0 max-w-[240px] truncate transition-opacity duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transition-none"
-        >
-          {autoEnvironmentLabel ??
-            (showEnvironmentIndicator ? (activeEnvironment?.label ?? "Run on") : workspaceLabel)}
-        </span>
-      </span>
+      <ComposerContextLabel collapsible>
+        {autoEnvironmentLabel ??
+          (showEnvironmentIndicator ? (activeEnvironment?.label ?? "Run on") : workspaceLabel)}
+      </ComposerContextLabel>
     </>
   );
 
   if (isLocked) {
     return (
       <span
-        className="inline-flex h-7 min-w-0 max-w-[48%] flex-initial items-center justify-start gap-1 rounded-md border border-transparent px-[calc(--spacing(2)-1px)] font-normal text-muted-foreground/70 text-xs sm:h-6"
+        className="inline-flex h-7 min-w-min max-w-[48%] flex-initial items-center justify-start gap-1 rounded-md border border-transparent px-[calc(--spacing(2)-1px)] font-normal text-muted-foreground/70 text-xs sm:h-6"
         data-composer-context-control
       >
         {triggerContent}
@@ -187,7 +189,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
     <Menu>
       <MenuTrigger
         render={<Button variant="ghost" size="xs" />}
-        className="min-w-0 max-w-[48%] flex-initial justify-start font-normal text-muted-foreground/70 text-xs! hover:text-foreground/80"
+        className="min-w-min max-w-[48%] flex-initial justify-start font-normal text-muted-foreground/70 text-xs! hover:text-foreground/80"
         data-composer-context-control
         data-composer-shortcut={[
           showEnvironmentPicker && !envLocked ? "composer.host" : "",
@@ -289,29 +291,36 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
 });
 
 /**
- * Collapse the strip's labels to icons only when the text no longer fits.
+ * Fit the strip's labels around the resting composer controls.
  *
- * Hidden labels stay measurable because their inner text keeps its natural
- * width while the outer layout box collapses. This lets every pass recompute
- * the expanded width without remembered values that could go stale or latch
- * the strip compact. A small hysteresis keeps the boundary from flapping.
+ * Labels squish before anything else gives, and the controls host reserves
+ * room from what they leave (see resolveContextStripLayout). Only the
+ * workspace and environment labels ever collapse to icons, as a last resort.
+ * Collapsed labels stay measurable because their text keeps its natural width
+ * while the outer box collapses, so every pass recomputes from scratch without
+ * remembered values that could go stale or latch the strip compact.
  */
 const COMPOSER_CONTEXT_MOTION_DURATION_MS = 180;
 const COMPOSER_CONTEXT_MOTION_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
 const COMPOSER_CONTEXT_LABEL_SELECTOR = "[data-composer-label]";
+const COMPOSER_CONTEXT_COLLAPSIBLE_LABEL_SELECTOR = '[data-composer-label="collapsible"]';
+const RESTING_CONTROLS_HOST_SELECTOR = '[data-chat-resting-composer-controls-host="true"]';
 
-function useLabelsOverflow(element: HTMLDivElement | null): boolean {
-  const [overflows, setOverflows] = useState(false);
+function useContextStripLayout(element: HTMLDivElement | null): {
+  compact: boolean;
+  squeezed: boolean;
+} {
+  const [layout, setLayout] = useState({ compact: false, squeezed: false });
   const pendingLabelRectsRef = useRef<Map<HTMLElement, DOMRect> | null>(null);
   const labelAnimationsRef = useRef(new Map<HTMLElement, Animation>());
   // A render-synced mirror instead of useEffectEvent: the compiler memoizes
   // the event callback, which left observers reading the first render's null
   // element forever.
-  const stateRef = useRef({ element, overflows });
-  stateRef.current = { element, overflows };
+  const stateRef = useRef({ element, compact: layout.compact });
+  stateRef.current = { element, compact: layout.compact };
 
   const measure = useCallback(() => {
-    const { element: current, overflows: compact } = stateRef.current;
+    const { element: current, compact } = stateRef.current;
     if (!current) return;
     const available = current.clientWidth;
     if (available === 0) return;
@@ -337,54 +346,83 @@ function useLabelsOverflow(element: HTMLDivElement | null): boolean {
       return width + gap * Math.max(0, counted - 1);
     };
     const stripGap = Number.parseFloat(getComputedStyle(current).columnGap) || 0;
-    let needed = 0;
+    let content = 0;
     let groups = 0;
+    let host: HTMLElement | null = null;
+    let hostNaturalWidth = 0;
+    let hostMinimumWidth = 0;
     for (const child of current.children) {
       if (!(child instanceof HTMLElement)) continue;
-      // The host itself flexes into all remaining room. Reserve the natural
-      // width of the controls inside it, blocks in overflow included, so Git
-      // labels compact before squeezing out the model picker. Reserving only
-      // the visible controls would let the labels expand into room the
-      // composer just freed, shrink the host, and hide the controls again.
-      const hostedControls = child.matches('[data-chat-resting-composer-controls-host="true"]')
-        ? child.querySelector<HTMLElement>('[data-chat-composer-resting-controls="true"]')
-        : null;
-      const hostedMeasurement = hostedControls
-        ? measureRestingComposerControls(hostedControls)
-        : null;
-      const width = hostedMeasurement
-        ? resolveRestingComposerControlsNaturalWidth(hostedMeasurement)
-        : contentWidth(hostedControls ?? child);
+      if (child.matches(RESTING_CONTROLS_HOST_SELECTOR)) {
+        // The host flexes into whatever is left, so its own box says nothing.
+        // Read the natural and minimum widths of the controls inside it, blocks
+        // in overflow included: judging by the visible controls would let the
+        // labels widen into room the composer just freed, shrink the host, and
+        // hide the controls again.
+        host = child;
+        const controls = child.querySelector<HTMLElement>(
+          '[data-chat-composer-resting-controls="true"]',
+        );
+        const measurement = controls ? measureRestingComposerControls(controls) : null;
+        if (measurement) {
+          hostNaturalWidth = resolveRestingComposerControlsNaturalWidth(measurement);
+          hostMinimumWidth = resolveRestingComposerControlsMinimumWidth(measurement);
+          groups += 1;
+        }
+        continue;
+      }
+      const width = contentWidth(child);
       if (width <= 1) continue;
       groups += 1;
-      needed += width;
+      content += width;
     }
-    needed += stripGap * Math.max(0, groups - 1);
-    for (const label of current.querySelectorAll<HTMLElement>("[data-composer-label]")) {
-      // The clipping can happen below the marker (SelectValue truncates
-      // internally), where the outer span's scrollWidth matches its clipped
-      // box. The text's real width is the largest scrollWidth in the subtree.
-      let textWidth = label.scrollWidth;
-      for (const inner of label.querySelectorAll<HTMLElement>("*")) {
-        textWidth = Math.max(textWidth, inner.scrollWidth);
+    content += stripGap * Math.max(0, groups - 1);
+    let labelsRenderedWidth = 0;
+    let collapsibleLabelsMinimumWidth = 0;
+    let pinnedLabelsMinimumWidth = 0;
+    for (const label of current.querySelectorAll<HTMLElement>(COMPOSER_CONTEXT_LABEL_SELECTOR)) {
+      const text = measureSquishText(label);
+      if (!text) continue;
+      // Rendered width even mid-animation: the content sum already includes it.
+      labelsRenderedWidth += text.rendered;
+      const minimum = Math.min(text.minimum, COMPOSER_CONTEXT_LABEL_MAX_WIDTH_PX);
+      if (label.dataset.composerLabel === "collapsible") {
+        collapsibleLabelsMinimumWidth += minimum;
+      } else {
+        pinnedLabelsMinimumWidth += minimum;
       }
-      // Subtract the visible width even during an animation. The content
-      // sum already includes it; only the hidden text needs reserving.
-      needed += Math.max(0, textWidth - label.getBoundingClientRect().width);
     }
-    const nextOverflows = resolveContextStripLabelsCompact({
+    const next = resolveContextStripLayout({
       compact,
-      neededWidth: needed,
       availableWidth: available,
+      contentWidth: content,
+      labelsRenderedWidth,
+      collapsibleLabelsMinimumWidth,
+      pinnedLabelsMinimumWidth,
+      hostNaturalWidth,
+      hostMinimumWidth,
     });
-    if (nextOverflows !== compact) {
+    if (host) {
+      // A min-width on a flex-1 item: the host takes the leftover room or its
+      // reservation, whichever is larger, and the labels squish to make up
+      // the difference. Only the host resizes, never the observed strip.
+      const minWidth = next.hostReserveWidth > 0 ? `${next.hostReserveWidth}px` : "";
+      if (host.style.minWidth !== minWidth) host.style.minWidth = minWidth;
+    }
+    if (next.compact !== compact) {
+      // Only collapsing labels animate. Pinned labels follow them through
+      // flex layout frame by frame.
       pendingLabelRectsRef.current = new Map(
-        Array.from(current.querySelectorAll<HTMLElement>(COMPOSER_CONTEXT_LABEL_SELECTOR)).map(
-          (label) => [label, label.getBoundingClientRect()],
-        ),
+        Array.from(
+          current.querySelectorAll<HTMLElement>(COMPOSER_CONTEXT_COLLAPSIBLE_LABEL_SELECTOR),
+        ).map((label) => [label, label.getBoundingClientRect()]),
       );
     }
-    setOverflows(nextOverflows);
+    setLayout((previous) =>
+      previous.compact === next.compact && previous.squeezed === next.squeezed
+        ? previous
+        : { compact: next.compact, squeezed: next.squeezed },
+    );
   }, []);
 
   useLayoutEffect(() => {
@@ -429,7 +467,7 @@ function useLabelsOverflow(element: HTMLDivElement | null): boolean {
         { once: true },
       );
     }
-  }, [overflows]);
+  }, [layout.compact]);
 
   useEffect(
     () => () => {
@@ -451,14 +489,21 @@ function useLabelsOverflow(element: HTMLDivElement | null): boolean {
     if (!element) return;
     const observer = new ResizeObserver(measure);
     observer.observe(element);
+    // The composer portals its controls into the host without re-rendering
+    // this toolbar, so watch the host for controls arriving, leaving, or
+    // changing text (a new model name) to keep its reservation current.
+    const hostObserver = new MutationObserver(measure);
+    const host = element.querySelector(RESTING_CONTROLS_HOST_SELECTOR);
+    if (host) hostObserver.observe(host, { childList: true, subtree: true, characterData: true });
     document.fonts.addEventListener("loadingdone", measure);
     return () => {
       observer.disconnect();
+      hostObserver.disconnect();
       document.fonts.removeEventListener("loadingdone", measure);
     };
   }, [element, measure]);
 
-  return overflows;
+  return layout;
 }
 
 export const BranchToolbar = memo(function BranchToolbar({
@@ -573,14 +618,28 @@ export const BranchToolbar = memo(function BranchToolbar({
     canPickEnvironment: showEnvironmentPicker,
   });
   const [stripElement, setStripElement] = useState<HTMLDivElement | null>(null);
-  const labelsOverflow = useLabelsOverflow(stripElement);
+  const stripLayout = useContextStripLayout(stripElement);
 
   if (!hasActiveThread || !activeProject) return null;
+
+  const projectLabel = (
+    <span
+      className={cn(
+        "inline-flex h-7 items-center gap-1 border border-transparent px-[calc(--spacing(2)-1px)] sm:h-6",
+        COMPOSER_CONTEXT_PINNED_CONTROL_CLASS_NAME,
+      )}
+      data-composer-context-control
+    >
+      <ProjectFavicon project={activeProject} className="size-3 shrink-0" />
+      <ComposerContextLabel>{activeProject.title}</ComposerContextLabel>
+    </span>
+  );
 
   return (
     <ComposerSurface.ContextStrip
       ref={setStripElement}
-      data-compact={labelsOverflow ? "" : undefined}
+      data-compact={stripLayout.compact ? "" : undefined}
+      data-squeezed={stripLayout.squeezed ? "" : undefined}
       className={cn(
         "gap-1 text-xs font-normal text-muted-foreground/70",
         // A non-Git strip with no visible composer controls should occupy no
@@ -612,7 +671,7 @@ export const BranchToolbar = memo(function BranchToolbar({
       {showGitControls || showEnvironmentIndicator ? (
         <div
           className={cn(
-            "min-h-7 min-w-10 items-center gap-1 sm:min-h-6",
+            "min-h-7 min-w-min items-center gap-1 sm:min-h-6",
             showGitControls ? "hidden @3xl/composer-surface:flex" : "flex",
             composerControlsHostRef ? "shrink" : "flex-1",
           )}
@@ -661,10 +720,23 @@ export const BranchToolbar = memo(function BranchToolbar({
         />
       ) : null}
 
+      {showGitControls ? null : (
+        <div
+          className={cn(
+            "flex items-center @3xl/composer-surface:ml-auto",
+            COMPOSER_CONTEXT_PINNED_CONTROL_CLASS_NAME,
+          )}
+        >
+          {projectLabel}
+        </div>
+      )}
+
       {showGitControls ? (
         <BranchToolbarBranchSelector
           ref={branchSelectorRef}
-          className="min-w-0 flex-initial justify-end @3xl/composer-surface:ml-auto"
+          // The pull request badge leads, then the project, then the branch.
+          className="flex-initial justify-end @3xl/composer-surface:ml-auto"
+          leadingLabel={projectLabel}
           environmentId={environmentId}
           threadId={threadId}
           {...(draftId ? { draftId } : {})}

@@ -487,6 +487,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           activeOrderKey: "hq",
           titleRegeneration: null,
           titleState: null,
+          recap: null,
           deletedAt: null,
           messages: [
             {
@@ -613,6 +614,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           activeOrderKey: "hq",
           titleRegeneration: null,
           titleState: null,
+          recap: null,
           session: {
             threadId: ThreadId.make("thread-1"),
             status: "running",

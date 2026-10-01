@@ -11,7 +11,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon, MapIcon } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -26,6 +26,7 @@ import GitActionsControl from "../GitActionsControl";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { type DraftId } from "~/composerDraftStore";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { Toggle } from "../ui/toggle";
 import { toastManager } from "../ui/toast";
 import ProjectScriptsControl, {
   type NewProjectScriptInput,
@@ -36,6 +37,7 @@ import { useRemoteOpenState, type RemoteOpenMode } from "../../remoteOpen";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useT3ProjectFileScripts } from "~/hooks/useT3ProjectFileScripts";
 import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
+import { useSetThreadRecapEnabled } from "~/hooks/useThreadRecap";
 import { readLocalApi } from "~/localApi";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -55,6 +57,7 @@ interface ChatHeaderProps {
   activeThreadTitle: string;
   /** Drafts have no server thread yet, so the title carries no action menu. */
   isServerThread: boolean;
+  recapEnabled: boolean;
   activeProject: EnvironmentProject | null;
   openInCwd: string | null;
   activeProjectScripts: ReadonlyArray<ProjectScript> | undefined;
@@ -63,6 +66,7 @@ interface ChatHeaderProps {
   availableEditors: ReadonlyArray<EditorId>;
   rightPanelOpen: boolean;
   gitCwd: string | null;
+  onRequestGitAgentAction: (prompt: string) => void;
   readonly onOpenPullRequest?: ((number: number) => void) | undefined;
   onNewThreadInProject: () => void;
   onOpenProjectSettings?: (() => void) | undefined;
@@ -124,6 +128,7 @@ export const ChatHeader = memo(function ChatHeader({
   draftId,
   activeThreadTitle,
   isServerThread,
+  recapEnabled,
   activeProject,
   openInCwd,
   activeProjectScripts,
@@ -133,6 +138,7 @@ export const ChatHeader = memo(function ChatHeader({
   rightPanelOpen,
   gitCwd,
   onOpenPullRequest,
+  onRequestGitAgentAction,
   onNewThreadInProject,
   onOpenProjectSettings,
   onRunProjectScript,
@@ -176,6 +182,8 @@ export const ChatHeader = memo(function ChatHeader({
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
+  const setThreadRecapEnabled = useSetThreadRecapEnabled();
+  const recapToggleLabel = recapEnabled ? "Turn off resume recap" : "Turn on resume recap";
   // Inline rename, keyed by thread: navigating away drops an in-progress
   // rename instead of committing stale text. Cleared on thread change (not
   // just hidden) so returning to the thread doesn't revive the old draft.
@@ -409,6 +417,33 @@ export const ChatHeader = memo(function ChatHeader({
           "[[data-panel-animations=true]_&]:motion-safe:transition-[padding-right] [[data-panel-animations=true]_&]:motion-safe:[transition-duration:var(--panel-animation-duration)] [[data-panel-animations=true]_&]:motion-safe:ease-out",
         )}
       >
+        {isServerThread ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  aria-label={recapToggleLabel}
+                  pressed={recapEnabled}
+                  onPressedChange={(pressed) => {
+                    void setThreadRecapEnabled(activeThreadRef, pressed);
+                  }}
+                  variant="outline"
+                  size="xs"
+                />
+              }
+            >
+              <MapIcon
+                aria-hidden
+                className={cn("size-3.5", recapEnabled && "text-emerald-600 dark:text-emerald-400")}
+              />
+            </TooltipTrigger>
+            <TooltipPopup side="bottom">
+              {recapEnabled
+                ? "Resume recap is on for this thread. Click to turn it off."
+                : "Turn on resume recap: a short where-was-I summary after each turn."}
+            </TooltipPopup>
+          </Tooltip>
+        ) : null}
         {activeProjectScripts && (
           <ProjectScriptsControl
             scripts={activeProjectScripts}
@@ -432,6 +467,7 @@ export const ChatHeader = memo(function ChatHeader({
         {activeProjectName && (
           <GitActionsControl
             gitCwd={gitCwd}
+            onRequestAgentAction={onRequestGitAgentAction}
             activeThreadRef={scopeThreadRef(activeThreadEnvironmentId, activeThreadId)}
             onOpenPullRequest={onOpenPullRequest}
             {...(draftId ? { draftId } : {})}

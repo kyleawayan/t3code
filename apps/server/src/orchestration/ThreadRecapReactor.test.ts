@@ -1,0 +1,620 @@
+import {
+  DEFAULT_SERVER_SETTINGS,
+  EventId,
+  MessageId,
+  ProjectId,
+  ProviderInstanceId,
+  TextGenerationError,
+  ThreadId,
+  TurnId,
+  type OrchestrationCommand,
+  type OrchestrationEvent,
+  type OrchestrationMessage,
+  type OrchestrationThread,
+  type OrchestrationThreadShell,
+  type ThreadRecap,
+} from "@t3tools/contracts";
+import { describe, expect, it } from "@effect/vitest";
+import * as Crypto from "effect/Crypto";
+import * as Deferred from "effect/Deferred";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
+import * as Queue from "effect/Queue";
+import * as Ref from "effect/Ref";
+import * as Stream from "effect/Stream";
+
+import {
+  TextGeneration,
+  type ThreadRecapGenerationInput,
+  type ThreadRecapGenerationResult,
+} from "../textGeneration/TextGeneration.ts";
+import {
+  type ProjectionTurn,
+  ProjectionTurnRepository,
+} from "../persistence/Services/ProjectionTurns.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
+import { OrchestrationEngineService } from "./Services/OrchestrationEngine.ts";
+import { ProjectionSnapshotQuery } from "./Services/ProjectionSnapshotQuery.ts";
+import * as ThreadRecapReactor from "./ThreadRecapReactor.ts";
+
+const NOW = "2026-09-01T12:00:00.000Z";
+const PROJECT_ID = ProjectId.make("project");
+type RecapUpdate = Extract<OrchestrationCommand, { type: "thread.recap.update" }>;
+type MetaUpdate = Extract<OrchestrationCommand, { type: "thread.meta.update" }>;
+
+const GENERATED: ThreadRecapGenerationResult = {
+  goal: "Migrate to the new UI library",
+  done: "E2E tests written",
+  now: "Migrating Modal and Button components",
+  next: "Get the E2E suite passing on the new UI",
+  blocked: null,
+  steps: [],
+  links: [],
+  linearWorkspace: null,
+};
+
+function message(id: string, role: OrchestrationMessage["role"], text: string) {
+  return {
+    id: MessageId.make(id),
+    role,
+    text,
+    turnId: null,
+    streaming: false,
+    createdAt: NOW,
+    updatedAt: NOW,
+  } satisfies OrchestrationMessage;
+}
+
+function thread(
+  id: string,
+  recap: ThreadRecap | null,
+  overrides: Partial<OrchestrationThread> = {},
+): OrchestrationThread {
+  return {
+    id: ThreadId.make(id),
+    projectId: PROJECT_ID,
+    title: id,
+    modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    branch: null,
+    worktreePath: null,
+    pullRequests: [],
+    latestTurn: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    archivedAt: null,
+    settledOverride: null,
+    settledAt: null,
+    snoozedUntil: null,
+    snoozedAt: null,
+    recap,
+    deletedAt: null,
+    messages: [message(`${id}-user`, "user", "Migrate to the new UI library")],
+    proposedPlans: [],
+    activities: [],
+    checkpoints: [],
+    session: null,
+    ...overrides,
+  };
+}
+
+function shellOf(current: OrchestrationThread): OrchestrationThreadShell {
+  return {
+    id: current.id,
+    projectId: current.projectId,
+    title: current.title,
+    modelSelection: current.modelSelection,
+    runtimeMode: current.runtimeMode,
+    interactionMode: current.interactionMode,
+    pullRequests: current.pullRequests,
+    branch: current.branch,
+    worktreePath: current.worktreePath,
+    latestTurn: current.latestTurn,
+    createdAt: current.createdAt,
+    updatedAt: current.updatedAt,
+    archivedAt: current.archivedAt,
+    settledOverride: current.settledOverride,
+    settledAt: current.settledAt,
+    recap: current.recap ?? null,
+    session: current.session,
+    latestUserMessageAt: null,
+    hasPendingApprovals: false,
+    hasPendingUserInput: false,
+    hasActionableProposedPlan: false,
+  };
+}
+
+const eventBase = (threadId: ThreadId, eventId: string) => ({
+  sequence: 1,
+  eventId: EventId.make(eventId),
+  aggregateKind: "thread" as const,
+  aggregateId: threadId,
+  occurredAt: NOW,
+  commandId: null,
+  causationEventId: null,
+  correlationId: null,
+  metadata: {},
+});
+
+let eventCount = 0;
+function turnEnded(threadId: ThreadId): OrchestrationEvent {
+  return {
+    ...eventBase(threadId, `session-ready-${++eventCount}`),
+    type: "thread.session-set",
+    payload: {
+      threadId,
+      session: {
+        threadId,
+        status: "ready",
+        providerName: "Codex",
+        runtimeMode: "full-access",
+        activeTurnId: null,
+        lastError: null,
+        updatedAt: NOW,
+      },
+    },
+  };
+}
+
+function turnStarted(threadId: ThreadId, messageId: string): OrchestrationEvent {
+  return {
+    ...eventBase(threadId, `turn-start-${++eventCount}`),
+    type: "thread.turn-start-requested",
+    payload: {
+      threadId,
+      messageId: MessageId.make(messageId),
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      createdAt: NOW,
+    },
+  };
+}
+
+function recapTurnedOn(threadId: ThreadId): OrchestrationEvent {
+  return {
+    ...eventBase(threadId, `recap-on-${++eventCount}`),
+    type: "thread.meta-updated",
+    payload: {
+      threadId,
+      recap: { enabled: true, summary: null },
+      recapRequested: true,
+      updatedAt: NOW,
+    },
+  };
+}
+
+const makeHarness = Effect.fn("makeThreadRecapHarness")(function* (options: {
+  readonly threads: ReadonlyArray<OrchestrationThread>;
+  readonly turns?: ReadonlyArray<ProjectionTurn>;
+  readonly recapEnabledByDefault?: boolean;
+  readonly generate?: (
+    input: ThreadRecapGenerationInput,
+  ) => Effect.Effect<ThreadRecapGenerationResult, TextGenerationError>;
+}) {
+  const threads = yield* Ref.make(new Map(options.threads.map((entry) => [entry.id, entry])));
+  const events = yield* PubSub.unbounded<OrchestrationEvent>();
+  const shellReads = yield* Queue.unbounded<ThreadId>();
+  const updates = yield* Queue.unbounded<RecapUpdate>();
+  const metaUpdates = yield* Queue.unbounded<MetaUpdate>();
+  const refreshStates = yield* Ref.make<ReadonlyArray<{ threadId: ThreadId; started: boolean }>>(
+    [],
+  );
+  const generations = yield* Ref.make<ReadonlyArray<ThreadRecapGenerationInput>>([]);
+  let uuid = 0;
+
+  const dependencies = Layer.mergeAll(
+    Layer.mock(ProjectionSnapshotQuery)({
+      getThreadShellById: (threadId) =>
+        Queue.offer(shellReads, threadId).pipe(
+          Effect.andThen(Ref.get(threads)),
+          Effect.map((current) =>
+            Option.fromNullishOr(current.get(threadId)).pipe(Option.map(shellOf)),
+          ),
+        ),
+      getThreadDetailById: (threadId) =>
+        Ref.get(threads).pipe(Effect.map((current) => Option.fromNullishOr(current.get(threadId)))),
+      getProjectShellById: () => Effect.succeed(Option.none()),
+    }),
+    Layer.mock(ProjectionTurnRepository)({
+      listByThreadId: () => Effect.succeed(options.turns ?? []),
+    }),
+    Layer.mock(ServerSettingsService)({
+      getSettings: Effect.succeed({
+        ...DEFAULT_SERVER_SETTINGS,
+        recapEnabledByDefault: options.recapEnabledByDefault ?? false,
+      }),
+    }),
+    Layer.mock(TextGeneration)({
+      generateThreadRecap: (input) =>
+        Ref.update(generations, (current) => [...current, input]).pipe(
+          Effect.andThen(options.generate?.(input) ?? Effect.succeed(GENERATED)),
+        ),
+    }),
+    Layer.mock(OrchestrationEngineService)({
+      subscribeDomainEvents: PubSub.subscribe(events).pipe(
+        Effect.map((subscription) => Stream.fromSubscription(subscription)),
+      ),
+      dispatch: (command) => {
+        if (command.type === "thread.meta.update") {
+          return Queue.offer(metaUpdates, command).pipe(Effect.as({ sequence: 1 }));
+        }
+        if (command.type === "thread.recap.refresh-state") {
+          return Ref.update(refreshStates, (current) => [
+            ...current,
+            { threadId: command.threadId, started: command.refreshStartedAt !== null },
+          ]).pipe(Effect.as({ sequence: 1 }));
+        }
+        if (command.type !== "thread.recap.update") {
+          return Effect.die(`Unexpected command: ${command.type}`);
+        }
+        return Ref.update(threads, (current) => {
+          const target = current.get(command.threadId);
+          if (target?.recap?.enabled !== true) return current;
+          return new Map(current).set(command.threadId, {
+            ...target,
+            recap: { enabled: true, summary: command.summary },
+          });
+        }).pipe(Effect.andThen(Queue.offer(updates, command)), Effect.as({ sequence: 1 }));
+      },
+    }),
+    Layer.succeed(
+      Crypto.Crypto,
+      Crypto.make({
+        randomBytes: (size) => new Uint8Array(size).fill(++uuid),
+        digest: (_algorithm, data) => Effect.succeed(data),
+      }),
+    ),
+  );
+
+  return {
+    threads,
+    shellReads,
+    updates,
+    metaUpdates,
+    refreshStates,
+    generations,
+    publish: (event: OrchestrationEvent) => PubSub.publish(events, event),
+    layer: ThreadRecapReactor.layer.pipe(Layer.provide(dependencies)),
+  };
+});
+
+const startReactor = Effect.gen(function* () {
+  const reactor = yield* ThreadRecapReactor.ThreadRecapReactor;
+  yield* reactor.start();
+  return reactor;
+});
+
+describe("ThreadRecapReactor", () => {
+  it.effect("generates when a recap is turned on and records what it covers", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const previousSummary = {
+          ...GENERATED,
+          linearIssueIds: [],
+          basedOnMessageId: MessageId.make("older"),
+          generatedAt: NOW,
+        };
+        const fixture = yield* makeHarness({
+          threads: [
+            thread(
+              "recap",
+              { enabled: true, summary: previousSummary },
+              {
+                branch: "dev/eng-42-new-ui",
+                messages: [
+                  message("first", "user", "Migrate to the new UI library, see ENG-42"),
+                  message("reply", "assistant", "Wrote the E2E tests."),
+                ],
+              },
+            ),
+          ],
+        });
+        yield* Effect.gen(function* () {
+          yield* startReactor;
+          yield* fixture.publish(recapTurnedOn(ThreadId.make("recap")));
+          const update = yield* Queue.take(fixture.updates);
+
+          expect(update.summary).toMatchObject({
+            ...GENERATED,
+            linearIssueIds: ["ENG-42"],
+            basedOnMessageId: "reply",
+          });
+          const [input] = yield* Ref.get(fixture.generations);
+          expect(input?.previousSummary).toEqual(previousSummary);
+          expect(input?.linearIssueIds).toEqual(["ENG-42"]);
+          expect(input?.message).toContain("Wrote the E2E tests.");
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+
+  it.effect("turns the recap on for new threads only when the setting says so", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const created = (threadId: string): OrchestrationEvent => ({
+          ...eventBase(ThreadId.make(threadId), `created-${threadId}`),
+          type: "thread.created",
+          payload: {
+            threadId: ThreadId.make(threadId),
+            projectId: ProjectId.make("project"),
+            title: "New thread",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("claudeAgent"),
+              model: "sonnet",
+            },
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: null,
+            createdAt: NOW,
+            updatedAt: NOW,
+          },
+        });
+        const on = yield* makeHarness({ threads: [], recapEnabledByDefault: true });
+        yield* Effect.gen(function* () {
+          yield* startReactor;
+          yield* on.publish(created("fresh"));
+          const update = yield* Queue.take(on.metaUpdates);
+          expect(update).toMatchObject({ threadId: "fresh", recapEnabled: true });
+        }).pipe(Effect.provide(on.layer));
+
+        const off = yield* makeHarness({
+          threads: [thread("known", { enabled: true, summary: null })],
+        });
+        yield* Effect.gen(function* () {
+          yield* startReactor;
+          yield* off.publish(created("plain"));
+          // Events run in order, so this update means the creation was already handled.
+          yield* off.publish(turnEnded(ThreadId.make("known")));
+          yield* Queue.take(off.updates);
+          expect(yield* Queue.size(off.metaUpdates)).toBe(0);
+        }).pipe(Effect.provide(off.layer));
+      }),
+    ),
+  );
+
+  it.effect("tells the recap which request the user interrupted", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const threadId = ThreadId.make("interrupted");
+        const fixture = yield* makeHarness({
+          threads: [
+            thread(
+              "interrupted",
+              { enabled: true, summary: null },
+              {
+                messages: [
+                  message("review", "user", "/code-review"),
+                  message("resume", "user", "sorry continue"),
+                ],
+              },
+            ),
+          ],
+          turns: [
+            {
+              threadId,
+              turnId: TurnId.make("review-turn"),
+              pendingMessageId: MessageId.make("review"),
+              sourceProposedPlanThreadId: null,
+              sourceProposedPlanId: null,
+              assistantMessageId: null,
+              state: "interrupted",
+              requestedAt: NOW,
+              startedAt: NOW,
+              completedAt: NOW,
+              checkpointTurnCount: null,
+              checkpointRef: null,
+              checkpointStatus: null,
+              checkpointFiles: [],
+            },
+          ],
+        });
+        yield* Effect.gen(function* () {
+          yield* startReactor;
+          yield* fixture.publish(turnEnded(threadId));
+          yield* Queue.take(fixture.updates);
+          const [input] = yield* Ref.get(fixture.generations);
+          expect(input?.message).toContain(
+            "/code-review\n[The user interrupted this turn before it finished.]",
+          );
+          expect(input?.message).not.toContain(
+            "sorry continue\n[The user interrupted this turn before it finished.]",
+          );
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+
+  it.effect("always generates with Claude Sonnet and passes the thread title", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeHarness({
+          threads: [thread("recap", { enabled: true, summary: null })],
+        });
+        yield* Effect.gen(function* () {
+          yield* startReactor;
+          yield* fixture.publish(turnEnded(ThreadId.make("recap")));
+          yield* Queue.take(fixture.updates);
+          const [input] = yield* Ref.get(fixture.generations);
+          expect(input?.modelSelection).toEqual({
+            instanceId: "claudeAgent",
+            model: "sonnet",
+            options: [{ id: "effort", value: "medium" }],
+          });
+          expect(input?.title).toBe("recap");
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+
+  it.effect("refreshes when a turn starts, and forces explicit requests", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const threadId = ThreadId.make("refresh");
+        const fixture = yield* makeHarness({
+          threads: [thread("refresh", { enabled: true, summary: null })],
+        });
+        yield* Effect.gen(function* () {
+          const reactor = yield* startReactor;
+          yield* Ref.update(fixture.threads, (current) => {
+            const target = current.get(threadId)!;
+            return new Map(current).set(threadId, {
+              ...target,
+              messages: [...target.messages, message("new-ask", "user", "Also cover Button.")],
+            });
+          });
+          yield* fixture.publish(turnStarted(threadId, "new-ask"));
+          expect((yield* Queue.take(fixture.updates)).summary.basedOnMessageId).toBe("new-ask");
+
+          // Already covered: an automatic trigger skips, an explicit request runs anyway.
+          yield* fixture.publish(turnEnded(threadId));
+          yield* fixture.publish(recapTurnedOn(threadId));
+          const forced = yield* Queue.take(fixture.updates);
+          expect(forced.summary.basedOnMessageId).toBe("new-ask");
+          yield* reactor.drain;
+          expect(yield* Ref.get(fixture.generations)).toHaveLength(2);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+
+  it.effect("ignores threads without an enabled recap and turns already covered", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeHarness({
+          threads: [
+            thread("never-enabled", null),
+            thread("disabled", { enabled: false, summary: null }),
+            thread("enabled", { enabled: true, summary: null }),
+          ],
+        });
+        yield* Effect.gen(function* () {
+          const reactor = yield* startReactor;
+          yield* fixture.publish(turnEnded(ThreadId.make("never-enabled")));
+          yield* fixture.publish(turnEnded(ThreadId.make("disabled")));
+          yield* fixture.publish(turnEnded(ThreadId.make("enabled")));
+          yield* Queue.take(fixture.updates);
+          // The session reports ready again without a new message.
+          yield* fixture.publish(turnEnded(ThreadId.make("enabled")));
+          // Events are handled in order, so the last read proves the repeat was queued.
+          yield* fixture.publish(turnEnded(ThreadId.make("disabled")));
+          expect(yield* Queue.takeN(fixture.shellReads, 5)).toEqual([
+            "never-enabled",
+            "disabled",
+            "enabled",
+            "enabled",
+            "disabled",
+          ]);
+          yield* reactor.drain;
+
+          const generations = yield* Ref.get(fixture.generations);
+          expect(generations).toHaveLength(1);
+          expect(yield* Queue.size(fixture.updates)).toBe(0);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+
+  it.effect("runs one more generation for turns that end during a run", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const started = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        let active = 0;
+        let maxActive = 0;
+        const fixture = yield* makeHarness({
+          threads: [
+            thread("busy", { enabled: true, summary: null }),
+            thread("marker", { enabled: false, summary: null }),
+          ],
+          generate: () =>
+            Effect.acquireUseRelease(
+              Effect.sync(() => {
+                active += 1;
+                maxActive = Math.max(maxActive, active);
+              }),
+              () =>
+                Deferred.succeed(started, undefined).pipe(
+                  Effect.andThen(Deferred.await(release)),
+                  Effect.as(GENERATED),
+                ),
+              () =>
+                Effect.sync(() => {
+                  active -= 1;
+                }),
+            ),
+        });
+        yield* Effect.gen(function* () {
+          const reactor = yield* startReactor;
+          const threadId = ThreadId.make("busy");
+          yield* fixture.publish(turnEnded(threadId));
+          yield* Deferred.await(started);
+
+          yield* Ref.update(fixture.threads, (current) => {
+            const busy = current.get(threadId)!;
+            return new Map(current).set(threadId, {
+              ...busy,
+              messages: [...busy.messages, message("later", "assistant", "Migrated Modal.")],
+            });
+          });
+          yield* fixture.publish(turnEnded(threadId));
+          yield* fixture.publish(turnEnded(threadId));
+          // Events are handled in order, so the marker read proves both requests arrived
+          // mid-run. The second needs no read because the thread is already queued.
+          yield* fixture.publish(turnEnded(ThreadId.make("marker")));
+          expect(yield* Queue.takeN(fixture.shellReads, 3)).toEqual(["busy", "busy", "marker"]);
+          yield* Deferred.succeed(release, undefined);
+          yield* reactor.drain;
+
+          expect(yield* Ref.get(fixture.generations)).toHaveLength(2);
+          expect(maxActive).toBe(1);
+          expect(yield* Queue.take(fixture.updates)).toMatchObject({ threadId });
+          expect((yield* Queue.take(fixture.updates)).summary.basedOnMessageId).toBe("later");
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+
+  it.effect("keeps the old summary and keeps working after a generation fails", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeHarness({
+          threads: [
+            thread("flaky", { enabled: true, summary: null }),
+            thread("healthy", { enabled: true, summary: null }),
+          ],
+          generate: (input) =>
+            input.title === "flaky"
+              ? Effect.fail(
+                  new TextGenerationError({ operation: "generateThreadRecap", detail: "offline" }),
+                )
+              : Effect.succeed(GENERATED),
+        });
+        yield* Effect.gen(function* () {
+          const reactor = yield* startReactor;
+          yield* fixture.publish(turnEnded(ThreadId.make("flaky")));
+          yield* fixture.publish(turnEnded(ThreadId.make("healthy")));
+          expect((yield* Queue.take(fixture.updates)).threadId).toBe("healthy");
+          yield* reactor.drain;
+
+          expect((yield* Ref.get(fixture.threads)).get(ThreadId.make("flaky"))?.recap).toEqual({
+            enabled: true,
+            summary: null,
+          });
+          // The failed run clears its refresh marker; the new summary clears the other.
+          const states = yield* Ref.get(fixture.refreshStates);
+          expect(states.filter((state) => state.threadId === "flaky")).toEqual([
+            { threadId: "flaky", started: true },
+            { threadId: "flaky", started: false },
+          ]);
+          expect(states.filter((state) => state.threadId === "healthy")).toEqual([
+            { threadId: "healthy", started: true },
+          ]);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+});

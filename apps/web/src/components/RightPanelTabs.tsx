@@ -24,6 +24,7 @@ import {
   GitPullRequest,
   GitPullRequestArrow,
   Globe2,
+  Map as MapIcon,
   Plus,
   TerminalSquare,
   Volume2,
@@ -66,7 +67,7 @@ import { faviconUrlForOrigin } from "~/lib/favicon";
 import { useTheme } from "~/hooks/useTheme";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useEnvironmentQuery } from "~/state/query";
-import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
+import { TITLEBAR_CONTROLS_INSET_CLASS } from "~/workspaceTitlebar";
 
 import { PreviewPanelShell, type PreviewPanelMode } from "./preview/PreviewPanelShell";
 import { FaviconImage } from "./preview/PreviewFaviconIcon";
@@ -117,6 +118,7 @@ interface RightPanelTabsProps {
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
   onAddAgents: () => void;
+  onAddRecapMap: () => void;
   onAddDevice: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
@@ -125,6 +127,7 @@ interface RightPanelTabsProps {
   pullRequestAvailable: boolean;
   pullRequestsAvailable: boolean;
   agentsAvailable: boolean;
+  recapMapAvailable: boolean;
   deviceAvailable: boolean;
   pullRequestStatusSeeds?: Readonly<Record<string, PullRequestTabStatusSeed>>;
   /** Running + waiting subagents; badges the Agents card in the empty state. */
@@ -156,6 +159,7 @@ const SURFACE_DISABLED_REASONS = {
   pullRequest: "This thread's branch has no pull request yet.",
   pullRequests: "No linked pull requests are available for this thread.",
   agents: "Agents are only available from a thread.",
+  recapMap: "The resume map is available once the thread has started.",
   device: "Devices are only available from a thread.",
 } as const;
 
@@ -180,6 +184,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
   pullRequest: "No pull request on this branch yet.",
   pullRequests: "No linked pull requests available.",
   agents: "Available from a thread.",
+  recapMap: "Available once the thread has started.",
   device: "Available from a thread.",
 } as const;
 
@@ -320,6 +325,7 @@ function RightPanelEmptyState(props: {
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
   onAddAgents: () => void;
+  onAddRecapMap: () => void;
   onAddDevice: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
@@ -328,6 +334,7 @@ function RightPanelEmptyState(props: {
   pullRequestAvailable: boolean;
   pullRequestsAvailable: boolean;
   agentsAvailable: boolean;
+  recapMapAvailable: boolean;
   deviceAvailable: boolean;
   liveAgentCount: number;
 }) {
@@ -397,6 +404,15 @@ function RightPanelEmptyState(props: {
       disabledReason: SURFACE_UNAVAILABLE_HINTS.agents,
       onClick: props.onAddAgents,
       badgeCount: props.liveAgentCount,
+    },
+    {
+      label: "Resume map",
+      icon: MapIcon,
+      shortcut: "R",
+      available: props.recapMapAvailable,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.recapMap,
+      onClick: props.onAddRecapMap,
+      badgeCount: 0,
     },
     {
       label: "Device",
@@ -630,6 +646,8 @@ function surfaceTitle(
       return "Pull requests";
     case "agents":
       return "Agents";
+    case "recap":
+      return "Map";
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
     case "preview": {
@@ -715,6 +733,8 @@ function SurfaceIcon({
       return <GitPullRequestArrow className="size-3 shrink-0" />;
     case "agents":
       return <Bot className="size-3 shrink-0" />;
+    case "recap":
+      return <MapIcon className="size-3 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />
@@ -918,6 +938,14 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       onClick: props.onAddAgents,
     },
     {
+      label: "Resume map",
+      icon: MapIcon,
+      shortcut: "R",
+      available: props.recapMapAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.recapMap,
+      onClick: props.onAddRecapMap,
+    },
+    {
       label: "Device",
       icon: Smartphone,
       shortcut: "M",
@@ -1104,13 +1132,17 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
           // The sheet overlays from the viewport top, so its tab bar keeps
           // the titlebar's height: a compact row re-centers the layout
           // controls a few pixels higher and the cluster jumps on open.
+          // In overlay (sheet) mode also mark the tab bar no-drag, or the OS
+          // eats clicks on the tabs and the add-surface button as window
+          // drags; inline mode gets this via the .drag-region rule instead.
+          props.mode !== "inline" && "[-webkit-app-region:no-drag]",
           props.mode === "inline" && !props.layoutControls ? "pr-28" : "pr-3",
           ownsDesktopTitleBar && "drag-region",
           ownsDesktopTitleBar &&
             (props.layoutControls
               ? "wco:pr-[var(--workspace-native-controls-inset)]"
               : "wco:pr-[calc(var(--workspace-native-controls-inset)+6rem)]"),
-          props.mode === "inline" && props.maximized && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
+          props.mode === "inline" && props.maximized && TITLEBAR_CONTROLS_INSET_CLASS,
         )}
         data-right-panel-tabbar
       >
@@ -1396,6 +1428,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddPullRequest={props.onAddPullRequest}
             onAddPullRequests={props.onAddPullRequests}
             onAddAgents={props.onAddAgents}
+            onAddRecapMap={props.onAddRecapMap}
             onAddDevice={props.onAddDevice}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
@@ -1404,6 +1437,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             pullRequestAvailable={props.pullRequestAvailable}
             pullRequestsAvailable={props.pullRequestsAvailable}
             agentsAvailable={props.agentsAvailable}
+            recapMapAvailable={props.recapMapAvailable}
             deviceAvailable={props.deviceAvailable}
             liveAgentCount={props.liveAgentCount}
           />

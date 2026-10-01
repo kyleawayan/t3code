@@ -75,7 +75,10 @@ import {
   formatAssistantCitationForComposer,
   replaceTextRange,
 } from "../../composer-logic";
-import { DISCONNECTED_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
+import {
+  composerContextPlaceholder,
+  DISCONNECTED_COMPOSER_PLACEHOLDER,
+} from "../../composerPlaceholder";
 import {
   deriveComposerSendState,
   getAntigravitySendBlockReason,
@@ -183,14 +186,21 @@ import { replaceComposerContextReferences } from "@t3tools/shared/composerContex
 import {
   COMPOSER_FOOTER_COMPACT_BREAKPOINT_PX,
   COMPOSER_FOOTER_WIDE_ACTIONS_COMPACT_BREAKPOINT_PX,
+  composerFooterLabelVariant,
   getRestingComposerImagePreviewCounts,
+  isComposerFooterControlInActions,
+  resolveComposerFooterLabelStage,
+  resolveComposerFooterStageFloor,
   resolveRestingComposerControlsLayout,
   shouldAnimateComposerRestingTransition,
   shouldUseCompactComposerPrimaryActions,
   shouldUseCompactComposerFooter,
   shouldUseRestingComposerLayout,
 } from "../composerFooterLayout";
-import { measureRestingComposerControls } from "./restingComposerControlsMeasurement";
+import {
+  measureComposerFooterControls,
+  measureRestingComposerControls,
+} from "./restingComposerControlsMeasurement";
 import { observeResponsiveBreakpointFade, usePanelAnimationSettings } from "../../panelAnimations";
 import { type ComposerPromptEditorHandle, ComposerPromptEditor } from "../ComposerPromptEditor";
 import {
@@ -253,6 +263,7 @@ import {
   ComposerControl,
   ComposerControlIcon,
   ComposerControlSeparator,
+  composerCompactControlClassName,
   ComposerSelectControl,
 } from "./ComposerControl";
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
@@ -921,6 +932,7 @@ function ComposerCommandMenuLayer(props: { anchor: HTMLElement | null; children:
 }
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectValue } from "../ui/select";
+import { SquishText, SquishTextProbe } from "../ui/squish-text";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import {
@@ -971,8 +983,13 @@ import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { serverEnvironment } from "../../state/server";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
+import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
 
 const WORKSPACE_SNAPSHOT_RETRY_COOLDOWN_MS = 10_000;
+// How far the form must grow past the width where the full-label footer row
+// overflowed before full labels get another try.
+const COMPOSER_FOOTER_OVERFLOW_RELEASE_PX = 24;
+const TRAITS_LABEL_SIZE_BY_VARIANT = ["full", "short", "tight", "effort"] as const;
 
 const extendReplacementRangeForTrailingSpace = (
   text: string,
@@ -1034,12 +1051,26 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
   interactionMode: ProviderInteractionMode;
   runtimeMode: RuntimeMode;
   size?: "sm" | "xs";
+  /**
+   * Narrow footers keep every control but tighten it: short mode labels, no
+   * separators, icon-only build/plan toggle, and less horizontal padding.
+   */
+  compact?: boolean;
+  /** The tightest compact footer shows the runtime mode as its icon alone. */
+  iconOnly?: boolean;
+  /**
+   * False where the footer renders the runtime mode among its fixed actions
+   * instead, so the scrolling row can never carry it out of view.
+   */
+  showRuntimeMode?: boolean;
   hidden?: boolean;
   onToggleInteractionMode: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
   const size = props.size ?? "sm";
   const composerFloatingLayerProps = useComposerMenuProps();
+  const compact = props.compact === true;
+  const iconOnly = compact && props.iconOnly === true;
   const [open, setOpen] = useComposerMenuState(props.hidden);
   const runtimeModeOption = runtimeModeConfig[props.runtimeMode];
   const RuntimeModeIcon = runtimeModeOption.icon;
@@ -1050,7 +1081,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
 
   const interactionModeToggle = props.showInteractionModeToggle ? (
     <>
-      <ComposerControlSeparator size={size} />
+      {compact ? null : <ComposerControlSeparator size={size} />}
       <Tooltip>
         <TooltipTrigger
           render={
@@ -1058,6 +1089,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
               size={size}
               className={cn(
                 "shrink-0 whitespace-nowrap",
+                compact && composerCompactControlClassName,
                 props.interactionMode === "plan"
                   ? "bg-accent text-accent-foreground hover:bg-accent/80"
                   : size === "xs"
@@ -1083,7 +1115,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
               opticalSize={size === "xs" ? "default" : "large"}
             />
           )}
-          <span className="sr-only sm:not-sr-only">
+          <span className={compact ? "sr-only" : "sr-only sm:not-sr-only"}>
             {props.interactionMode === "plan" ? "Plan" : "Build"}
           </span>
         </TooltipTrigger>
@@ -1092,55 +1124,81 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
     </>
   ) : null;
 
+  const runtimeModeSelect = (
+    <Tooltip>
+      <Select
+        open={open}
+        onOpenChange={setOpen}
+        value={props.runtimeMode}
+        onValueChange={(value) => props.onRuntimeModeChange(value!)}
+      >
+        <TooltipTrigger
+          render={
+            <ComposerSelectControl
+              data-composer-shortcut="composer.mode"
+              size={size}
+              className={cn(
+                size === "xs" ? undefined : "font-medium",
+                // min-w-min holds the squished label at its minimum scale.
+                compact && cn("min-w-min shrink", composerCompactControlClassName),
+              )}
+              aria-label={iconOnly ? `Runtime mode: ${runtimeModeOption.label}` : "Runtime mode"}
+            />
+          }
+        >
+          <ComposerControlIcon icon={RuntimeModeIcon} size={size} />
+          {iconOnly ? null : compact ? (
+            <SelectValue className="flex min-w-0">
+              <SquishText>{runtimeModeOption.compactLabel}</SquishText>
+            </SelectValue>
+          ) : (
+            <SelectValue>{runtimeModeOption.label}</SelectValue>
+          )}
+          {compact ? (
+            <SquishTextProbe
+              data-composer-footer-label="mode"
+              variants={[runtimeModeOption.compactLabel, ""]}
+            />
+          ) : null}
+        </TooltipTrigger>
+        <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
+          {runtimeModeOptions.map((mode) => {
+            const option = runtimeModeConfig[mode];
+            const OptionIcon = option.icon;
+            return (
+              <SelectItem key={mode} value={mode} hideIndicator className="min-w-64 py-2">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="grid min-w-0 flex-1 gap-0.5">
+                    <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+                      <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                      {option.label}
+                    </span>
+                    <span className="text-muted-foreground text-xs leading-4">
+                      {option.description}
+                    </span>
+                  </div>
+                </div>
+              </SelectItem>
+            );
+          })}
+        </SelectPopup>
+      </Select>
+      <TooltipPopup side="top">
+        {iconOnly
+          ? `${runtimeModeOption.label}: ${runtimeModeOption.description}`
+          : runtimeModeOption.description}
+      </TooltipPopup>
+    </Tooltip>
+  );
+
   return (
     <>
-      <ComposerControlSeparator size={size} />
-
-      <Tooltip>
-        <Select
-          open={open}
-          onOpenChange={setOpen}
-          value={props.runtimeMode}
-          onValueChange={(value) => props.onRuntimeModeChange(value!)}
-        >
-          <TooltipTrigger
-            render={
-              <ComposerSelectControl
-                data-composer-shortcut="composer.mode"
-                size={size}
-                className={size === "xs" ? undefined : "font-medium"}
-                aria-label="Runtime mode"
-              />
-            }
-          >
-            <ComposerControlIcon icon={RuntimeModeIcon} size={size} />
-            <SelectValue>{runtimeModeOption.label}</SelectValue>
-          </TooltipTrigger>
-          <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
-            {runtimeModeOptions.map((mode) => {
-              const option = runtimeModeConfig[mode];
-              const OptionIcon = option.icon;
-              return (
-                <SelectItem key={mode} value={mode} hideIndicator className="min-w-64 py-2">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="grid min-w-0 flex-1 gap-0.5">
-                      <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-                        <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                        {option.label}
-                      </span>
-                      <span className="text-muted-foreground text-xs leading-4">
-                        {option.description}
-                      </span>
-                    </div>
-                  </div>
-                </SelectItem>
-              );
-            })}
-          </SelectPopup>
-        </Select>
-        <TooltipPopup side="top">{runtimeModeOption.description}</TooltipPopup>
-      </Tooltip>
-
+      {props.showRuntimeMode === false ? null : (
+        <>
+          {compact ? null : <ComposerControlSeparator size={size} />}
+          {runtimeModeSelect}
+        </>
+      )}
       {interactionModeToggle}
     </>
   );
@@ -1297,6 +1355,8 @@ export interface ChatComposerProps {
   promptHistoryMessages: ReadonlyArray<ChatMessage>;
   isServerThread: boolean;
   isLocalDraftThread: boolean;
+  /** Names the thread's project in the resting placeholder. */
+  placeholderProject: ProjectFaviconProject | null;
   forceExpandedOnMobile: boolean;
   projectSelectionRequired: boolean;
 
@@ -1432,6 +1492,11 @@ export interface ChatComposerProps {
 // Component
 // --------------------------------------------------------------------------
 
+/** Escape arms the stop; a second press inside this window confirms it. */
+const ESCAPE_STOP_CONFIRM_MS = 2_000;
+/** `keyCode` browsers report while an IME composition is being cancelled. */
+const IME_COMPOSITION_KEY_CODE = 229;
+
 export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps) {
   const {
     composerDraftTarget,
@@ -1447,8 +1512,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThreadEnvironmentId: _activeThreadEnvironmentId,
     activeThread,
     promptHistoryMessages,
-    isServerThread: _isServerThread,
+    isServerThread,
     isLocalDraftThread: _isLocalDraftThread,
+    placeholderProject,
     forceExpandedOnMobile,
     projectSelectionRequired,
     phase,
@@ -2048,9 +2114,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
+  const [composerFooterLabelStage, setComposerFooterLabelStage] = useState(0);
+  // The form width at which the full-label footer row last overflowed.
+  const composerFooterOverflowWidthRef = useRef(0);
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
   const isMobileViewport = useMediaQuery("max-sm");
+  const isTouchPrimaryInput = useMediaQuery("(pointer: coarse)");
   const {
     isComposerFocused,
     setIsComposerFocused,
@@ -3114,9 +3184,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const measureComposerFormWidth = () => composerForm.clientWidth;
     const measureFooterCompactness = () => {
       const composerFormWidth = measureComposerFormWidth();
-      const footerCompact = shouldUseCompactComposerFooter(composerFormWidth, {
-        hasWideActions: composerFooterHasWideActions,
-      });
+      const footerCompact =
+        shouldUseCompactComposerFooter(composerFormWidth, {
+          hasWideActions: composerFooterHasWideActions,
+        }) ||
+        composerFormWidth <=
+          composerFooterOverflowWidthRef.current + COMPOSER_FOOTER_OVERFLOW_RELEASE_PX;
       const primaryActionsCompact =
         footerCompact &&
         shouldUseCompactComposerPrimaryActions(composerFormWidth, {
@@ -3174,6 +3247,72 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     panelAnimationDurationMs,
     panelAnimationsActive,
   ]);
+
+  // Switch footer labels to their short variants, in give-way order, when
+  // the controls overflow even with every label squished to its floor.
+  // Otherwise the overflow scrolls the runtime mode out of view. The footer's
+  // width moves with the send actions, and its labels with the model and
+  // traits, so watch both the box and its text.
+  const composerFooterLabelStageRef = useRef(0);
+  const composerFooterStageFloorRef = useRef<{ stage: number; rowWidth: number } | null>(null);
+  useLayoutEffect(() => {
+    const container = composerFooterControlsRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      if (container.clientWidth === 0) return;
+      // The width breakpoints guess when full labels stop fitting; running
+      // actions or long names can beat them. A full-label row that overflows
+      // goes compact until the form grows past the width where it overflowed.
+      const composerForm = composerFormRef.current;
+      if (
+        composerForm &&
+        container.parentElement?.dataset.chatComposerFooterCompact === "false" &&
+        container.scrollWidth > container.clientWidth + 1
+      ) {
+        composerFooterOverflowWidthRef.current = composerForm.clientWidth;
+        setIsComposerFooterCompact(true);
+        return;
+      }
+      // On two rows the actions have a row of their own, so nothing there makes
+      // room in the controls row. Counting it would let a control bounce between
+      // the rows forever.
+      const actions =
+        container.parentElement?.dataset.chatComposerFooterRows === "2"
+          ? null
+          : container.parentElement?.querySelector<HTMLElement>(
+              '[data-chat-composer-actions="right"]',
+            );
+      const currentStage = composerFooterLabelStageRef.current;
+      const measuredStage = resolveComposerFooterLabelStage({
+        ...measureComposerFooterControls(container, actions ?? null),
+        stage: currentStage,
+      });
+      composerFooterStageFloorRef.current = resolveComposerFooterStageFloor({
+        floor: composerFooterStageFloorRef.current,
+        measuredStage,
+        currentStage,
+        rowWidth: container.clientWidth,
+        overflows: container.scrollWidth > container.clientWidth + 1,
+      });
+      const stage = Math.max(measuredStage, composerFooterStageFloorRef.current?.stage ?? 0);
+      if (stage === composerFooterLabelStageRef.current) return;
+      composerFooterLabelStageRef.current = stage;
+      setComposerFooterLabelStage(stage);
+    };
+    measure();
+    const resizeObserver = new ResizeObserver(measure);
+    resizeObserver.observe(container);
+    const mutationObserver = new MutationObserver(measure);
+    mutationObserver.observe(container, { childList: true, subtree: true, characterData: true });
+    document.fonts.addEventListener("loadingdone", measure);
+    return () => {
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      document.fonts.removeEventListener("loadingdone", measure);
+    };
+    // Not read inside: the footer unmounts and remounts with these, and the
+    // observers must follow the new element.
+  }, [activeThreadId, isComposerApprovalState, isComposerCollapsedMobile]);
 
   // ------------------------------------------------------------------
   // Image persist effect
@@ -3781,13 +3920,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const submitCitationAndSend = useCallback(() => {
     const intent = composerSubmissionIntentForEnter({
-      isMobileViewport,
+      isTouchPrimaryInput,
       shiftKey: false,
       modifierKey: true,
       isDraftThread: routeKind === "draft",
     });
     submitComposer(undefined, intent ?? "foreground");
-  }, [isMobileViewport, routeKind, submitComposer]);
+  }, [isTouchPrimaryInput, routeKind, submitComposer]);
   const compactThreadContext = useCallback(() => {
     if (
       compactDisabled ||
@@ -3951,7 +4090,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const submissionIntent =
       key === "Enter"
         ? composerSubmissionIntentForEnter({
-            isMobileViewport,
+            isTouchPrimaryInput,
             shiftKey: event.shiftKey,
             modifierKey: event.metaKey || event.ctrlKey,
             isDraftThread: routeKind === "draft",
@@ -4836,13 +4975,46 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setIsComposerScrollCollapsed,
   ]);
 
+  const placeholderThread = activeThread ?? props.activeThreadShell;
+  const contextPlaceholder =
+    placeholderProject === null
+      ? null
+      : composerContextPlaceholder({
+          projectTitle: placeholderProject.title,
+          threadTitle: isServerThread ? (placeholderThread?.title ?? null) : null,
+        });
   const restingHiddenBlockCount = composerControlsInStrip ? restingControlsHiddenBlockCount : 0;
   const composerControlsCompact = !composerControlsInStrip && isComposerFooterCompact;
+  // At their narrowest stage the runtime mode and the effort join the fixed
+  // actions. The controls row scrolls as a last resort, and its last items
+  // would go first.
+  const composerLabelStage =
+    composerControlsCompact && !showProviderUnavailable ? composerFooterLabelStage : 0;
+  // On two rows every control stays in its own row, at whatever variant its stage asks for.
+  const composerFooterTwoRows = isComposerFooterCompact && !isComposerResting;
+  const composerRuntimeModeInActions =
+    !composerFooterTwoRows && isComposerFooterControlInActions("mode", composerLabelStage);
+  const composerTraitsInActions =
+    !composerFooterTwoRows &&
+    providerTraitsPicker !== null &&
+    isComposerFooterControlInActions("traits", composerLabelStage);
   const restingProviderTraitsPicker = renderProviderTraitsPicker({
     ...providerTraitsPickerInput,
     size: "xs",
     hidden: composerControlsHidden || restingHiddenBlockCount > 1,
   });
+  const compactProviderTraitsPicker = composerTraitsInActions
+    ? null
+    : composerControlsCompact
+      ? renderProviderTraitsPicker({
+          ...providerTraitsPickerInput,
+          compact: true,
+          labelSize:
+            TRAITS_LABEL_SIZE_BY_VARIANT[
+              composerFooterLabelVariant("traits", composerLabelStage)
+            ] ?? "effort",
+        })
+      : providerTraitsPicker;
   const restingBlockDefs = [
     ...(providerTraitsPicker
       ? [
@@ -4850,8 +5022,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             id: "traits",
             content: (
               <>
-                <ComposerControlSeparator size={composerControlsInStrip ? "xs" : "sm"} />
-                {composerControlsInStrip ? restingProviderTraitsPicker : providerTraitsPicker}
+                {composerControlsCompact ? null : (
+                  <ComposerControlSeparator size={composerControlsInStrip ? "xs" : "sm"} />
+                )}
+                {composerControlsInStrip
+                  ? restingProviderTraitsPicker
+                  : compactProviderTraitsPicker}
               </>
             ),
           },
@@ -4865,6 +5041,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           interactionMode={interactionMode}
           runtimeMode={runtimeMode}
           size={composerControlsInStrip ? "xs" : "sm"}
+          compact={composerControlsCompact}
+          iconOnly={
+            composerFooterTwoRows && composerFooterLabelVariant("mode", composerLabelStage) === 1
+          }
+          showRuntimeMode={!composerRuntimeModeInActions}
           hidden={composerControlsHidden || restingHiddenBlockCount > 0}
           onToggleInteractionMode={toggleInteractionMode}
           onRuntimeModeChange={handleRuntimeModeChange}
@@ -4902,6 +5083,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         />
       ) : null}
       <ProviderModelPicker
+        compact={composerControlsCompact}
+        shortLabel={composerFooterLabelVariant("model", composerLabelStage) === 1}
+        tightLabel={composerFooterLabelVariant("model", composerLabelStage) === 2}
         isComposerOwned
         disabled={providerCatalogPending}
         activeInstanceId={
@@ -4922,8 +5106,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         size={composerControlsInStrip ? "xs" : "sm"}
         triggerClassName={
           composerControlsInStrip
-            ? "min-w-13 shrink text-xs! @max-[640px]/composer-surface:[&_[data-chat-provider-model-picker-label]]:w-0 @max-[640px]/composer-surface:[&_[data-chat-provider-model-picker-label]]:flex-none"
-            : "-ms-2.5"
+            ? "shrink text-xs!"
+            : composerControlsCompact
+              ? cn("-ms-1.5", composerCompactControlClassName)
+              : "-ms-2.5"
         }
         terminalOpen={terminalOpen}
         open={isComposerModelPickerOpen}
@@ -4947,65 +5133,50 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         onOpenProviderSetup={onOpenProviderSetup}
       />
 
-      {composerControlsCompact ? (
-        <CompactComposerControlsMenu
-          interactionMode={interactionMode}
-          runtimeMode={runtimeMode}
-          showInteractionModeToggle={planModeUiEnabled}
-          traitsMenuContent={providerTraitsMenuContent}
-          onToggleInteractionMode={toggleInteractionMode}
-          onRuntimeModeChange={handleRuntimeModeChange}
-        />
-      ) : (
-        <>
-          {restingBlockDefs.map((def, index) => {
-            if (!composerControlsInStrip) {
-              return <Fragment key={def.id}>{def.content}</Fragment>;
+      {restingBlockDefs.map((def, index) => {
+        if (!composerControlsInStrip) {
+          return <Fragment key={def.id}>{def.content}</Fragment>;
+        }
+        const hidden = index >= restingBlockDefs.length - restingHiddenBlockCount;
+        return (
+          <div
+            key={def.id}
+            data-resting-block={def.id}
+            aria-hidden={hidden || undefined}
+            inert={hidden || undefined}
+            className={cn(
+              "flex w-max min-w-max shrink-0 items-center gap-1",
+              hidden && "pointer-events-none invisible absolute",
+            )}
+          >
+            {def.content}
+          </div>
+        );
+      })}
+      {composerControlsInStrip ? (
+        <div
+          data-resting-controls-overflow
+          aria-hidden={hiddenRestingBlockIds.length === 0 || undefined}
+          inert={hiddenRestingBlockIds.length === 0 || undefined}
+          className={cn(
+            "min-w-0 shrink-0",
+            hiddenRestingBlockIds.length === 0 && "pointer-events-none invisible absolute",
+          )}
+        >
+          <CompactComposerControlsMenu
+            interactionMode={interactionMode}
+            runtimeMode={runtimeMode}
+            size="xs"
+            hidden={composerControlsHidden || hiddenRestingBlockIds.length === 0}
+            showInteractionModeToggle={planModeUiEnabled && hiddenRestingBlockIds.includes("mode")}
+            traitsMenuContent={
+              hiddenRestingBlockIds.includes("traits") ? providerTraitsMenuContent : undefined
             }
-            const hidden = index >= restingBlockDefs.length - restingHiddenBlockCount;
-            return (
-              <div
-                key={def.id}
-                data-resting-block={def.id}
-                aria-hidden={hidden || undefined}
-                inert={hidden || undefined}
-                className={cn(
-                  "flex w-max min-w-max shrink-0 items-center gap-1",
-                  hidden && "pointer-events-none invisible absolute",
-                )}
-              >
-                {def.content}
-              </div>
-            );
-          })}
-          {composerControlsInStrip ? (
-            <div
-              data-resting-controls-overflow
-              aria-hidden={hiddenRestingBlockIds.length === 0 || undefined}
-              inert={hiddenRestingBlockIds.length === 0 || undefined}
-              className={cn(
-                "min-w-0 shrink-0",
-                hiddenRestingBlockIds.length === 0 && "pointer-events-none invisible absolute",
-              )}
-            >
-              <CompactComposerControlsMenu
-                interactionMode={interactionMode}
-                runtimeMode={runtimeMode}
-                size="xs"
-                hidden={composerControlsHidden || hiddenRestingBlockIds.length === 0}
-                showInteractionModeToggle={
-                  planModeUiEnabled && hiddenRestingBlockIds.includes("mode")
-                }
-                traitsMenuContent={
-                  hiddenRestingBlockIds.includes("traits") ? providerTraitsMenuContent : undefined
-                }
-                onToggleInteractionMode={toggleInteractionMode}
-                onRuntimeModeChange={handleRuntimeModeChange}
-              />
-            </div>
-          ) : null}
-        </>
-      )}
+            onToggleInteractionMode={toggleInteractionMode}
+            onRuntimeModeChange={handleRuntimeModeChange}
+          />
+        </div>
+      ) : null}
     </>
   );
   const showTasksTab =
@@ -5618,6 +5789,50 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const handleInterruptPrimaryAction = useCallback(() => {
     void onInterrupt();
   }, [onInterrupt]);
+
+  // Escape stops a running turn — the keyboard equivalent of the stop button.
+  //
+  // Deliberately narrow. An earlier version listened on `window` and fired on
+  // any unclaimed Escape, so a reflexive Esc with nothing open ended the turn.
+  // Three guards make it an intentional act: focus must already be inside the
+  // composer, it takes two presses inside a short window, and an IME
+  // composition cancel never counts. The arming press does not preventDefault,
+  // so anything else that wanted that Escape still gets it.
+  const escapeArmedAtRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (phase !== "running") return;
+    const handler = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || event.repeat) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      // Cancelling an IME composition sends Escape. That is not a stop.
+      if (event.isComposing || event.keyCode === IME_COMPOSITION_KEY_CODE) return;
+      const active = document.activeElement;
+      const focusedInComposer =
+        active instanceof Node && (composerFormRef.current?.contains(active) ?? false);
+      if (!focusedInComposer) return;
+
+      const armedAt = escapeArmedAtRef.current;
+      const now = Date.now();
+      if (armedAt !== null && now - armedAt <= ESCAPE_STOP_CONFIRM_MS) {
+        escapeArmedAtRef.current = null;
+        event.preventDefault();
+        void onInterrupt();
+        return;
+      }
+      escapeArmedAtRef.current = now;
+      toastManager.add({
+        type: "info",
+        title: "Press Esc again to stop",
+        timeout: ESCAPE_STOP_CONFIRM_MS,
+      });
+    };
+    window.addEventListener("keydown", handler);
+    return () => {
+      window.removeEventListener("keydown", handler);
+      escapeArmedAtRef.current = null;
+    };
+  }, [phase, onInterrupt]);
+
   const handleImplementPlanInNewThreadPrimaryAction = useCallback(() => {
     void onImplementPlanInNewThread();
   }, [onImplementPlanInNewThread]);
@@ -5980,7 +6195,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             restingControlsHost,
           )
         : null}
-      <ComposerBanner.Dock>
+      <ComposerBanner.Dock reserve={!isComposerCollapsedMobile}>
         <ComposerBanner.Column>
           <ComposerBannerStack
             key={activeThreadId}
@@ -6693,16 +6908,36 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         : activePendingProgress
                           ? isChoiceOnlyPendingQuestion
                             ? "Choose an option above"
-                            : "Type your own answer, or leave this blank to use the selected option"
+                            : (contextPlaceholder ??
+                              "Type your own answer, or leave this blank to use the selected option")
                           : showPlanFollowUpPrompt && activeProposedPlan
                             ? "Add feedback to refine the plan, or leave this blank to implement it"
                             : projectSelectionRequired
                               ? "Choose a project above to start a thread"
                               : showProviderUnavailable
                                 ? "Enable a provider in Settings to send a message"
-                                : phase === "disconnected"
-                                  ? DISCONNECTED_COMPOSER_PLACEHOLDER
-                                  : "Ask anything, @tag files/folders, $use skills, or / for commands"
+                                : (contextPlaceholder ??
+                                  (phase === "disconnected"
+                                    ? DISCONNECTED_COMPOSER_PLACEHOLDER
+                                    : "Ask anything, @tag files/folders, $use skills, or / for commands"))
+                    }
+                    placeholderContent={
+                      contextPlaceholder !== null &&
+                      placeholderProject !== null &&
+                      !isComposerApprovalState &&
+                      !isChoiceOnlyPendingQuestion &&
+                      !(showPlanFollowUpPrompt && activeProposedPlan) &&
+                      !projectSelectionRequired &&
+                      !showProviderUnavailable ? (
+                        // Two lines at most, so a long branch or title never grows the composer.
+                        <span className="line-clamp-2">
+                          <ProjectFavicon
+                            project={placeholderProject}
+                            className="me-1.5 inline-block size-4 align-[-0.2em]"
+                          />
+                          {contextPlaceholder}
+                        </span>
+                      ) : undefined
                     }
                     disabled={
                       isConnecting ||
@@ -6754,10 +6989,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               <div
                 data-chat-composer-footer="true"
                 data-chat-composer-footer-compact={isComposerFooterCompact ? "true" : "false"}
+                data-chat-composer-footer-rows={composerFooterTwoRows ? "2" : "1"}
                 className={cn(
                   "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-3 pb-3 sm:px-4 sm:pb-4",
                   pendingUserInputs.length > 0 && "pt-2",
                   isComposerFooterCompact ? "gap-1.5" : "gap-2 sm:gap-0",
+                  // A narrow footer splits in two: the model, effort, and mode get
+                  // a row of their own, so their labels never clip, and the
+                  // actions sit below.
+                  composerFooterTwoRows && "flex-wrap gap-y-2",
                   showMobilePendingAnswerActions && "hidden sm:flex",
                   isComposerResting &&
                     "absolute bottom-px right-px z-10 h-12 w-auto gap-0 py-0 sm:gap-0 sm:py-0",
@@ -6769,6 +7009,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   data-chat-composer-footer-controls="true"
                   className={cn(
                     "-m-1 -ms-3.5 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 ps-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                    // Below this width the three labels and their chevrons no
+                    // longer fit together. The chevrons are pure affordance
+                    // and identical on all three, so they go first and the
+                    // labels keep their characters. The threshold is in rem so
+                    // it tracks the user's UI font size.
+                    "@max-[20rem]/composer-surface:[&_svg[data-composer-control-chevron]]:hidden",
+                    composerFooterTwoRows && "basis-full",
                     isComposerResting && "hidden",
                   )}
                 >
@@ -6782,8 +7029,32 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   data-chat-composer-primary-actions-compact={
                     isComposerPrimaryActionsCompact ? "true" : "false"
                   }
-                  className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
+                  className={cn(
+                    "flex shrink-0 flex-nowrap items-center justify-end gap-2",
+                    composerFooterTwoRows && "ms-auto",
+                    // Same rule as the controls row, so a control keeps its
+                    // width when it moves between the two.
+                    "@max-[20rem]/composer-surface:[&_svg[data-composer-control-chevron]]:hidden",
+                  )}
                 >
+                  {composerTraitsInActions
+                    ? renderProviderTraitsPicker({
+                        ...providerTraitsPickerInput,
+                        compact: true,
+                        labelSize: "effort",
+                      })
+                    : null}
+                  {composerRuntimeModeInActions ? (
+                    <ComposerFooterModeControls
+                      showInteractionModeToggle={false}
+                      interactionMode={interactionMode}
+                      runtimeMode={runtimeMode}
+                      compact
+                      iconOnly
+                      onToggleInteractionMode={toggleInteractionMode}
+                      onRuntimeModeChange={handleRuntimeModeChange}
+                    />
+                  ) : null}
                   {showComposerAttachAction ? (
                     <>
                       <input

@@ -107,6 +107,10 @@ interface FilePreviewPanelProps {
   onPendingChange: (relativePath: string, pending: boolean) => void;
   selectedFilePending: boolean;
   workspaceMutationId: string | null;
+  // Bumped by the parent when a turn changed the open file and it is not being
+  // edited; the panel re-reads the file so agent edits show without a manual
+  // refresh. The token folds in the path so switching files re-triggers.
+  externalRefreshToken?: string | null;
 }
 
 const FILE_EXPLORER_STORAGE_KEY = "t3code.fileExplorerOpen";
@@ -919,6 +923,7 @@ export default function FilePreviewPanel({
   onPendingChange,
   selectedFilePending,
   workspaceMutationId,
+  externalRefreshToken,
 }: FilePreviewPanelProps) {
   const { resolvedTheme } = useTheme();
   const wordWrap = useClientSettings((settings) => settings.wordWrap);
@@ -947,6 +952,16 @@ export default function FilePreviewPanel({
     relativePath,
     attachment === undefined && !isMedia && !isPdf,
   );
+  // Re-read once per external-change token so a turn's edits to the open file
+  // surface without a manual refresh. The token already encodes path + turn, so
+  // a ref dedupes repeat renders of the same token.
+  const lastExternalRefreshRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (externalRefreshToken == null || isMedia || isPdf) return;
+    if (lastExternalRefreshRef.current === externalRefreshToken) return;
+    lastExternalRefreshRef.current = externalRefreshToken;
+    file.refresh();
+  }, [externalRefreshToken, isMedia, isPdf, file.refresh]);
   const [explorerOpen, setExplorerOpen] = useState(initialExplorerOpen);
   const showExplorer = shouldShowFileExplorer({
     relativePath,

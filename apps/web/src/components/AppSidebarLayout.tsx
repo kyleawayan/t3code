@@ -101,11 +101,11 @@ function SidebarControl() {
   }, [keybindings, toggleSidebar]);
 
   return (
-    // The right-side layout controls carry mr-px (border compensation inside
-    // the panel), so the trigger mirrors it: both clusters sit one extra pixel
-    // off their edge and the titlebar reads symmetric.
+    // Anchored to the window edge rather than the layout-control anchor, which
+    // is pushed inboard of the open sidebar: the trigger belongs on the sidebar
+    // it toggles, and stays put when the sidebar collapses out from under it.
     <div
-      className="pointer-events-none fixed left-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-50 ml-px flex h-[var(--workspace-topbar-height)] items-center"
+      className="pointer-events-none fixed right-[var(--workspace-window-edge-right)] top-[var(--workspace-controls-top)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center"
       data-sidebar-control=""
     >
       <Tooltip>
@@ -227,11 +227,12 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         style={sidebarProviderStyle}
       >
         <ProjectProjectionRetention />
+        {children}
         <Sidebar
-          side="left"
+          side="right"
           collapsible="offcanvas"
           data-app-sidebar=""
-          className="border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
+          className="border-l border-sidebar-border bg-sidebar text-sidebar-foreground"
           resizable={{
             maxWidth: sidebarMaximumWidth,
             minWidth: THREAD_SIDEBAR_MIN_WIDTH,
@@ -254,7 +255,6 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           )}
           <SidebarRail onDoubleClick={resetSidebarWidth} />
         </Sidebar>
-        {children}
         <SidebarControl />
       </SidebarProvider>
     </PanelAnimationSuppressionProvider>

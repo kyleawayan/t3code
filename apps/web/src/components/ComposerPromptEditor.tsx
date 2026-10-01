@@ -67,6 +67,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 
 import {
@@ -871,6 +872,8 @@ interface ComposerPromptEditorProps {
   skills: ReadonlyArray<ServerProviderSkill>;
   disabled: boolean;
   placeholder: string;
+  /** Shown in place of `placeholder`, which stays the accessible text. */
+  placeholderContent?: ReactNode;
   containerClassName?: string;
   className?: string;
   placeholderClassName?: string;
@@ -1626,6 +1629,7 @@ function ComposerPromptEditorInner({
   skills,
   disabled,
   placeholder,
+  placeholderContent,
   containerClassName,
   className,
   placeholderClassName,
@@ -2037,7 +2041,7 @@ function ComposerPromptEditorInner({
                     placeholderClassName,
                   )}
                 >
-                  {placeholder}
+                  {placeholderContent ?? placeholder}
                 </div>
               )
             }
@@ -2071,6 +2075,7 @@ export function ComposerPromptEditor({
   skills,
   disabled,
   placeholder,
+  placeholderContent,
   containerClassName,
   className,
   placeholderClassName,
@@ -2118,6 +2123,7 @@ export function ComposerPromptEditor({
           skills={skills}
           disabled={disabled}
           placeholder={placeholder}
+          placeholderContent={placeholderContent}
           {...(containerClassName ? { containerClassName } : {})}
           onChange={onChange}
           {...(onVisibleSelectionChange ? { onVisibleSelectionChange } : {})}

@@ -32,10 +32,13 @@ import { useComposerDraftStore, DraftId } from "../../composerDraftStore";
 import { getProviderModelCapabilities } from "../../providerModels";
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
+import { SquishText, SquishTextProbe } from "../ui/squish-text";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   ComposerControl,
   ComposerControlChevron,
   ComposerControlIcon,
+  composerCompactControlClassName,
   type ComposerControlSize,
 } from "./ComposerControl";
 import { useComposerMenuProps } from "./composerEventScope";
@@ -536,6 +539,39 @@ export function buildTraitsTriggerDisplay(input: {
   return { label: labels.join(" · "), showFastModeIcon: fastModeEnabled };
 }
 
+const TRAIT_LABEL_ABBREVIATIONS = {
+  short: { "Extra High": "XHigh", Medium: "Med" },
+  tight: { "Extra High": "XH", High: "Hi", Medium: "Med", Low: "Lo" },
+} satisfies Record<string, Record<string, string>>;
+
+/** How much of the traits label a tight footer can show. */
+export type TraitsLabelSize = "full" | "short" | "tight" | "effort";
+
+/**
+ * The traits label for a tight footer: effort names abbreviate and the
+ * separators close up ("Extra High · 1M" → "XHigh·1M", tighter "XH·1M"). Every
+ * trait keeps its own token, so the context window still reads in full.
+ */
+export function compactTraitsTriggerLabel(
+  label: string,
+  size: "short" | "tight" = "short",
+): string {
+  const abbreviations: Record<string, string> = TRAIT_LABEL_ABBREVIATIONS[size];
+  return label
+    .split(" · ")
+    .map((part) => abbreviations[part] ?? part)
+    .join("·");
+}
+
+/**
+ * The narrowest traits label: only the effort, tightened ("Extra High" →
+ * "XH"), so the level still reads at a glance. Without an effort trait the
+ * first trait stands in.
+ */
+export function effortOnlyTraitsLabel(label: string, effortLabel: string | null): string {
+  return compactTraitsTriggerLabel(effortLabel ?? label.split(" · ")[0] ?? label, "tight");
+}
+
 export const TraitsPicker = memo(function TraitsPicker({
   provider,
   instanceId,
@@ -550,11 +586,23 @@ export const TraitsPicker = memo(function TraitsPicker({
   triggerClassName,
   isComposerOwned,
   size = "sm",
+  compact = false,
+  labelSize = "full",
   hidden = false,
   ...persistence
 }: TraitsMenuContentProps &
   TraitsPersistence & {
     size?: ComposerControlSize;
+    /**
+     * Narrow footers trim the trigger's padding and let its label squish so
+     * the traits stay visible next to the model picker.
+     */
+    compact?: boolean;
+    /**
+     * A tight compact footer abbreviates the traits (see
+     * compactTraitsTriggerLabel), and the tightest shows only the effort.
+     */
+    labelSize?: TraitsLabelSize;
     hidden?: boolean;
   }) {
   const composerFloatingLayerProps = useComposerMenuProps();
@@ -589,6 +637,14 @@ export const TraitsPicker = memo(function TraitsPicker({
     primarySelectDescriptorId: primarySelectDescriptor?.id ?? null,
     ultrathinkPromptControlled,
   });
+  const effortLabel = effortOnlyTraitsLabel(
+    triggerLabel,
+    ultrathinkPromptControlled
+      ? "Ultrathink"
+      : primarySelectDescriptor
+        ? (getProviderOptionCurrentLabel(primarySelectDescriptor) ?? null)
+        : null,
+  );
   const fastModeIcon = showFastModeIcon ? (
     <>
       <ComposerControlIcon
@@ -620,25 +676,50 @@ export const TraitsPicker = memo(function TraitsPicker({
         render={
           <ComposerControl
             data-composer-shortcut={isComposerOwned ? "composer.effort" : undefined}
+            aria-label={labelSize === "effort" ? `Effort: ${triggerLabel}` : undefined}
             variant={triggerVariant ?? "ghost"}
             size={size}
             className={cn(
-              isCodexStyle
-                ? "min-w-0 max-w-40 shrink justify-start overflow-hidden whitespace-nowrap sm:max-w-48"
+              isCodexStyle || compact
+                ? // min-w-min holds the squished label at its minimum scale.
+                  "min-w-min max-w-40 shrink justify-start overflow-hidden whitespace-nowrap sm:max-w-48"
                 : "shrink-0 whitespace-nowrap",
+              compact && composerCompactControlClassName,
               triggerClassName,
             )}
           />
         }
       >
-        {isCodexStyle ? (
-          // The label truncates itself; clipping the wrapper too would cut off
+        {isCodexStyle || compact ? (
+          // The label squishes itself; clipping the wrapper too would cut off
           // the chevron, whose negative end margin overhangs the wrapper edge.
           <span
-            className={cn("flex min-w-0 w-full items-center", size === "xs" ? "gap-1" : "gap-1.5")}
+            className={cn(
+              "flex min-w-0 w-full items-center",
+              size === "xs" || compact ? "gap-1" : "gap-1.5",
+            )}
           >
             {fastModeIcon}
-            <span className="min-w-0 truncate">{triggerLabel}</span>
+            <Tooltip>
+              {labelSize === "effort" ? (
+                <TooltipTrigger
+                  render={
+                    <span data-composer-footer-label-slot="" className="flex whitespace-nowrap" />
+                  }
+                >
+                  {effortLabel}
+                </TooltipTrigger>
+              ) : (
+                <TooltipTrigger render={<span className="flex min-w-0" />}>
+                  <SquishText>
+                    {labelSize === "full"
+                      ? triggerLabel
+                      : compactTraitsTriggerLabel(triggerLabel, labelSize)}
+                  </SquishText>
+                </TooltipTrigger>
+              )}
+              <TooltipPopup side="top">{triggerLabel}</TooltipPopup>
+            </Tooltip>
             <ComposerControlChevron size={size} />
           </span>
         ) : (
@@ -648,6 +729,17 @@ export const TraitsPicker = memo(function TraitsPicker({
             <ComposerControlChevron size={size} />
           </>
         )}
+        {compact ? (
+          <SquishTextProbe
+            data-composer-footer-label="traits"
+            variants={[
+              triggerLabel,
+              compactTraitsTriggerLabel(triggerLabel, "short"),
+              compactTraitsTriggerLabel(triggerLabel, "tight"),
+            ]}
+            fixedVariant={<span className="whitespace-nowrap">{effortLabel}</span>}
+          />
+        ) : null}
       </MenuTrigger>
       <MenuPopup align="start" {...(isComposerOwned ? composerFloatingLayerProps : {})}>
         <TraitsMenuContent

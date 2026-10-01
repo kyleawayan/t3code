@@ -108,6 +108,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --workspace-controls-top: 0px;
   --workspace-controls-left: calc(env(safe-area-inset-left) + 0.75rem);
   --workspace-controls-right: calc(env(safe-area-inset-right) + 0.75rem);
+  --workspace-window-edge-right: calc(env(safe-area-inset-right) + 0.75rem);
   --workspace-native-controls-inset: 0px;
   --workspace-titlebar-control-size: 1.75rem;
   --workspace-titlebar-control-gap: 0.75rem;
@@ -129,9 +130,20 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --workspace-controls-right: calc(
     100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px) + 0.75rem
   );
+  --workspace-window-edge-right: calc(
+    100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px) + 0.75rem
+  );
   --workspace-native-controls-inset: calc(
     100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px) + 0.75rem
   );
+}
+
+/* The main sidebar docks on the right, and the titlebar control cluster is
+   viewport-anchored so it holds still while the header shrinks behind the right
+   panel. Push that anchor inboard of the open sidebar, otherwise the controls
+   land on top of it and the space the header reserves for them reads as a gap. */
+[data-slot="sidebar-wrapper"][data-sidebar-state="expanded"] {
+  --workspace-controls-right: calc(var(--workspace-window-edge-right) + var(--sidebar-width));
 }
 
 /* The font tokens are declared outside the inline theme so utilities reference
@@ -150,6 +162,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      compositor updates discrete frames instead of every vsync. */
   --animate-status-pulse: status-pulse 2s infinite;
   --animate-status-ping: status-ping 2s infinite;
+  /* Liveness fine track: a fast ease-out-expo rise to full, a brief touch at
+     100, then the loop restart cuts instantly back to empty. Runs only while
+     the turn is generating (paused otherwise), so it reads as an active
+     heartbeat that reaches 100 each beat rather than a bar that resets early. */
+  --animate-turn-fine-fill: turn-fine-fill 0.45s cubic-bezier(0.16, 1, 0.3, 1) infinite;
   --color-warning-foreground: var(--warning-foreground);
   --color-warning: var(--warning);
   --color-warning-surface: var(--warning-surface);
@@ -227,6 +244,19 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     }
     100% {
       opacity: 1;
+    }
+  }
+  @keyframes turn-fine-fill {
+    0% {
+      width: 4%;
+    }
+    /* Reach full early, hold the last sliver of the cycle (~80ms), then the
+       loop wraps instantly back to empty — a brief touch at 100, not a rest. */
+    90% {
+      width: 100%;
+    }
+    100% {
+      width: 100%;
     }
   }
   @keyframes status-pulse {

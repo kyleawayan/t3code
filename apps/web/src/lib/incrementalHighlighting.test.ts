@@ -1,3 +1,4 @@
+import "./diffRendering";
 import { toHtml } from "hast-util-to-html";
 import { getSharedHighlighter } from "@pierre/diffs";
 import { describe, expect, it } from "vite-plus/test";
@@ -20,7 +21,7 @@ const samples = {
 
 const highlighterPromise = getSharedHighlighter({
   langs: Object.keys(samples) as Array<keyof typeof samples>,
-  themes: ["pierre-dark", "pierre-light"],
+  themes: ["xcode-hc-dark", "xcode-hc-light"],
   preferredHighlighter: "shiki-wasm",
 });
 
@@ -29,7 +30,7 @@ describe("incremental code highlighting", () => {
     "matches full HTML at every streaming prefix in %s",
     async (language, code) => {
       const highlighter = await highlighterPromise;
-      for (const theme of ["pierre-dark", "pierre-light"] as const) {
+      for (const theme of ["xcode-hc-dark", "xcode-hc-light"] as const) {
         const highlight = createIncrementalHighlightedDocument(highlighter, language, theme);
         for (let end = 0; end <= code.length; end++) {
           const text = code.slice(0, end);
@@ -46,7 +47,7 @@ describe("incremental code highlighting", () => {
     const highlight = createIncrementalHighlightedDocument(
       highlighter,
       "typescript",
-      "pierre-dark",
+      "xcode-hc-dark",
     );
     const inputs = [
       "/* open\ncomment\n",
@@ -59,7 +60,7 @@ describe("incremental code highlighting", () => {
     ];
     for (const text of inputs) {
       expect(toHtml(highlight(text))).toBe(
-        highlighter.codeToHtml(text, { lang: "typescript", theme: "pierre-dark" }),
+        highlighter.codeToHtml(text, { lang: "typescript", theme: "xcode-hc-dark" }),
       );
     }
   });
@@ -68,10 +69,14 @@ describe("incremental code highlighting", () => {
     "preserves %s without requesting grammar state",
     async (language) => {
       const highlighter = await highlighterPromise;
-      const highlight = createIncrementalHighlightedDocument(highlighter, language, "pierre-dark");
+      const highlight = createIncrementalHighlightedDocument(
+        highlighter,
+        language,
+        "xcode-hc-dark",
+      );
       for (const text of ["plain\ntext", "\u001b[31mred\ncontinued", "\n"]) {
         expect(toHtml(highlight(text))).toBe(
-          highlighter.codeToHtml(text, { lang: language, theme: "pierre-dark" }),
+          highlighter.codeToHtml(text, { lang: language, theme: "xcode-hc-dark" }),
         );
       }
     },
@@ -82,13 +87,13 @@ describe("incremental code highlighting", () => {
     const highlight = createIncrementalHighlightedDocument(
       highlighter,
       "typescript",
-      "pierre-dark",
+      "xcode-hc-dark",
     );
     const code = "/* multi\r\nline */\r\nconst x = 1;\r\n";
     for (let end = 0; end <= code.length; end++) {
       const text = code.slice(0, end);
       expect(toHtml(highlight(text))).toBe(
-        highlighter.codeToHtml(text, { lang: "typescript", theme: "pierre-dark" }),
+        highlighter.codeToHtml(text, { lang: "typescript", theme: "xcode-hc-dark" }),
       );
     }
   });

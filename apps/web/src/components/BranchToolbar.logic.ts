@@ -82,6 +82,64 @@ export function resolveContextStripLabelsCompact(input: {
     : input.neededWidth > input.availableWidth;
 }
 
+// The composer's layout needs a pixel of slack before it brings a block back
+// out of overflow (RESTING_CONTROLS_SLACK_PX), so the natural reservation
+// carries it too.
+const CONTEXT_STRIP_HOST_RESERVE_SLACK_PX = 1;
+
+/**
+ * Share the context strip between its squishable labels and the host of the
+ * resting composer controls.
+ *
+ * Labels give up width first: they squish toward their minimum scale so the
+ * host can reserve the controls' natural width. Once the labels are at their
+ * floor, the host shrinks toward the controls' minimum and the composer moves
+ * blocks into its overflow menu. Next the collapsible labels (workspace,
+ * environment) collapse to icons, then the controls hide. The pinned labels
+ * (project, branch) never collapse: when even their floors overflow the strip,
+ * the strip is `squeezed` and they clip below their minimum scale instead.
+ *
+ * Every input is a natural, minimum, or fixed chrome width, never something
+ * the composer hid on its last pass, so the two layouts cannot chase each
+ * other.
+ */
+export function resolveContextStripLayout(input: {
+  compact: boolean;
+  availableWidth: number;
+  /** Everything in the strip except the host, at its laid-out width, gaps included. */
+  contentWidth: number;
+  /** The part of `contentWidth` taken by labels as laid out now. */
+  labelsRenderedWidth: number;
+  /** Combined width of the collapsible labels at their minimum scale. */
+  collapsibleLabelsMinimumWidth: number;
+  /** Combined width of the pinned labels at their minimum scale. */
+  pinnedLabelsMinimumWidth: number;
+  /** Zero when the host holds no controls. */
+  hostNaturalWidth: number;
+  hostMinimumWidth: number;
+}): { compact: boolean; squeezed: boolean; hostReserveWidth: number } {
+  const pinnedWidth =
+    input.contentWidth - input.labelsRenderedWidth + input.pinnedLabelsMinimumWidth;
+  const compact = resolveContextStripLabelsCompact({
+    compact: input.compact,
+    neededWidth: pinnedWidth + input.collapsibleLabelsMinimumWidth + input.hostMinimumWidth,
+    availableWidth: input.availableWidth,
+  });
+  const squeezed = pinnedWidth > input.availableWidth;
+  if (input.hostNaturalWidth <= 0) return { compact, squeezed, hostReserveWidth: 0 };
+  // Reserve against the labels as rendered now. A compact flip re-renders
+  // the strip, and the next pass reserves against the new labels.
+  const othersWidth = pinnedWidth + (input.compact ? 0 : input.collapsibleLabelsMinimumWidth);
+  const hostReserveWidth = Math.max(
+    0,
+    Math.min(
+      Math.ceil(input.hostNaturalWidth) + CONTEXT_STRIP_HOST_RESERVE_SLACK_PX,
+      Math.floor(input.availableWidth - othersWidth),
+    ),
+  );
+  return { compact, squeezed, hostReserveWidth };
+}
+
 export function resolveEnvModeLabel(mode: EnvMode): string {
   return mode === "worktree" ? "New worktree" : "Current checkout";
 }

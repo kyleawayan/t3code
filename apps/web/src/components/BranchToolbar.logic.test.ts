@@ -12,6 +12,7 @@ import {
   resolveBranchTriggerLabel,
   resolveBranchToolbarPrBranch,
   resolveBranchToolbarValue,
+  resolveContextStripLayout,
   resolveLockedWorkspaceLabel,
   resolveLocalCheckoutBranchMismatch,
   resolvePreviousWorktreeLabel,
@@ -420,6 +421,101 @@ describe("shouldShowEnvironmentIndicator", () => {
         canPickEnvironment: false,
       }),
     ).toBe(false);
+  });
+});
+
+describe("resolveContextStripLayout", () => {
+  // 120px of icons, padding, and gaps. At their minimum scale the workspace
+  // label (collapsible) squishes to 60px and the project and branch names
+  // (pinned) to 80px together. The resting controls want 250px and still show
+  // in 130px with every block in overflow.
+  const chromeWidth = 120;
+  function layout(input: {
+    availableWidth: number;
+    compact?: boolean;
+    labelsRenderedWidth?: number;
+    hostNaturalWidth?: number;
+    hostMinimumWidth?: number;
+  }) {
+    const labelsRenderedWidth = input.labelsRenderedWidth ?? (input.compact ? 90 : 200);
+    return resolveContextStripLayout({
+      compact: input.compact ?? false,
+      availableWidth: input.availableWidth,
+      contentWidth: chromeWidth + labelsRenderedWidth,
+      labelsRenderedWidth,
+      collapsibleLabelsMinimumWidth: 60,
+      pinnedLabelsMinimumWidth: 80,
+      hostNaturalWidth: input.hostNaturalWidth ?? 250,
+      hostMinimumWidth: input.hostMinimumWidth ?? 130,
+    });
+  }
+
+  it("squishes the labels so the controls keep their natural width", () => {
+    // 520 - 120 - 251 leaves the labels 149px, above their 140px floor.
+    expect(layout({ availableWidth: 520 })).toEqual({
+      compact: false,
+      squeezed: false,
+      hostReserveWidth: 251,
+    });
+  });
+
+  it("shrinks the controls toward their minimum once the labels reach their floor", () => {
+    expect(layout({ availableWidth: 420 })).toEqual({
+      compact: false,
+      squeezed: false,
+      hostReserveWidth: 160,
+    });
+  });
+
+  it("collapses the workspace label when every floor would hide the controls", () => {
+    // 120 + 80 + 60 + 130 = 390 no longer fits in 380.
+    expect(layout({ availableWidth: 380 }).compact).toBe(true);
+    // The pinned names keep their floor; the controls get the rest.
+    expect(layout({ availableWidth: 380, compact: true })).toEqual({
+      compact: true,
+      squeezed: false,
+      hostReserveWidth: 180,
+    });
+  });
+
+  it("gives up the controls before the project and branch names", () => {
+    // 250 - 120 - 80 leaves 50px, below the controls' 130px minimum, so the
+    // composer hides them while the names hold their minimum scale.
+    expect(layout({ availableWidth: 250, compact: true })).toEqual({
+      compact: true,
+      squeezed: false,
+      hostReserveWidth: 50,
+    });
+  });
+
+  it("squeezes the pinned names below their floor only when nothing else is left", () => {
+    expect(layout({ availableWidth: 190, compact: true })).toEqual({
+      compact: true,
+      squeezed: true,
+      hostReserveWidth: 0,
+    });
+  });
+
+  it("collapses without controls only when every label floor overflows the strip", () => {
+    const withoutControls = { hostNaturalWidth: 0, hostMinimumWidth: 0 };
+    expect(layout({ availableWidth: 260, ...withoutControls })).toEqual({
+      compact: false,
+      squeezed: false,
+      hostReserveWidth: 0,
+    });
+    expect(layout({ availableWidth: 250, ...withoutControls }).compact).toBe(true);
+  });
+
+  it("gives the same answer however squished the labels are rendered", () => {
+    // The reservation squishes the labels, so it must not feed on how
+    // squished they already are, or the strip and composer chase each other.
+    for (const labelsRenderedWidth of [140, 149, 200, 260]) {
+      expect(layout({ availableWidth: 420, labelsRenderedWidth })).toEqual({
+        compact: false,
+        squeezed: false,
+        hostReserveWidth: 160,
+      });
+    }
   });
 });
 

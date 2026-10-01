@@ -1,7 +1,12 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type { ChatAttachment, ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
+import type {
+  ChatAttachment,
+  ModelSelection,
+  ProviderInstanceId,
+  ThreadRecapSummary,
+} from "@t3tools/contracts";
 import { TextGenerationError } from "@t3tools/contracts";
 
 import * as ProviderInstanceRegistry from "../provider/Services/ProviderInstanceRegistry.ts";
@@ -77,6 +82,28 @@ export interface ThreadTitleGenerationResult {
   needsRefinement?: boolean | undefined;
 }
 
+export interface ThreadRecapGenerationInput {
+  cwd: string;
+  /** Thread history formatted by `formatThreadRecapContext`. */
+  message: string;
+  /** The thread's title, which can name the issue or topic the history never repeats. */
+  title?: string | undefined;
+  /** Passed back so unchanged steps keep their ids and wording. */
+  previousSummary?: ThreadRecapSummary | null | undefined;
+  /** Linear issue IDs found in the thread. The model may only reference these. */
+  linearIssueIds: ReadonlyArray<string>;
+  /** What the user asked for in turns they interrupted, oldest first. */
+  interruptedRequests?: ReadonlyArray<string> | undefined;
+  /** What model and provider to use for generation. */
+  modelSelection: ModelSelection;
+}
+
+/** The model-written part of a recap. The caller adds issue IDs, coverage, and timestamp. */
+export type ThreadRecapGenerationResult = Pick<
+  ThreadRecapSummary,
+  "goal" | "done" | "now" | "next" | "blocked" | "steps" | "links" | "linearWorkspace"
+>;
+
 /**
  * TextGeneration - Service tag for commit and change request text generation.
  */
@@ -108,6 +135,11 @@ export class TextGeneration extends Context.Service<
     readonly generateThreadTitle: (
       input: ThreadTitleGenerationInput,
     ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
+
+    /** Summarize where a thread stands so the user can resume it after a break. */
+    readonly generateThreadRecap: (
+      input: ThreadRecapGenerationInput,
+    ) => Effect.Effect<ThreadRecapGenerationResult, TextGenerationError>;
   }
 >()("t3/textGeneration/TextGeneration") {}
 
@@ -115,7 +147,8 @@ type TextGenerationOp =
   | "generateCommitMessage"
   | "generatePrContent"
   | "generateBranchName"
-  | "generateThreadTitle";
+  | "generateThreadTitle"
+  | "generateThreadRecap";
 
 const resolveInstance = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
@@ -167,6 +200,10 @@ export const make = Effect.gen(function* () {
             return yield* textGeneration.generateThreadTitle({ ...input, linkedContext });
           }),
         ),
+      ),
+    generateThreadRecap: (input) =>
+      resolveInstance(registry, "generateThreadRecap", input.modelSelection.instanceId).pipe(
+        Effect.flatMap((textGeneration) => textGeneration.generateThreadRecap(input)),
       ),
   });
 });

@@ -64,6 +64,9 @@ function makeFakeClaudeBinary(dir: string) {
         'if (!argv.includes("--disable-slash-commands")) {',
         '  fail("text generation must disable skills", 8);',
         "}",
+        'if (argv.includes("--allowedTools")) {',
+        '  fail("text generation must not allow any tools", 13);',
+        "}",
         'if (!argv.includes("--strict-mcp-config")) {',
         '  fail("text generation must not load configured MCP servers", 9);',
         "}",
@@ -425,6 +428,42 @@ it.layer(ClaudeTextGenerationTestLayer)("ClaudeTextGeneration", (it) => {
           });
 
           expect(generated.branch).toBe("call-script");
+        }),
+    ),
+  );
+
+  it.effect("generates recaps from the conversation alone, without tools or MCP servers", () =>
+    withFakeClaudeEnv(
+      {
+        // @effect-diagnostics-next-line preferSchemaOverJson:off
+        output: JSON.stringify({
+          structured_output: {
+            goal: "Ship the login fix",
+            done: null,
+            now: "Fixing the session refresh",
+            next: null,
+            blocked: null,
+            steps: [],
+            links: [{ label: "Issue", url: "https://linear.app/acme/issue/ENG-42" }],
+          },
+        }),
+        stdinMustContain: "Linear issues in this thread: ENG-42",
+      },
+      (textGeneration) =>
+        Effect.gen(function* () {
+          const generated = yield* textGeneration.generateThreadRecap({
+            cwd: process.cwd(),
+            message: "USER:\nFix ENG-42 https://linear.app/acme/issue/ENG-42",
+            linearIssueIds: ["ENG-42"],
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("claudeAgent"),
+              model: SYNTHETIC_CLAUDE_STANDARD_MODEL,
+            },
+          });
+
+          expect(generated.links).toEqual([
+            { label: "Issue", url: "https://linear.app/acme/issue/ENG-42" },
+          ]);
         }),
     ),
   );
