@@ -4975,7 +4975,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ? null
       : composerContextPlaceholder({
           projectTitle: placeholderProject.title,
-          branch: placeholderThread?.branch ?? null,
           threadTitle: isServerThread ? (placeholderThread?.title ?? null) : null,
         });
   const restingHiddenBlockCount = composerControlsInStrip ? restingControlsHiddenBlockCount : 0;
