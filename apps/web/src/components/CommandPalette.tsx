@@ -50,6 +50,7 @@ import {
   LinkIcon,
   MapIcon,
   MessageSquareIcon,
+  RefreshCwIcon,
   PaletteIcon,
   SettingsIcon,
   SquarePenIcon,
@@ -73,7 +74,7 @@ import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
-import { useSetThreadRecapEnabled } from "../hooks/useThreadRecap";
+import { useRefreshThreadRecap, useSetThreadRecapEnabled } from "../hooks/useThreadRecap";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { useClientSettings } from "../hooks/useSettings";
 import { useTheme } from "../hooks/useTheme";
@@ -667,6 +668,7 @@ function OpenCommandPaletteDialog(props: {
         : null;
   const openPanelPullRequestUrl = useOpenPanelPullRequestUrl(referenceThreadRef);
   const setThreadRecapEnabled = useSetThreadRecapEnabled();
+  const refreshThreadRecap = useRefreshThreadRecap();
   const activeThreadServerConfig = useServerConfigs().get(
     activeThread?.environmentId ?? ("" as EnvironmentId),
   );
@@ -1761,6 +1763,19 @@ function OpenCommandPaletteDialog(props: {
         useRightPanelStore.getState().open(threadRef, "recap");
       },
     });
+    if (recapEnabled) {
+      const baselineGeneratedAt = activeThread.recap?.summary?.generatedAt ?? null;
+      actionItems.push({
+        kind: "action",
+        value: "action:refresh-resume-recap",
+        searchTerms: [...recapSearchTerms, "refresh", "regenerate", "update"],
+        title: "Refresh resume recap",
+        icon: <RefreshCwIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await refreshThreadRecap(threadRef, baselineGeneratedAt);
+        },
+      });
+    }
   }
 
   actionItems.push({

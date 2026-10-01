@@ -122,6 +122,26 @@ export function recapStepSourceLabel(step: ThreadRecapStep): string {
   }
 }
 
+/** A refresh that never lands (server down, generation failed) stops showing after this. */
+export const RECAP_REFRESH_TIMEOUT_MS = 3 * 60 * 1000;
+
+export interface RecapRefreshRequest {
+  readonly requestedAtMs: number;
+  /** The summary's `generatedAt` when the refresh was asked for; null when there was none. */
+  readonly baselineGeneratedAt: string | null;
+}
+
+/** Still waiting on a requested refresh: no newer summary yet, and not timed out. */
+export function isRecapRefreshPending(
+  request: RecapRefreshRequest | undefined,
+  currentGeneratedAt: string | null,
+  nowMs: number,
+): boolean {
+  if (request === undefined) return false;
+  if (currentGeneratedAt !== request.baselineGeneratedAt) return false;
+  return nowMs - request.requestedAtMs < RECAP_REFRESH_TIMEOUT_MS;
+}
+
 export interface LeftOffSnapshot {
   /** This device's last visit to the thread, captured before opening it updated the stamp. */
   readonly visitedAt: string;

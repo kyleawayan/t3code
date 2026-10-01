@@ -1,11 +1,12 @@
 import type { ThreadRecapSummary } from "@t3tools/contracts";
-import { CircleIcon, GitBranchIcon, Hourglass, Link2Icon, MapPin } from "lucide-react";
+import { CircleIcon, Hourglass, Link2Icon, MapPin } from "lucide-react";
 import { memo, type ReactNode } from "react";
 
 import { useNowMinute } from "~/hooks/useNowMinute";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
-import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
+import { ProjectBranchLine } from "../ProjectBranchLine";
+import type { ProjectFaviconProject } from "../ProjectFavicon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   countRecapLinks,
@@ -26,29 +27,6 @@ interface ThreadResumeStripProps {
   whoseMove: ResumeWhoseMove;
   freshness: RecapFreshness;
   onOpenMap: () => void;
-}
-
-/** Project name stays whole; a long branch name truncates at the end. */
-function ProjectBranchLine({
-  project,
-  branch,
-}: {
-  project: ProjectFaviconProject;
-  branch: string | null;
-}) {
-  return (
-    <span className="flex h-[1lh] min-w-0 items-center gap-1.5 whitespace-nowrap">
-      <ProjectFavicon project={project} className="size-3 shrink-0" />
-      <span className="shrink-0">{project.title}</span>
-      {branch ? (
-        <>
-          <span aria-hidden>·</span>
-          <GitBranchIcon aria-hidden className="size-3 shrink-0 opacity-70" />
-          <span className="min-w-0 truncate">{branch}</span>
-        </>
-      ) : null}
-    </span>
-  );
 }
 
 const WHOSE_MOVE_CLASS: Record<ResumeWhoseMove, string> = {
@@ -150,6 +128,7 @@ function Field({
 }
 
 const ICON_CLASS = "size-3 shrink-0";
+const RECAP_DIVIDER_CLASS = "block border-t border-border/60";
 
 /**
  * "Where was I" above the composer, for every thread: project and branch,
@@ -198,14 +177,16 @@ export const ThreadResumeStrip = memo(function ThreadResumeStrip({
             </span>
           </Field>
         ) : null}
-        {projectLine}
-        {conversationField}
         {recapEnabled ? (
           <>
             <span aria-hidden className="block h-[3lh] py-0.5" />
             <span aria-hidden className="block h-[3lh]" />
           </>
         ) : null}
+        {recapEnabled ? <span aria-hidden className={RECAP_DIVIDER_CLASS} /> : null}
+        {/* Where-am-I lines stay last, next to the composer, so they never move. */}
+        {projectLine}
+        {conversationField}
       </button>
     );
   }
@@ -227,8 +208,6 @@ export const ThreadResumeStrip = memo(function ThreadResumeStrip({
         <Field label="Goal">
           <span className={GOAL_SLOT_CLASS}>{shownSummary.goal}</span>
         </Field>
-        {projectLine}
-        {conversationField}
         {/* Done steps live in the map; the strip only answers "what now". Icons and colors
             match the map: green pin for now, amber hourglass for blocked, hollow circle for next. */}
         <Field
@@ -261,6 +240,9 @@ export const ThreadResumeStrip = memo(function ThreadResumeStrip({
         ) : (
           <span aria-hidden className="block h-[3lh]" />
         )}
+        <span aria-hidden className={RECAP_DIVIDER_CLASS} />
+        {projectLine}
+        {conversationField}
       </TooltipTrigger>
       <TooltipPopup side="top" className="max-w-96 whitespace-normal">
         <span className="flex flex-col gap-1">

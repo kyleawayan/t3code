@@ -9343,6 +9343,8 @@ export default function ChatView(props: ChatViewProps) {
         key={activeThreadKey}
         recap={activeThreadRecap}
         threadRef={activeThreadRef}
+        project={activeProject}
+        branch={activeThread.branch}
         onSetEnabled={isServerThread ? setActiveThreadRecapEnabled : null}
       />
     ) : renderedRightPanelSurface?.kind === "device" ? (

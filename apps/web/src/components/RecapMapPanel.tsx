@@ -13,22 +13,13 @@ import type {
   ThreadRecapLink,
   ThreadRecapStep,
 } from "@t3tools/contracts";
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Hourglass,
-  Lock,
-  Map as MapIcon,
-  MapPin,
-  Signpost,
-} from "lucide-react";
+import { Check, Hourglass, Lock, Map as MapIcon, MapPin, RefreshCw, Signpost } from "lucide-react";
 import {
   memo,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
-  useState,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
@@ -36,7 +27,10 @@ import {
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/unstable/reactivity";
 
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+
 import { useOpenLink } from "~/browser/useOpenLink";
+import { useRecapRefreshStore, useRefreshThreadRecap } from "~/hooks/useThreadRecap";
 import { useNowMinute } from "~/hooks/useNowMinute";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
@@ -45,6 +39,8 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { toastManager } from "~/components/ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { MarkdownLinkFavicon } from "./ChatMarkdown";
+import { ProjectBranchLine } from "./ProjectBranchLine";
+import type { ProjectFaviconProject } from "./ProjectFavicon";
 import { resolveExternalWebLinkHost } from "./chat/externalLinkContextMenu";
 import {
   layoutRecapPath,
@@ -53,7 +49,9 @@ import {
 } from "./chat/recapMapLayout.logic";
 import {
   isLinearWorkspaceSlug,
+  isRecapRefreshPending,
   latestLinearWorkspace,
+  RECAP_REFRESH_TIMEOUT_MS,
   linearIssueUrl,
   safeRecapLinkUrl,
 } from "./chat/threadResume.logic";
@@ -526,18 +524,46 @@ function LinkChips({
 export const RecapMapPanel = memo(function RecapMapPanel({
   recap,
   threadRef,
+  project,
+  branch,
   onSetEnabled,
 }: {
   recap: ThreadRecap | null;
   threadRef: ScopedThreadRef | null;
+  project: ProjectFaviconProject | null;
+  branch: string | null;
   /** Absent for drafts, which have no server thread to turn recap on for yet. */
   onSetEnabled: ((enabled: boolean) => void) | null;
 }) {
   useNowMinute();
-  const [doneExpanded, setDoneExpanded] = useState(false);
   const steps = recap?.summary?.steps ?? EMPTY_STEPS;
   const summaryNow = recap?.summary?.now ?? null;
   const fallbackLinearWorkspace = useAtomValue(latestLinearWorkspaceAtom);
+  const threadKey = threadRef === null ? null : scopedThreadKey(threadRef);
+  const currentGeneratedAt = recap?.summary?.generatedAt ?? null;
+  const refreshRequest = useRecapRefreshStore((state) =>
+    threadKey === null ? undefined : state.byThreadKey[threadKey],
+  );
+  const refreshThreadRecap = useRefreshThreadRecap();
+  // Drop the request once a newer summary lands or the timeout passes, so
+  // "Refreshing…" can never stick.
+  useEffect(() => {
+    if (refreshRequest === undefined || threadKey === null) return;
+    const clear = () => useRecapRefreshStore.getState().clear(threadKey);
+    const remaining = RECAP_REFRESH_TIMEOUT_MS - (Date.now() - refreshRequest.requestedAtMs);
+    if (currentGeneratedAt !== refreshRequest.baselineGeneratedAt || remaining <= 0) {
+      clear();
+      return;
+    }
+    const timer = window.setTimeout(clear, remaining);
+    return () => window.clearTimeout(timer);
+  }, [currentGeneratedAt, refreshRequest, threadKey]);
+  // The effect above clears a timed-out request, so render only compares summaries.
+  const refreshing = isRecapRefreshPending(
+    refreshRequest,
+    currentGeneratedAt,
+    refreshRequest?.requestedAtMs ?? 0,
+  );
   const layout = useMemo(() => layoutRecapPath(steps, summaryNow), [steps, summaryNow]);
   const openLink = useOpenLink(threadRef);
   const openRecapLink = useCallback<OpenRecapLink>(
@@ -556,11 +582,10 @@ export const RecapMapPanel = memo(function RecapMapPanel({
     scrolledToNowRef.current = true;
     const viewport = element.closest<HTMLElement>('[data-slot="scroll-area-viewport"]');
     if (!viewport) return;
-    const rowRect = element.getBoundingClientRect();
-    const viewportRect = viewport.getBoundingClientRect();
-    if (rowRect.top < viewportRect.top || rowRect.bottom > viewportRect.bottom) {
-      viewport.scrollTop += rowRect.top - viewportRect.top - 8;
-    }
+    // Only a map taller than the panel scrolls; the current step lands a third of the way down.
+    if (viewport.scrollHeight <= viewport.clientHeight) return;
+    const rowTop = element.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+    viewport.scrollTop += rowTop - viewport.clientHeight / 3;
   }, []);
 
   if (recap?.enabled !== true) {
@@ -582,6 +607,18 @@ export const RecapMapPanel = memo(function RecapMapPanel({
   }
 
   const summary = recap.summary;
+  const refreshButton =
+    threadRef === null ? null : (
+      <Button
+        size="xs"
+        variant="ghost"
+        disabled={refreshing}
+        onClick={() => void refreshThreadRecap(threadRef, currentGeneratedAt)}
+      >
+        <RefreshCw aria-hidden className="size-3" />
+        {refreshing ? "Refreshing…" : "Refresh"}
+      </Button>
+    );
   const linearWorkspace = isLinearWorkspaceSlug(summary?.linearWorkspace)
     ? summary.linearWorkspace
     : fallbackLinearWorkspace;
@@ -599,7 +636,10 @@ export const RecapMapPanel = memo(function RecapMapPanel({
         <p className="max-w-60 text-xs text-muted-foreground">
           The map fills in once the agent finishes a turn in this thread.
         </p>
-        {turnOff}
+        <div className="flex items-center gap-1">
+          {refreshButton}
+          {turnOff}
+        </div>
       </div>
     );
   }
@@ -622,12 +662,18 @@ export const RecapMapPanel = memo(function RecapMapPanel({
           <h2 className="line-clamp-3 text-base font-semibold leading-6 text-foreground [overflow-wrap:anywhere]">
             {summary.goal}
           </h2>
+          {project ? (
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              <ProjectBranchLine project={project} branch={branch} />
+            </div>
+          ) : null}
         </div>
-        {layout.totalCount > 0 ? (
+        <div className="flex min-h-6 items-center justify-between gap-2">
           <p className="text-[11px] text-muted-foreground tabular-nums">
-            {done.length} of {layout.totalCount} cleared
+            {layout.totalCount > 0 ? `${done.length} of ${layout.totalCount} cleared` : null}
           </p>
-        ) : null}
+          {refreshButton}
+        </div>
         <HeaderLine
           icon={<MapPin aria-hidden className="size-3.5" />}
           word="You are here"
@@ -678,54 +724,34 @@ export const RecapMapPanel = memo(function RecapMapPanel({
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <div className="px-3 py-2">
+          {/* Cleared steps stay on the map so the whole path is always visible. */}
           {done.length > 0 ? (
-            <div className="mb-1">
-              <button
-                type="button"
-                aria-expanded={doneExpanded}
-                onClick={() => setDoneExpanded((expanded) => !expanded)}
-                className="flex w-full min-w-0 items-center gap-2 rounded-md py-1 text-left text-xs text-muted-foreground hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span
-                  className="flex shrink-0 justify-center"
-                  style={{ width: laneCount * LANE_WIDTH }}
+            <ol aria-label="Cleared steps" className="mb-1 flex flex-col gap-1 pb-1">
+              {done.map((entry) => (
+                <li
+                  key={entry.step.id}
+                  className="flex min-w-0 items-start gap-2 text-xs text-muted-foreground"
                 >
-                  <Check aria-hidden className="size-3.5 text-muted-foreground" />
-                </span>
-                <span className="shrink-0 font-medium">{done.length} cleared</span>
-                <span className="min-w-0 flex-1 truncate">
-                  {done.map((entry) => entry.step.label).join(", ")}
-                </span>
-                {doneExpanded ? (
-                  <ChevronDown aria-hidden className="size-3 shrink-0" />
-                ) : (
-                  <ChevronRight aria-hidden className="size-3 shrink-0" />
-                )}
-              </button>
-              {doneExpanded ? (
-                <ol className="mt-1 flex flex-col gap-1 pb-1">
-                  {done.map((entry) => (
-                    <li
-                      key={entry.step.id}
-                      className="flex min-w-0 items-start gap-2 text-xs text-muted-foreground"
-                    >
-                      <span className="shrink-0" style={{ width: laneCount * LANE_WIDTH }} />
-                      <span className="w-4 shrink-0 text-right text-[11px] tabular-nums">
-                        {entry.number}
-                      </span>
-                      <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-                        {entry.step.label}
-                      </span>
-                      <StepBadges
-                        step={entry.step}
-                        workspace={linearWorkspace}
-                        onOpenLink={openRecapLink}
-                      />
-                    </li>
-                  ))}
-                </ol>
-              ) : null}
-            </div>
+                  <span
+                    className="flex shrink-0 justify-center pt-0.5"
+                    style={{ width: laneCount * LANE_WIDTH }}
+                  >
+                    <Check aria-label="cleared" className="size-3.5 text-muted-foreground" />
+                  </span>
+                  <span className="w-4 shrink-0 pt-px text-right text-[11px] tabular-nums">
+                    {entry.number}
+                  </span>
+                  <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+                    {entry.step.label}
+                  </span>
+                  <StepBadges
+                    step={entry.step}
+                    workspace={linearWorkspace}
+                    onOpenLink={openRecapLink}
+                  />
+                </li>
+              ))}
+            </ol>
           ) : null}
           {rows.length > 0 ? (
             <ol aria-label="Steps in order">

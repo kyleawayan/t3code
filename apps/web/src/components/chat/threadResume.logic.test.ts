@@ -7,7 +7,9 @@ import {
   deriveResumeWhoseMove,
   countRecapLinks,
   insertLeftOffDividerRow,
+  isRecapRefreshPending,
   latestLinearWorkspace,
+  RECAP_REFRESH_TIMEOUT_MS,
   LEFT_OFF_ROW_ID,
   linearIssueUrl,
   recapStepSourceLabel,
@@ -138,6 +140,39 @@ describe("latestLinearWorkspace", () => {
         { linearWorkspace: "bad/slug", generatedAt: "2026-09-02T00:00:00.000Z" },
       ]),
     ).toBeNull();
+  });
+});
+
+describe("isRecapRefreshPending", () => {
+  const requestedAtMs = Date.parse("2026-09-30T12:00:00.000Z");
+  const request = { requestedAtMs, baselineGeneratedAt: "2026-09-30T11:00:00.000Z" };
+
+  it("is pending until a newer summary arrives", () => {
+    expect(isRecapRefreshPending(request, "2026-09-30T11:00:00.000Z", requestedAtMs + 1_000)).toBe(
+      true,
+    );
+    expect(isRecapRefreshPending(request, "2026-09-30T12:00:05.000Z", requestedAtMs + 1_000)).toBe(
+      false,
+    );
+  });
+
+  it("counts a first summary as the refresh landing", () => {
+    const first = { requestedAtMs, baselineGeneratedAt: null };
+    expect(isRecapRefreshPending(first, null, requestedAtMs + 1_000)).toBe(true);
+    expect(isRecapRefreshPending(first, "2026-09-30T12:00:05.000Z", requestedAtMs + 1_000)).toBe(
+      false,
+    );
+  });
+
+  it("stops after the timeout, and is never pending without a request", () => {
+    expect(
+      isRecapRefreshPending(
+        request,
+        request.baselineGeneratedAt,
+        requestedAtMs + RECAP_REFRESH_TIMEOUT_MS,
+      ),
+    ).toBe(false);
+    expect(isRecapRefreshPending(undefined, null, requestedAtMs)).toBe(false);
   });
 });
 
