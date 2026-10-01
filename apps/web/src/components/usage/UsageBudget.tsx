@@ -63,23 +63,22 @@ export function UsageBudgetProgress({
       (segment) => `${segment.label}: ${Math.round(segment.costSharePercent)}% of estimated cost`,
     )
     .join(", ");
-  const label = progress.overBudget
-    ? "Over budget"
-    : progress.reachedBudget
-      ? "Budget reached"
-      : `${incomplete ? "Up to " : ""}${progress.remainingPercent}% left`;
+  const displayedPercent = incomplete
+    ? Math.floor(progress.usedPercent)
+    : Math.round(progress.usedPercent);
+  const label = `${incomplete ? "At least " : ""}${displayedPercent}% used`;
+  const budgetStatus = progress.reachedBudget && !progress.overBudget ? "Budget reached" : null;
   const resetCountdown = formatDuration(nextUsageBudgetReset(period, now) - now.getTime());
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <UsageWindowCard
         label={period === "day" ? "Today" : "This month"}
-        remainingPercent={progress.remainingPercent}
-        remainingPrefix={incomplete ? "≤" : ""}
+        percent={displayedPercent}
+        percentPrefix={incomplete ? "≥" : ""}
+        percentLabel="used"
         compact={compact}
         detail={`↻ ${compact ? "" : "in "}${resetCountdown}`}
-        status={
-          progress.reachedBudget ? <span className="text-xs text-warning">{label}</span> : null
-        }
+        status={budgetStatus ? <span className="text-xs text-warning">{budgetStatus}</span> : null}
       >
         <div className="@container/pool min-w-0">
           <div
@@ -87,7 +86,7 @@ export function UsageBudgetProgress({
             aria-label={`${period === "day" ? "Daily" : "Monthly"} API budget used`}
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuenow={progress.usedPercent}
+            aria-valuenow={progress.fillPercent}
             aria-valuetext={[label, providerShares].filter(Boolean).join(". ")}
             className={cn(
               "relative flex overflow-hidden rounded-md bg-muted",
@@ -107,12 +106,12 @@ export function UsageBudgetProgress({
                 />
               ))}
             </div>
-            {progress.usedPercent < 100 ? (
+            {progress.fillPercent < 100 ? (
               <div
                 aria-hidden
                 className="absolute inset-y-0 right-0 opacity-20"
                 style={{
-                  width: `${100 - progress.usedPercent}%`,
+                  width: `${100 - progress.fillPercent}%`,
                   backgroundImage:
                     "repeating-linear-gradient(135deg, var(--foreground) 0 1px, transparent 1px 5px)",
                 }}

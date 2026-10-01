@@ -65,22 +65,30 @@ describe("API budgets", () => {
   it("distinguishes an untouched, reached, and exceeded budget", () => {
     expect(usageBudgetProgress(0, 100)).toEqual({
       usedPercent: 0,
-      remainingPercent: 100,
+      fillPercent: 0,
       overBudget: false,
       reachedBudget: false,
     });
     expect(usageBudgetProgress(100, 100)).toEqual({
       usedPercent: 100,
-      remainingPercent: 0,
+      fillPercent: 100,
       overBudget: false,
       reachedBudget: true,
     });
     expect(usageBudgetProgress(150, 100)).toEqual({
-      usedPercent: 100,
-      remainingPercent: 0,
+      usedPercent: 150,
+      fillPercent: 100,
       overBudget: true,
       reachedBudget: true,
     });
+  });
+
+  it("retains percentage used above 100 while bounding the fill", () => {
+    expect(usageBudgetProgress(90, 100)).toMatchObject({ usedPercent: 90, fillPercent: 90 });
+    const exceeded = usageBudgetProgress(110, 100);
+    expect(exceeded.usedPercent).toBeCloseTo(110);
+    expect(exceeded.fillPercent).toBe(100);
+    expect(exceeded.overBudget).toBe(true);
   });
 
   it("preserves unused budget space and orders Claude before Codex", () => {

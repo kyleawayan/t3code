@@ -4,16 +4,18 @@ import { cn } from "../../lib/utils";
 
 export function UsageWindowCard({
   label,
-  remainingPercent,
-  remainingPrefix = "",
+  percent,
+  percentPrefix = "",
+  percentLabel = "left",
   detail,
   status,
   compact = false,
   children,
 }: {
   label: string;
-  remainingPercent: number;
-  remainingPrefix?: string;
+  percent: number;
+  percentPrefix?: string;
+  percentLabel?: "left" | "used";
   detail?: ReactNode;
   status?: ReactNode;
   compact?: boolean;
@@ -43,8 +45,10 @@ export function UsageWindowCard({
               "font-semibold text-foreground tabular-nums",
               compact ? "text-xs" : "text-3xl",
             )}
-          >{`${remainingPrefix}${remainingPercent}%`}</span>
-          <span className={cn("text-muted-foreground", compact ? "text-xs" : "text-sm")}>left</span>
+          >{`${percentPrefix}${percent}%`}</span>
+          <span className={cn("text-muted-foreground", compact ? "text-xs" : "text-sm")}>
+            {percentLabel}
+          </span>
           {!compact ? status : null}
         </span>
         {!compact && detail ? (

@@ -511,7 +511,7 @@ function PoolWindowCard({
   return (
     <UsageWindowCard
       label={pool.label}
-      remainingPercent={pool.remainingPercent}
+      percent={pool.remainingPercent}
       compact={compact}
       status={pool.pace ? <PaceIcon pace={pool.pace} /> : null}
       detail={

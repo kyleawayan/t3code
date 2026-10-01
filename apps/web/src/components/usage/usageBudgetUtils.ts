@@ -38,8 +38,8 @@ export function nextUsageBudgetReset(period: UsageBudgetPeriod, now = new Date()
 export function usageBudgetProgress(costUsd: number, budgetUsd: number) {
   const usedPercent = Math.max(0, (costUsd / budgetUsd) * 100);
   return {
-    usedPercent: Math.min(100, usedPercent),
-    remainingPercent: Math.max(0, Math.floor(100 - usedPercent)),
+    usedPercent,
+    fillPercent: Math.min(100, usedPercent),
     overBudget: costUsd > budgetUsd,
     reachedBudget: costUsd >= budgetUsd,
   };

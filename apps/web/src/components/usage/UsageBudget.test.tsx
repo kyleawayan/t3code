@@ -95,13 +95,13 @@ it("saves, updates, and removes the budget while updating sidebar progress immed
   await act(() => renderer!.root.findByType("input").props.onChange({ target: { value: "100" } }));
   await act(() => renderer!.root.findByType("form").props.onSubmit({ preventDefault: () => {} }));
   expect(values.get(USAGE_BUDGET_STORAGE_KEY)).toBe("100");
-  expect(displayedText()).toContain("60% left");
+  expect(displayedText()).toContain("40% used");
   expect(displayedText()).toContain("$40.00");
 
   await act(() => renderer!.root.findByType("input").props.onChange({ target: { value: "50" } }));
   await act(() => renderer!.root.findByType("form").props.onSubmit({ preventDefault: () => {} }));
   expect(values.get(USAGE_BUDGET_STORAGE_KEY)).toBe("50");
-  expect(displayedText()).toContain("20% left");
+  expect(displayedText()).toContain("80% used");
 
   await act(() =>
     renderer!.root
@@ -110,7 +110,7 @@ it("saves, updates, and removes the budget while updating sidebar progress immed
       .props.onClick(),
   );
   expect(values.has(USAGE_BUDGET_STORAGE_KEY)).toBe(false);
-  expect(displayedText()).not.toContain("% left");
+  expect(displayedText()).not.toContain("% used");
 });
 
 it("restores a saved budget and shows no dollar amounts in compact progress", async () => {
@@ -118,7 +118,7 @@ it("restores a saved budget and shows no dollar amounts in compact progress", as
   await act(() => {
     renderer = create(<SidebarBudget />);
   });
-  expect(displayedText()).toContain("60% left");
+  expect(displayedText()).toContain("40% used");
   expect(displayedText()).not.toContain("$");
 });
 
@@ -143,7 +143,7 @@ it("keeps daily and monthly budgets independent when saving and removing either"
   expect(values.get(DAILY_USAGE_BUDGET_STORAGE_KEY)).toBe("50");
   expect(values.has(USAGE_BUDGET_STORAGE_KEY)).toBe(false);
   expect(displayedText()).toContain("Today");
-  expect(displayedText()).toContain("20% left");
+  expect(displayedText()).toContain("80% used");
   expect(state.useUsage).toHaveBeenCalledWith(
     expect.objectContaining({ sinceDay: "2026-10-15", untilDay: "2026-10-15" }),
   );
@@ -156,7 +156,7 @@ it("keeps daily and monthly budgets independent when saving and removing either"
   );
   expect(values.get(USAGE_BUDGET_STORAGE_KEY)).toBe("100");
   expect(displayedText()).toContain("This month");
-  expect(displayedText()).toContain("60% left");
+  expect(displayedText()).toContain("40% used");
   expect(state.useUsage).toHaveBeenCalledWith(
     expect.objectContaining({ sinceDay: "2026-10-01", untilDay: "2026-10-15" }),
   );
@@ -170,16 +170,16 @@ it("keeps daily and monthly budgets independent when saving and removing either"
   expect(values.has(DAILY_USAGE_BUDGET_STORAGE_KEY)).toBe(false);
   expect(values.get(USAGE_BUDGET_STORAGE_KEY)).toBe("100");
   expect(displayedText()).not.toContain("Today");
-  expect(displayedText()).toContain("60% left");
+  expect(displayedText()).toContain("40% used");
 });
 
-it("labels incomplete estimates instead of claiming all remaining budget is available", async () => {
+it("labels incomplete estimates as a lower bound of budget used", async () => {
   const result = state.useUsage.getMockImplementation()!();
   state.useUsage.mockReturnValue({ ...result, isPartial: true });
   await act(() => {
     renderer = create(<UsageBudgetProgress budgetUsd={100} compact />);
   });
-  expect(displayedText()).toContain("≤60% left");
+  expect(displayedText()).toContain("≥40% used");
   expect(displayedText()).toContain("Partial estimate");
 });
 
@@ -194,5 +194,34 @@ it("shows unavailable usage instead of an untouched budget when every environmen
     renderer = create(<UsageBudgetProgress budgetUsd={100} compact />);
   });
   expect(displayedText()).toContain("Budget usage unavailable");
-  expect(displayedText()).not.toContain("100% left");
+  expect(displayedText()).not.toContain("0% used");
 });
+
+it.each([
+  { period: "day" as const, compact: false },
+  { period: "day" as const, compact: true },
+  { period: "month" as const, compact: false },
+  { period: "month" as const, compact: true },
+])(
+  "shows percentage used above the budget on $period meters (compact=$compact)",
+  async ({ period, compact }) => {
+    const result = state.useUsage.getMockImplementation()!();
+    state.useUsage.mockReturnValue({
+      ...result,
+      merged: {
+        ...result.merged,
+        costUsd: 110,
+        providers: [
+          { provider: "claude", costUsd: 82.5 },
+          { provider: "codex", costUsd: 27.5 },
+        ],
+      },
+    });
+    await act(() => {
+      renderer = create(<UsageBudgetProgress budgetUsd={100} period={period} compact={compact} />);
+    });
+    expect(displayedText()).toContain("110% used");
+    expect(displayedText()).not.toContain("Over budget");
+    expect(displayedText()).not.toContain("% left");
+  },
+);

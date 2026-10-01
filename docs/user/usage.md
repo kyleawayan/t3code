@@ -25,8 +25,9 @@ update model pricing.
 On web and desktop, set a **Daily API budget** or **Monthly API budget** on Usage to show that
 period's percentage progress in the sidebar. Each budget is independent: daily resets at local
 midnight, monthly on the first day of the month. They track API-equivalent estimates across all
-environments, including subscription history, and do not enforce spending limits. Dollar amounts
-stay on Usage. Orange and blue segments show Claude and Codex's shares of the estimate; the
+environments, including subscription history, and do not enforce spending limits. API meters show
+the percentage used, including values above 100% when you exceed the budget; the bar stays within
+its track. Dollar amounts stay on Usage. Orange and blue segments show Claude and Codex's shares of the estimate; the
 hatched portion is the budget remaining. Budgets are saved on this device. Edit either on Usage or choose
 its **Remove budget** action to hide that sidebar bar again.
 
