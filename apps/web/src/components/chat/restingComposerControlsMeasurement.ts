@@ -98,7 +98,7 @@ function measureComposerFooterControl(
   const probe = element.querySelector<HTMLElement>("[data-composer-footer-label]");
   const labelControl = probe?.dataset.composerFooterLabel;
   if (probe && (labelControl === "model" || labelControl === "traits" || labelControl === "mode")) {
-    // An icon standing in for the label marks itself as the label's slot.
+    // Fixed content standing in for the label marks itself as the label's slot.
     const label =
       element.querySelector<HTMLElement>("[data-composer-footer-label-slot]") ??
       element.querySelector<HTMLElement>("[data-squish-text]");

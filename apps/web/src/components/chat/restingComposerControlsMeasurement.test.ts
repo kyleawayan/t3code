@@ -125,9 +125,9 @@ describe("measureComposerFooterControls", () => {
     });
   });
 
-  it("counts icon-only controls among the actions as the row's room", () => {
-    // The runtime mode shows its icon with no label; the effort shows a 16px
-    // gauge in its label's place, marked as the label slot.
+  it("counts controls among the actions as the row's room", () => {
+    // The runtime mode shows its icon with no label; the effort shows its 16px
+    // level alone in its label's place, marked as the label slot.
     const modeProbe = probe("mode", variant(14, 12), variant(0, 0));
     const runtimeMode = {
       offsetWidth: 30,

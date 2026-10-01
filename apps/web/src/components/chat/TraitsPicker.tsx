@@ -17,7 +17,7 @@ import {
 } from "@t3tools/shared/model";
 import { memo, useCallback } from "react";
 import type { VariantProps } from "class-variance-authority";
-import { GaugeIcon, ZapIcon } from "lucide-react";
+import { ZapIcon } from "lucide-react";
 import { buttonVariants } from "../ui/button";
 import {
   Menu,
@@ -545,7 +545,7 @@ const TRAIT_LABEL_ABBREVIATIONS = {
 } satisfies Record<string, Record<string, string>>;
 
 /** How much of the traits label a tight footer can show. */
-export type TraitsLabelSize = "full" | "short" | "tight" | "icon";
+export type TraitsLabelSize = "full" | "short" | "tight" | "effort";
 
 /**
  * The traits label for a tight footer: effort names abbreviate and the
@@ -561,6 +561,15 @@ export function compactTraitsTriggerLabel(
     .split(" · ")
     .map((part) => abbreviations[part] ?? part)
     .join("·");
+}
+
+/**
+ * The narrowest traits label: only the effort, tightened ("Extra High" →
+ * "XH"), so the level still reads at a glance. Without an effort trait the
+ * first trait stands in.
+ */
+export function effortOnlyTraitsLabel(label: string, effortLabel: string | null): string {
+  return compactTraitsTriggerLabel(effortLabel ?? label.split(" · ")[0] ?? label, "tight");
 }
 
 export const TraitsPicker = memo(function TraitsPicker({
@@ -591,7 +600,7 @@ export const TraitsPicker = memo(function TraitsPicker({
     compact?: boolean;
     /**
      * A tight compact footer abbreviates the traits (see
-     * compactTraitsTriggerLabel), and the tightest shows only an icon.
+     * compactTraitsTriggerLabel), and the tightest shows only the effort.
      */
     labelSize?: TraitsLabelSize;
     hidden?: boolean;
@@ -628,6 +637,14 @@ export const TraitsPicker = memo(function TraitsPicker({
     primarySelectDescriptorId: primarySelectDescriptor?.id ?? null,
     ultrathinkPromptControlled,
   });
+  const effortLabel = effortOnlyTraitsLabel(
+    triggerLabel,
+    ultrathinkPromptControlled
+      ? "Ultrathink"
+      : primarySelectDescriptor
+        ? (getProviderOptionCurrentLabel(primarySelectDescriptor) ?? null)
+        : null,
+  );
   const fastModeIcon = showFastModeIcon ? (
     <>
       <ComposerControlIcon
@@ -659,7 +676,7 @@ export const TraitsPicker = memo(function TraitsPicker({
         render={
           <ComposerControl
             data-composer-shortcut={isComposerOwned ? "composer.effort" : undefined}
-            aria-label={labelSize === "icon" ? `Effort: ${triggerLabel}` : undefined}
+            aria-label={labelSize === "effort" ? `Effort: ${triggerLabel}` : undefined}
             variant={triggerVariant ?? "ghost"}
             size={size}
             className={cn(
@@ -684,11 +701,13 @@ export const TraitsPicker = memo(function TraitsPicker({
           >
             {fastModeIcon}
             <Tooltip>
-              {labelSize === "icon" ? (
+              {labelSize === "effort" ? (
                 <TooltipTrigger
-                  render={<span data-composer-footer-label-slot="" className="flex" />}
+                  render={
+                    <span data-composer-footer-label-slot="" className="flex whitespace-nowrap" />
+                  }
                 >
-                  <ComposerControlIcon icon={GaugeIcon} size={size} />
+                  {effortLabel}
                 </TooltipTrigger>
               ) : (
                 <TooltipTrigger render={<span className="flex min-w-0" />}>
@@ -718,7 +737,7 @@ export const TraitsPicker = memo(function TraitsPicker({
               compactTraitsTriggerLabel(triggerLabel, "short"),
               compactTraitsTriggerLabel(triggerLabel, "tight"),
             ]}
-            iconVariant={<ComposerControlIcon icon={GaugeIcon} size={size} />}
+            fixedVariant={<span className="whitespace-nowrap">{effortLabel}</span>}
           />
         ) : null}
       </MenuTrigger>

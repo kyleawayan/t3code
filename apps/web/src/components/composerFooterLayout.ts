@@ -209,7 +209,7 @@ export type ComposerFooterLabelControl = "model" | "traits" | "mode";
  * The steps footer labels take as the footer narrows, each switching one
  * control to its next variant: the runtime mode goes icon-only, the effort
  * shortens, the model drops its brand prefix, the effort tightens, and finally
- * the effort goes icon-only. Every variant still squishes to its floor but
+ * only the effort level shows. Every variant still squishes to its floor but
  * never clips.
  */
 const COMPOSER_FOOTER_LABEL_GIVE_WAY: ReadonlyArray<
@@ -226,13 +226,13 @@ const COMPOSER_FOOTER_LABEL_GIVE_WAY: ReadonlyArray<
 export const COMPOSER_FOOTER_LAST_LABEL_STAGE = COMPOSER_FOOTER_LABEL_GIVE_WAY.length;
 
 /**
- * The icon-only variant of each control that has one. Icon-only controls move
- * out of the scrolling row into the fixed actions, where the row's last-resort
- * scroll can never carry them out of view.
+ * The narrowest variant of each control that has one: the runtime mode's icon
+ * and the effort level alone. These move out of the scrolling row into the
+ * fixed actions, where the row's last-resort scroll can never carry them out
+ * of view.
  */
-export const COMPOSER_FOOTER_ICON_ONLY_VARIANT: Partial<
-  Record<ComposerFooterLabelControl, number>
-> = { mode: 1, traits: 3 };
+export const COMPOSER_FOOTER_ACTIONS_VARIANT: Partial<Record<ComposerFooterLabelControl, number>> =
+  { mode: 1, traits: 3 };
 
 /** Which variant a control shows at a give-way stage; 0 is the full label. */
 export function composerFooterLabelVariant(
@@ -251,7 +251,7 @@ export function isComposerFooterControlInActions(
   control: ComposerFooterLabelControl,
   stage: number,
 ): boolean {
-  return composerFooterLabelVariant(control, stage) === COMPOSER_FOOTER_ICON_ONLY_VARIANT[control];
+  return composerFooterLabelVariant(control, stage) === COMPOSER_FOOTER_ACTIONS_VARIANT[control];
 }
 
 export interface ComposerFooterControlWidths {

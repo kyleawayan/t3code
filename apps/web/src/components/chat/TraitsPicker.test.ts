@@ -4,6 +4,7 @@ import {
   buildTraitsTriggerDisplay,
   buildUnavailableModelOptionDescriptors,
   compactTraitsTriggerLabel,
+  effortOnlyTraitsLabel,
 } from "./TraitsPicker";
 
 function selectDescriptor(
@@ -209,5 +210,16 @@ describe("compactTraitsTriggerLabel", () => {
   it("leaves a single short trait alone", () => {
     expect(compactTraitsTriggerLabel("High")).toBe("High");
     expect(compactTraitsTriggerLabel("")).toBe("");
+  });
+});
+
+describe("effortOnlyTraitsLabel", () => {
+  it("keeps only the tightened effort level", () => {
+    expect(effortOnlyTraitsLabel("Extra High · 1M", "Extra High")).toBe("XH");
+    expect(effortOnlyTraitsLabel("Max · 1M", "Max")).toBe("Max");
+  });
+
+  it("falls back to the first trait without an effort", () => {
+    expect(effortOnlyTraitsLabel("Medium · 200k", null)).toBe("Med");
   });
 });

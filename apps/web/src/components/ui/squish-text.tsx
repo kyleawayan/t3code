@@ -64,12 +64,12 @@ export function measureSquishText(element: HTMLElement): SquishTextMeasurement |
  */
 export function SquishTextProbe({
   variants,
-  iconVariant,
+  fixedVariant,
   ...props
 }: Omit<ComponentProps<"span">, "children"> & {
   variants: readonly string[];
-  /** An icon that can stand in for the text, probed last. */
-  iconVariant?: ReactNode;
+  /** Content that stands in for the text without squishing, probed last at its full width. */
+  fixedVariant?: ReactNode;
 }) {
   return (
     <span
@@ -89,9 +89,9 @@ export function SquishTextProbe({
           </span>
         );
       })}
-      {iconVariant ? (
+      {fixedVariant ? (
         <span data-squish-probe-variant="" className="flex">
-          <span className="inline-flex">{iconVariant}</span>
+          <span className="inline-flex">{fixedVariant}</span>
         </span>
       ) : null}
     </span>

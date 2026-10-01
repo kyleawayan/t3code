@@ -985,7 +985,7 @@ const WORKSPACE_SNAPSHOT_RETRY_COOLDOWN_MS = 10_000;
 // How far the form must grow past the width where the full-label footer row
 // overflowed before full labels get another try.
 const COMPOSER_FOOTER_OVERFLOW_RELEASE_PX = 24;
-const TRAITS_LABEL_SIZE_BY_VARIANT = ["full", "short", "tight", "icon"] as const;
+const TRAITS_LABEL_SIZE_BY_VARIANT = ["full", "short", "tight", "effort"] as const;
 
 const extendReplacementRangeForTrailingSpace = (
   text: string,
@@ -4964,7 +4964,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   const restingHiddenBlockCount = composerControlsInStrip ? restingControlsHiddenBlockCount : 0;
   const composerControlsCompact = !composerControlsInStrip && isComposerFooterCompact;
-  // At their icon-only stage the runtime mode and the effort join the fixed
+  // At their narrowest stage the runtime mode and the effort join the fixed
   // actions. The controls row scrolls as a last resort, and its last items
   // would go first.
   const composerLabelStage =
@@ -4986,7 +4986,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           labelSize:
             TRAITS_LABEL_SIZE_BY_VARIANT[
               composerFooterLabelVariant("traits", composerLabelStage)
-            ] ?? "icon",
+            ] ?? "effort",
         })
       : providerTraitsPicker;
   const restingBlockDefs = [
@@ -6984,7 +6984,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     ? renderProviderTraitsPicker({
                         ...providerTraitsPickerInput,
                         compact: true,
-                        labelSize: "icon",
+                        labelSize: "effort",
                       })
                     : null}
                   {composerRuntimeModeInActions ? (

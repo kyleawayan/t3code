@@ -474,9 +474,9 @@ describe("resolveComposerFooterLabelStage", () => {
   // A narrow expanded footer. Each label control is its chrome plus a 4px gap
   // and the floor of the variant it shows:
   //   model   30 chrome; "Claude Opus 5.5" 52, "Opus 5.5" 30
-  //   traits  10 chrome; "Extra High · 1M" 48, "XHigh·1M" 30, "XH·1M" 22, icon 16
+  //   traits  10 chrome; "Extra High · 1M" 48, "XHigh·1M" 30, "XH·1M" 22, "XH" 16
   //   mode    30 chrome; "Auto" 14, icon only
-  // plus the 28px plan toggle and 4px row gaps. An icon-only control moves
+  // plus the 28px plan toggle and 4px row gaps. A control at its narrowest moves
   // into the actions and costs the 8px actions gap instead of a row gap. The
   // stages need 236, 222, 204, 182, 174, and 172px.
   function controls(rendered: { model?: number; mode?: number } = {}) {
