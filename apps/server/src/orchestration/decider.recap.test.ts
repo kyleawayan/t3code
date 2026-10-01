@@ -122,6 +122,29 @@ it.layer(NodeServices.layer)("thread recap decider", (it) => {
     }),
   );
 
+  it.effect("a refresh forces a run only while the recap is on", () =>
+    Effect.gen(function* () {
+      const refresh = {
+        type: "thread.meta.update" as const,
+        commandId: CommandId.make("refresh-recap"),
+        threadId: THREAD_ID,
+        refreshRecap: true as const,
+      };
+      expect(yield* decidePayload(refresh, { enabled: true, summary: SUMMARY })).toEqual({
+        threadId: THREAD_ID,
+        recapRequested: true,
+        updatedAt: UPDATED_AT,
+      });
+      expect(yield* decidePayload(refresh, { enabled: false, summary: SUMMARY })).toEqual({
+        threadId: THREAD_ID,
+        updatedAt: UPDATED_AT,
+      });
+      expect(
+        yield* decidePayload({ ...refresh, recapEnabled: false }, { enabled: true, summary: null }),
+      ).not.toHaveProperty("recapRequested");
+    }),
+  );
+
   it.effect("stores a generated summary without touching thread recency", () =>
     Effect.gen(function* () {
       const payload = yield* decidePayload(update, { enabled: true, summary: null });

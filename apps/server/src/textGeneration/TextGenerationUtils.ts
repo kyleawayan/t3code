@@ -95,12 +95,10 @@ function linearWorkspaceSlug(value: string | null | undefined): string | undefin
   return slug && LINEAR_WORKSPACE_SLUG.test(slug) ? slug : undefined;
 }
 
-function linearWorkspaceInText(text: string): string | undefined {
-  for (const match of text.matchAll(LINEAR_ISSUE_URL_WORKSPACE)) {
-    const slug = linearWorkspaceSlug(match[1]);
-    if (slug !== undefined) return slug;
-  }
-  return undefined;
+function linearWorkspacesInText(text: string): ReadonlyArray<string> {
+  return Array.from(text.matchAll(LINEAR_ISSUE_URL_WORKSPACE), (match) =>
+    linearWorkspaceSlug(match[1]),
+  ).filter((slug) => slug !== undefined);
 }
 
 /** Whether `url` appears in `text` as a whole URL, not as the start of a longer one. */
@@ -153,7 +151,10 @@ export interface GeneratedThreadRecap {
  */
 export function finalizeThreadRecap(
   generated: GeneratedThreadRecap,
-  input: Pick<ThreadRecapGenerationInput, "linearIssueIds" | "message" | "previousSummary">,
+  input: Pick<
+    ThreadRecapGenerationInput,
+    "linearIssueIds" | "message" | "previousSummary" | "title"
+  >,
 ): Effect.Effect<ThreadRecapGenerationResult, TextGenerationError> {
   const goal = recapText(generated.goal);
   const now = recapText(generated.now);
@@ -166,6 +167,7 @@ export function finalizeThreadRecap(
     );
   }
 
+  const threadText = input.title ? `${input.title}\n${input.message}` : input.message;
   // Only URLs copied verbatim from the thread survive. Models rewrite and invent links.
   // Links kept earlier already passed this check, so they survive when long threads
   // truncate the message that held them.
@@ -175,9 +177,7 @@ export function finalizeThreadRecap(
   ]);
   const threadUrl = (raw: string | null) => {
     const url = raw?.trim();
-    return url &&
-      HTTP_URL.test(url) &&
-      (containsWholeUrl(input.message, url) || previousUrls.has(url))
+    return url && HTTP_URL.test(url) && (containsWholeUrl(threadText, url) || previousUrls.has(url))
       ? url
       : undefined;
   };
@@ -258,6 +258,21 @@ export function finalizeThreadRecap(
     }
   }
 
+  // Clients link issue IDs under this slug, so the model's value must match a Linear issue URL
+  // the thread or an earlier recap contained. Otherwise use the first such URL, then the
+  // earlier recap's slug.
+  const confirmedWorkspaces = [
+    ...linearWorkspacesInText(threadText),
+    ...linearWorkspacesInText([...previousUrls].join("\n")),
+  ];
+  const modelWorkspace = linearWorkspaceSlug(generated.linearWorkspace);
+  const finalLinearWorkspace =
+    (modelWorkspace !== undefined && confirmedWorkspaces.includes(modelWorkspace)
+      ? modelWorkspace
+      : confirmedWorkspaces[0]) ??
+    linearWorkspaceSlug(input.previousSummary?.linearWorkspace) ??
+    null;
+
   const links = new Map<string, { label: string; url: string }>();
   for (const link of generated.links) {
     if (links.size >= MAX_RECAP_LINKS) break;
@@ -282,14 +297,7 @@ export function finalizeThreadRecap(
       ],
     })),
     links: [...links.values()],
-    // The model only knows the slug from a lookup. Fall back to Linear URLs the thread or an
-    // earlier recap contained, then to the earlier recap's slug.
-    linearWorkspace:
-      linearWorkspaceSlug(generated.linearWorkspace) ??
-      linearWorkspaceInText(input.message) ??
-      linearWorkspaceInText([...previousUrls].join("\n")) ??
-      linearWorkspaceSlug(input.previousSummary?.linearWorkspace) ??
-      null,
+    linearWorkspace: finalLinearWorkspace,
   });
 }
 

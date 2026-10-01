@@ -151,6 +151,20 @@ function turnEnded(threadId: ThreadId): OrchestrationEvent {
   };
 }
 
+function turnStarted(threadId: ThreadId, messageId: string): OrchestrationEvent {
+  return {
+    ...eventBase(threadId, `turn-start-${++eventCount}`),
+    type: "thread.turn-start-requested",
+    payload: {
+      threadId,
+      messageId: MessageId.make(messageId),
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      createdAt: NOW,
+    },
+  };
+}
+
 function recapTurnedOn(threadId: ThreadId): OrchestrationEvent {
   return {
     ...eventBase(threadId, `recap-on-${++eventCount}`),
@@ -283,7 +297,7 @@ describe("ThreadRecapReactor", () => {
     ),
   );
 
-  it.effect("always generates with Claude Opus and the 1M context window", () =>
+  it.effect("always generates with Claude Sonnet and passes the thread title", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const fixture = yield* makeHarness({
@@ -296,12 +310,41 @@ describe("ThreadRecapReactor", () => {
           const [input] = yield* Ref.get(fixture.generations);
           expect(input?.modelSelection).toEqual({
             instanceId: "claudeAgent",
-            model: "claude-opus-5-5",
-            options: [
-              { id: "effort", value: "medium" },
-              { id: "contextWindow", value: "1m" },
-            ],
+            model: "sonnet",
+            options: [{ id: "effort", value: "medium" }],
           });
+          expect(input?.title).toBe("recap");
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+
+  it.effect("refreshes when a turn starts, and forces explicit requests", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const threadId = ThreadId.make("refresh");
+        const fixture = yield* makeHarness({
+          threads: [thread("refresh", { enabled: true, summary: null })],
+        });
+        yield* Effect.gen(function* () {
+          const reactor = yield* startReactor;
+          yield* Ref.update(fixture.threads, (current) => {
+            const target = current.get(threadId)!;
+            return new Map(current).set(threadId, {
+              ...target,
+              messages: [...target.messages, message("new-ask", "user", "Also cover Button.")],
+            });
+          });
+          yield* fixture.publish(turnStarted(threadId, "new-ask"));
+          expect((yield* Queue.take(fixture.updates)).summary.basedOnMessageId).toBe("new-ask");
+
+          // Already covered: an automatic trigger skips, an explicit request runs anyway.
+          yield* fixture.publish(turnEnded(threadId));
+          yield* fixture.publish(recapTurnedOn(threadId));
+          const forced = yield* Queue.take(fixture.updates);
+          expect(forced.summary.basedOnMessageId).toBe("new-ask");
+          yield* reactor.drain;
+          expect(yield* Ref.get(fixture.generations)).toHaveLength(2);
         }).pipe(Effect.provide(fixture.layer));
       }),
     ),

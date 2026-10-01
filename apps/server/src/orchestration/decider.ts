@@ -971,6 +971,18 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         thread.branch !== command.expectedBranch
           ? thread.branch
           : command.branch;
+      const recapWasEnabled = thread.recap?.enabled === true;
+      // Turning a recap on or refreshing it asks for a forced run. A refresh of a recap that
+      // is off does nothing.
+      const recapRequested =
+        (command.recapEnabled ?? recapWasEnabled) &&
+        ((command.recapEnabled === true && !recapWasEnabled) || command.refreshRecap === true);
+      const refreshOnly =
+        command.refreshRecap === true &&
+        Object.entries(command).every(
+          ([key, value]) =>
+            ["type", "commandId", "threadId", "refreshRecap"].includes(key) || value === undefined,
+        );
       const occurredAt = yield* nowIso;
       return {
         ...(yield* withEventBase({
@@ -1020,14 +1032,11 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
             : {}),
           // Turning off keeps the last summary so turning back on shows it right away.
           ...(command.recapEnabled !== undefined
-            ? {
-                recap: { enabled: command.recapEnabled, summary: thread.recap?.summary ?? null },
-                ...(command.recapEnabled && thread.recap?.enabled !== true
-                  ? { recapRequested: true as const }
-                  : {}),
-              }
+            ? { recap: { enabled: command.recapEnabled, summary: thread.recap?.summary ?? null } }
             : {}),
-          updatedAt: occurredAt,
+          ...(recapRequested ? { recapRequested: true as const } : {}),
+          // A refresh alone is not activity, so it leaves the thread's place in the list.
+          updatedAt: refreshOnly ? thread.updatedAt : occurredAt,
         },
       };
     }

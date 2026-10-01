@@ -1279,6 +1279,8 @@ const ThreadMetaUpdateCommand = Schema.Struct({
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   recapEnabled: Schema.optional(Schema.Boolean),
+  /** Regenerates an enabled recap now, even mid-turn or when it already covers the latest message. */
+  refreshRecap: Schema.optional(Schema.Literal(true)),
 }).check(
   Schema.makeFilter(
     (input) =>

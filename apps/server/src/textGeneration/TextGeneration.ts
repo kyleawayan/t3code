@@ -86,6 +86,8 @@ export interface ThreadRecapGenerationInput {
   cwd: string;
   /** Thread history formatted by `formatThreadRecapContext`. */
   message: string;
+  /** The thread's title, which can name the issue or topic the history never repeats. */
+  title?: string | undefined;
   /** Passed back so unchanged steps keep their ids and wording. */
   previousSummary?: ThreadRecapSummary | null | undefined;
   /** Linear issue IDs found in the thread. The model may only reference these. */

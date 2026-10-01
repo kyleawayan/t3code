@@ -40,23 +40,61 @@ const NON_ISSUE_KEYS = new Set([
 ]);
 const MAX_LINEAR_ISSUE_IDS = 5;
 
-/** Linear issue IDs from the thread's branch, worktree path, and user messages, in that order. */
+// Titles like `197.1: Move frontend` name issue 197 of the thread's team; `.1` marks a follow-up.
+const TITLE_ISSUE_NUMBER = /^\s*(\d{1,6})(?:\.\d{1,3})?\s*[:\-–]/;
+
+const issueKey = (id: string) => id.slice(0, id.indexOf("-"));
+
+/**
+ * Linear issue IDs from the thread's title, branch, worktree path, and user messages, in that
+ * order. A numeric title prefix becomes the first ID once another ID reveals the team key.
+ */
 export function detectLinearIssueIds(input: {
+  readonly title: string;
   readonly messages: ReadonlyArray<ThreadTitleMessage>;
   readonly branch: string | null;
   readonly worktreePath: string | null;
+  readonly previousLinearIssueIds?: ReadonlyArray<string> | undefined;
 }): ReadonlyArray<string> {
-  const fromPaths = [input.branch, input.worktreePath].flatMap((value) =>
-    value === null ? [] : Array.from(value.matchAll(PATH_ISSUE_ID), (match) => match[1]!),
-  );
+  const pathIds = (value: string | null) =>
+    value === null ? [] : Array.from(value.matchAll(PATH_ISSUE_ID), (match) => match[1]!);
+  const fromBranch = pathIds(input.branch);
+  const fromWorktree = pathIds(input.worktreePath);
+  const fromTitle = input.title.match(MESSAGE_ISSUE_ID) ?? [];
   const fromMessages = input.messages.flatMap((message) =>
     message.role === "user" ? (message.text.match(MESSAGE_ISSUE_ID) ?? []) : [],
   );
+  const found = [...fromTitle, ...fromBranch, ...fromWorktree, ...fromMessages]
+    .map((id) => id.toUpperCase())
+    .filter((id) => !NON_ISSUE_KEYS.has(issueKey(id)));
+
+  const titleNumber = Number(TITLE_ISSUE_NUMBER.exec(input.title)?.[1] ?? 0);
+  const team =
+    titleNumber > 0 ? threadTeamKey(fromBranch, found, input.previousLinearIssueIds) : null;
   const ids = new Set<string>();
-  for (const candidate of [...fromPaths, ...fromMessages]) {
+  for (const id of [...(team === null ? [] : [`${team}-${titleNumber}`]), ...found]) {
     if (ids.size >= MAX_LINEAR_ISSUE_IDS) break;
-    const id = candidate.toUpperCase();
-    if (!NON_ISSUE_KEYS.has(id.slice(0, id.indexOf("-")))) ids.add(id);
+    ids.add(id);
   }
   return [...ids];
+}
+
+/** The branch's team key, else the most frequent key among the thread's other IDs. */
+function threadTeamKey(
+  fromBranch: ReadonlyArray<string>,
+  found: ReadonlyArray<string>,
+  previous: ReadonlyArray<string> = [],
+): string | null {
+  const branchKey = fromBranch
+    .map((id) => issueKey(id).toUpperCase())
+    .find((key) => !NON_ISSUE_KEYS.has(key));
+  if (branchKey !== undefined) return branchKey;
+  const counts = new Map<string, number>();
+  for (const id of [...found, ...previous.map((entry) => entry.toUpperCase())]) {
+    const key = issueKey(id);
+    if (!NON_ISSUE_KEYS.has(key)) counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  for (const [key, count] of counts) if (best === null || count > counts.get(best)!) best = key;
+  return best;
 }

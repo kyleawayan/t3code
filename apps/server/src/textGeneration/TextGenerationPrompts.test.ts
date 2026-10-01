@@ -363,11 +363,14 @@ describe("buildThreadRecapPrompt", () => {
   it("passes the previous summary back for stable ids and wording", () => {
     const { prompt } = buildThreadRecapPrompt({
       message: "USER:\nMigrate to the new UI library",
+      title: "ENG-42 UI library migration",
       previousSummary,
       linearIssueIds: ["ENG-42"],
     });
 
-    expect(prompt).toContain("Linear issues in this thread: ENG-42");
+    expect(prompt).toContain(
+      "Thread title: ENG-42 UI library migration\nLinear issues in this thread: ENG-42",
+    );
     expect(prompt).toContain(
       '"steps":[{"id":"migrate-components","label":"Migrate Modal and Button","status":"now","source":"linear","linearIssueId":"ENG-42","url":null,"blockedBy":[]}],"links":[{"label":"Migration guide","url":"https://docs.example.com/ui-migration"}],"linearWorkspace":"acme"',
     );
@@ -531,7 +534,7 @@ describe("finalizeThreadRecap", () => {
     }),
   );
 
-  effectIt.effect("accepts only a plain Linear workspace slug, then falls back", () =>
+  effectIt.effect("accepts a Linear workspace slug only when a thread URL confirms it", () =>
     Effect.gen(function* () {
       const workspaceFor = (
         linearWorkspace: string | null,
@@ -555,11 +558,21 @@ describe("finalizeThreadRecap", () => {
         }).pipe(Effect.map((result) => result.linearWorkspace));
       const threadLink = "USER:\nSee https://linear.app/acme-labs/issue/ENG-42/fix-login";
 
-      expect(yield* workspaceFor("acme", "")).toBe("acme");
+      // An unconfirmed slug from the model is never trusted, even when well formed.
+      expect(yield* workspaceFor("acme", "")).toBeNull();
+      expect(yield* workspaceFor("acme-labs", threadLink)).toBe("acme-labs");
+      expect(yield* workspaceFor("acme", threadLink)).toBe("acme-labs");
       for (const invalid of ["evil.com/x", "Acme", "acme/issue", "-acme", "a".repeat(65)]) {
         expect(yield* workspaceFor(invalid, "")).toBeNull();
       }
       expect(yield* workspaceFor("evil.com/x", threadLink)).toBe("acme-labs");
+      expect(
+        yield* finalizeThreadRecap(recap({ linearWorkspace: "acme" }), {
+          linearIssueIds: [],
+          message: "",
+          title: "https://linear.app/acme/issue/ENG-42",
+        }).pipe(Effect.map((result) => result.linearWorkspace)),
+      ).toBe("acme");
       expect(
         yield* workspaceFor(
           null,
