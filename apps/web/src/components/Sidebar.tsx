@@ -660,7 +660,7 @@ function SidebarSectionHeader(props: {
 }) {
   const snoozed = props.marker === "snoozed-header";
   const className = cn(
-    "flex h-full w-full items-center gap-2 px-2 text-left text-xs font-medium",
+    "flex h-full w-full items-center gap-2 px-[var(--sidebar-row-content-inset)] text-left text-xs font-medium",
     snoozed ? "text-blue-600 dark:text-blue-400" : "text-sidebar-muted-foreground/60",
     props.dragging && "text-sidebar-foreground/80",
     props.isDropTarget && "text-primary",
@@ -690,7 +690,7 @@ function SidebarSectionHeader(props: {
     <SortableSidebarMarker
       marker={props.marker}
       data-testid={`sidebar-${props.marker}`}
-      className={cn("mx-0.5 h-8", props.className)}
+      className={cn("h-8", props.className)}
     >
       <button
         type="button"

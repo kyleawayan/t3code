@@ -22,6 +22,14 @@ results appear as each one responds.
 If recent work is missing or a new model shows no cost, refresh to rescan session history and
 update model pricing.
 
+On web and desktop, set a **Daily API budget** or **Monthly API budget** on Usage to show that
+period's percentage progress in the sidebar. Each budget is independent: daily resets at local
+midnight, monthly on the first day of the month. They track API-equivalent estimates across all
+environments, including subscription history, and do not enforce spending limits. Dollar amounts
+stay on Usage. Orange and blue segments show Claude and Codex's shares of the estimate; the
+hatched portion is the budget remaining. Budgets are saved on this device. Edit either on Usage or choose
+its **Remove budget** action to hide that sidebar bar again.
+
 ## Set custom model prices
 
 On web or desktop, open the environment dropdown on **Usage**, then choose **Model prices** to add,

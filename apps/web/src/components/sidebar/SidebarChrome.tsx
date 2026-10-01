@@ -215,7 +215,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
 
 export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   return (
-    <SidebarFooter className="max-h-[45%] p-[var(--sidebar-content-inset)]">
+    <SidebarFooter className="max-h-[45%] ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] py-[var(--sidebar-content-inset)]">
       <SidebarUsageLimits />
       <SidebarProviderUpdatePill />
       <SidebarUpdateArchitectureWarning />

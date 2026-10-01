@@ -22,6 +22,8 @@ import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
 import { Button } from "../ui/button";
 import { Alert, AlertTitle } from "../ui/alert";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { sampleSubscriptionAccounts, useDevSubscriptionPreview } from "./subscriptionPreview";
+import { UsageWindowCard } from "./UsageWindowCard";
 import {
   PaceIcon,
   ResetCreditDialog,
@@ -507,54 +509,26 @@ function PoolWindowCard({
   const nextRefill = pool.resets.find((reset) => reset.restoresPercent > 0);
   const nextReset = nextRefill ?? pool.resets[0];
   return (
-    <div
-      className={cn(
-        "grid items-center rounded-lg border border-border/60",
-        compact ? "gap-1.5 p-2" : "gap-x-6 gap-y-3 p-4 md:grid-cols-[11rem_minmax(0,1fr)]",
-      )}
-    >
-      <div
-        className={cn("flex gap-1", compact ? "flex-row items-center justify-between" : "flex-col")}
-      >
-        <span
-          className={cn(
-            "font-medium text-foreground",
-            compact ? "min-w-0 truncate text-xs" : "text-sm",
-          )}
-        >
-          {pool.label}
-        </span>
-        <span className={cn("flex shrink-0 items-baseline", compact ? "gap-1" : "gap-2")}>
-          <span
-            className={cn(
-              "font-semibold text-foreground tabular-nums",
-              compact ? "text-xs" : "text-3xl",
-            )}
-          >
-            {pool.remainingPercent}%
-          </span>
-          <span className={cn("text-muted-foreground", compact ? "text-xs" : "text-sm")}>left</span>
-          {pool.pace && !compact ? <PaceIcon pace={pool.pace} /> : null}
-        </span>
-        {nextRefill && !compact ? (
-          <span className="w-full text-xs text-muted-foreground tabular-nums">
+    <UsageWindowCard
+      label={pool.label}
+      remainingPercent={pool.remainingPercent}
+      compact={compact}
+      status={pool.pace ? <PaceIcon pace={pool.pace} /> : null}
+      detail={
+        compact ? (
+          nextReset ? (
+            `↻ ${nextReset.at <= now ? "now" : formatDuration(nextReset.at - now)}`
+          ) : null
+        ) : nextRefill ? (
+          <>
             <span className="font-medium text-foreground">↻ +{nextRefill.restoresPercent}%</span>{" "}
             {nextRefill.at <= now ? "now" : `in ${formatDuration(nextRefill.at - now)}`}
-          </span>
-        ) : null}
-      </div>
-      {compact && (nextReset || pool.pace) ? (
-        <div className="flex items-center justify-between gap-1 text-[11px] text-muted-foreground tabular-nums">
-          <span>
-            {nextReset
-              ? `↻ ${nextReset.at <= now ? "now" : formatDuration(nextReset.at - now)}`
-              : null}
-          </span>
-          {pool.pace ? <PaceIcon pace={pool.pace} /> : null}
-        </div>
-      ) : null}
+          </>
+        ) : null
+      }
+    >
       <PoolBar pool={pool} color={color} now={now} compact={compact} />
-    </div>
+    </UsageWindowCard>
   );
 }
 
@@ -608,11 +582,21 @@ export function UsageLimitsPooled({
   readonly now: number;
   readonly compact?: boolean;
 }) {
-  const pools = collectLimitPools(collectLimitAccounts(presentations), now);
-  const notices = collectLimitNotices(presentations);
+  const [previewEnabled] = useDevSubscriptionPreview();
+  const preview = import.meta.env.DEV && previewEnabled;
+  const pools = collectLimitPools(
+    preview ? sampleSubscriptionAccounts(now) : collectLimitAccounts(presentations),
+    now,
+  );
+  const notices = preview ? [] : collectLimitNotices(presentations);
   if (compact && pools.length === 0) return null;
   return (
     <div className={cn("flex min-w-0 flex-col", compact ? "gap-3" : "gap-8")}>
+      {preview ? (
+        <p className="text-xs text-muted-foreground" role="status">
+          Sample data
+        </p>
+      ) : null}
       {pools.length === 0 && notices.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No provider on the selected environments reports subscription limits.
