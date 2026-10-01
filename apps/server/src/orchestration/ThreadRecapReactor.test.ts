@@ -1,10 +1,12 @@
 import {
+  DEFAULT_SERVER_SETTINGS,
   EventId,
   MessageId,
   ProjectId,
   ProviderInstanceId,
   TextGenerationError,
   ThreadId,
+  TurnId,
   type OrchestrationCommand,
   type OrchestrationEvent,
   type OrchestrationMessage,
@@ -28,6 +30,11 @@ import {
   type ThreadRecapGenerationInput,
   type ThreadRecapGenerationResult,
 } from "../textGeneration/TextGeneration.ts";
+import {
+  type ProjectionTurn,
+  ProjectionTurnRepository,
+} from "../persistence/Services/ProjectionTurns.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import { OrchestrationEngineService } from "./Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "./Services/ProjectionSnapshotQuery.ts";
 import * as ThreadRecapReactor from "./ThreadRecapReactor.ts";
@@ -35,6 +42,7 @@ import * as ThreadRecapReactor from "./ThreadRecapReactor.ts";
 const NOW = "2026-09-01T12:00:00.000Z";
 const PROJECT_ID = ProjectId.make("project");
 type RecapUpdate = Extract<OrchestrationCommand, { type: "thread.recap.update" }>;
+type MetaUpdate = Extract<OrchestrationCommand, { type: "thread.meta.update" }>;
 
 const GENERATED: ThreadRecapGenerationResult = {
   goal: "Migrate to the new UI library",
@@ -180,6 +188,8 @@ function recapTurnedOn(threadId: ThreadId): OrchestrationEvent {
 
 const makeHarness = Effect.fn("makeThreadRecapHarness")(function* (options: {
   readonly threads: ReadonlyArray<OrchestrationThread>;
+  readonly turns?: ReadonlyArray<ProjectionTurn>;
+  readonly recapEnabledByDefault?: boolean;
   readonly generate?: (
     input: ThreadRecapGenerationInput,
   ) => Effect.Effect<ThreadRecapGenerationResult, TextGenerationError>;
@@ -188,6 +198,7 @@ const makeHarness = Effect.fn("makeThreadRecapHarness")(function* (options: {
   const events = yield* PubSub.unbounded<OrchestrationEvent>();
   const shellReads = yield* Queue.unbounded<ThreadId>();
   const updates = yield* Queue.unbounded<RecapUpdate>();
+  const metaUpdates = yield* Queue.unbounded<MetaUpdate>();
   const generations = yield* Ref.make<ReadonlyArray<ThreadRecapGenerationInput>>([]);
   let uuid = 0;
 
@@ -204,6 +215,15 @@ const makeHarness = Effect.fn("makeThreadRecapHarness")(function* (options: {
         Ref.get(threads).pipe(Effect.map((current) => Option.fromNullishOr(current.get(threadId)))),
       getProjectShellById: () => Effect.succeed(Option.none()),
     }),
+    Layer.mock(ProjectionTurnRepository)({
+      listByThreadId: () => Effect.succeed(options.turns ?? []),
+    }),
+    Layer.mock(ServerSettingsService)({
+      getSettings: Effect.succeed({
+        ...DEFAULT_SERVER_SETTINGS,
+        recapEnabledByDefault: options.recapEnabledByDefault ?? false,
+      }),
+    }),
     Layer.mock(TextGeneration)({
       generateThreadRecap: (input) =>
         Ref.update(generations, (current) => [...current, input]).pipe(
@@ -215,6 +235,9 @@ const makeHarness = Effect.fn("makeThreadRecapHarness")(function* (options: {
         Effect.map((subscription) => Stream.fromSubscription(subscription)),
       ),
       dispatch: (command) => {
+        if (command.type === "thread.meta.update") {
+          return Queue.offer(metaUpdates, command).pipe(Effect.as({ sequence: 1 }));
+        }
         if (command.type !== "thread.recap.update") {
           return Effect.die(`Unexpected command: ${command.type}`);
         }
@@ -241,6 +264,7 @@ const makeHarness = Effect.fn("makeThreadRecapHarness")(function* (options: {
     threads,
     shellReads,
     updates,
+    metaUpdates,
     generations,
     publish: (event: OrchestrationEvent) => PubSub.publish(events, event),
     layer: ThreadRecapReactor.layer.pipe(Layer.provide(dependencies)),
@@ -292,6 +316,103 @@ describe("ThreadRecapReactor", () => {
           expect(input?.previousSummary).toEqual(previousSummary);
           expect(input?.linearIssueIds).toEqual(["ENG-42"]);
           expect(input?.message).toContain("Wrote the E2E tests.");
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+    ),
+  );
+
+  it.effect("turns the recap on for new threads only when the setting says so", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const created = (threadId: string): OrchestrationEvent => ({
+          ...eventBase(ThreadId.make(threadId), `created-${threadId}`),
+          type: "thread.created",
+          payload: {
+            threadId: ThreadId.make(threadId),
+            projectId: ProjectId.make("project"),
+            title: "New thread",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("claudeAgent"),
+              model: "sonnet",
+            },
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: null,
+            createdAt: NOW,
+            updatedAt: NOW,
+          },
+        });
+        const on = yield* makeHarness({ threads: [], recapEnabledByDefault: true });
+        yield* Effect.gen(function* () {
+          yield* startReactor;
+          yield* on.publish(created("fresh"));
+          const update = yield* Queue.take(on.metaUpdates);
+          expect(update).toMatchObject({ threadId: "fresh", recapEnabled: true });
+        }).pipe(Effect.provide(on.layer));
+
+        const off = yield* makeHarness({
+          threads: [thread("known", { enabled: true, summary: null })],
+        });
+        yield* Effect.gen(function* () {
+          yield* startReactor;
+          yield* off.publish(created("plain"));
+          // Events run in order, so this update means the creation was already handled.
+          yield* off.publish(turnEnded(ThreadId.make("known")));
+          yield* Queue.take(off.updates);
+          expect(yield* Queue.size(off.metaUpdates)).toBe(0);
+        }).pipe(Effect.provide(off.layer));
+      }),
+    ),
+  );
+
+  it.effect("tells the recap which request the user interrupted", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const threadId = ThreadId.make("interrupted");
+        const fixture = yield* makeHarness({
+          threads: [
+            thread(
+              "interrupted",
+              { enabled: true, summary: null },
+              {
+                messages: [
+                  message("review", "user", "/code-review"),
+                  message("resume", "user", "sorry continue"),
+                ],
+              },
+            ),
+          ],
+          turns: [
+            {
+              threadId,
+              turnId: TurnId.make("review-turn"),
+              pendingMessageId: MessageId.make("review"),
+              sourceProposedPlanThreadId: null,
+              sourceProposedPlanId: null,
+              assistantMessageId: null,
+              state: "interrupted",
+              requestedAt: NOW,
+              startedAt: NOW,
+              completedAt: NOW,
+              checkpointTurnCount: null,
+              checkpointRef: null,
+              checkpointStatus: null,
+              checkpointFiles: [],
+            },
+          ],
+        });
+        yield* Effect.gen(function* () {
+          yield* startReactor;
+          yield* fixture.publish(turnEnded(threadId));
+          yield* Queue.take(fixture.updates);
+          const [input] = yield* Ref.get(fixture.generations);
+          expect(input?.message).toContain(
+            "/code-review\n[The user interrupted this turn before it finished.]",
+          );
+          expect(input?.message).not.toContain(
+            "sorry continue\n[The user interrupted this turn before it finished.]",
+          );
         }).pipe(Effect.provide(fixture.layer));
       }),
     ),

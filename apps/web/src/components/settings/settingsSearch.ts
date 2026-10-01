@@ -349,6 +349,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["max limit number count concurrency parallel running"],
   },
   {
+    id: "recap-enabled-by-default",
+    title: "Resume map for new threads",
+    to: "/settings/general",
+    scope: "project-defaults",
+    searchTerms: ["recap map summary note goal resume default on new thread"],
+  },
+  {
     id: "background-activity",
     title: "Background activity",
     to: "/settings/general",

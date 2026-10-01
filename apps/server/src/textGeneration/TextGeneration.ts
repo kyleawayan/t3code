@@ -92,6 +92,8 @@ export interface ThreadRecapGenerationInput {
   previousSummary?: ThreadRecapSummary | null | undefined;
   /** Linear issue IDs found in the thread. The model may only reference these. */
   linearIssueIds: ReadonlyArray<string>;
+  /** What the user asked for in turns they interrupted, oldest first. */
+  interruptedRequests?: ReadonlyArray<string> | undefined;
   /** What model and provider to use for generation. */
   modelSelection: ModelSelection;
 }

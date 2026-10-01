@@ -18,6 +18,60 @@ export function formatThreadRecapContext(messages: ReadonlyArray<ThreadTitleMess
   return formatThreadContext(messages, RECAP_CONTEXT_BUDGET).message;
 }
 
+export const INTERRUPTED_TURN_NOTE = "[The user interrupted this turn before it finished.]";
+
+const MAX_INTERRUPTED_REQUESTS = 3;
+const MAX_INTERRUPTED_REQUEST_CHARS = 200;
+
+/**
+ * The requests behind the latest interrupted turns, oldest first. Listed on
+ * their own so the recap rules on each: an inline note alone was easy to miss
+ * once the agent moved on to other work.
+ */
+export function interruptedRequests(
+  messages: ReadonlyArray<ThreadTitleMessage & { readonly id: string }>,
+  interruptedTurns: ReadonlyArray<{ readonly pendingMessageId: string | null }>,
+): ReadonlyArray<string> {
+  const pending = new Set(interruptedTurns.flatMap((turn) => turn.pendingMessageId ?? []));
+  return messages
+    .filter((message) => message.role === "user" && pending.has(message.id))
+    .map((message) =>
+      message.text.replace(/\s+/g, " ").trim().slice(0, MAX_INTERRUPTED_REQUEST_CHARS),
+    )
+    .filter((text) => text.length > 0)
+    .slice(-MAX_INTERRUPTED_REQUESTS);
+}
+
+/**
+ * Notes the end of each interrupted turn, which messages alone cannot show:
+ * a stopped command or review often leaves no reply, and the recap would
+ * otherwise read the request as handled. The note goes last, where the
+ * context budget's head-and-tail truncation keeps it.
+ */
+export function markInterruptedTurns<
+  M extends ThreadTitleMessage & { readonly id: string; readonly turnId: string | null },
+>(
+  messages: ReadonlyArray<M>,
+  interruptedTurns: ReadonlyArray<{
+    readonly turnId: string | null;
+    readonly pendingMessageId: string | null;
+  }>,
+): ReadonlyArray<M> {
+  const marked = new Set<number>();
+  for (const turn of interruptedTurns) {
+    const last = messages.findLastIndex(
+      (message) =>
+        (turn.turnId !== null && message.turnId === turn.turnId) ||
+        (turn.pendingMessageId !== null && message.id === turn.pendingMessageId),
+    );
+    if (last !== -1) marked.add(last);
+  }
+  if (marked.size === 0) return messages;
+  return messages.map((message, index) =>
+    marked.has(index) ? { ...message, text: `${message.text}\n${INTERRUPTED_TURN_NOTE}` } : message,
+  );
+}
+
 const MESSAGE_ISSUE_ID = /\b[A-Z][A-Z0-9]{1,9}-\d+\b/g;
 // Linear branch names put a lowercase key at the start of a path segment,
 // such as `user/eng-123-fix-login`. Letters only, so UUID fragments never match.

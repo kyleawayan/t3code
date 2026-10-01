@@ -1115,6 +1115,8 @@ export const ServerSettings = Schema.Struct({
   maxConcurrentAgents: Schema.NullOr(MaxConcurrentAgents).pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_MAX_CONCURRENT_AGENTS)),
   ),
+  /** Turns on the resume map for each new thread. Existing threads keep their own switch. */
+  recapEnabledByDefault: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   backgroundActivity: BackgroundActivitySettings,
   // Legacy flat fields retained for old settings files and old clients. New
   // consumers should resolve `backgroundActivity` instead.
@@ -1410,6 +1412,7 @@ export const ServerSettingsPatch = Schema.Struct({
   sidebarAutoSettleAfterDays: Schema.optionalKey(Schema.NullOr(SidebarAutoSettleAfterDays)),
   sidebarAutoSettleOnMerge: Schema.optionalKey(Schema.Boolean),
   maxConcurrentAgents: Schema.optionalKey(Schema.NullOr(MaxConcurrentAgents)),
+  recapEnabledByDefault: Schema.optionalKey(Schema.Boolean),
   backgroundActivity: Schema.optionalKey(
     Schema.Struct({
       schemaVersion: Schema.optionalKey(Schema.Literal(1)),

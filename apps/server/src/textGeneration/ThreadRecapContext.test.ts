@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { detectLinearIssueIds, formatThreadRecapContext } from "./ThreadRecapContext.ts";
+import {
+  detectLinearIssueIds,
+  formatThreadRecapContext,
+  INTERRUPTED_TURN_NOTE,
+  interruptedRequests,
+  markInterruptedTurns,
+} from "./ThreadRecapContext.ts";
 
 describe("detectLinearIssueIds", () => {
   it("reads the title, then branch and worktree keys, then user messages", () => {
@@ -69,6 +75,64 @@ describe("detectLinearIssueIds", () => {
         messages: [{ role: "user", text: "ENG-1 ENG-2 ENG-3 ENG-4 ENG-5 ENG-6 ENG-1" }],
       }),
     ).toEqual(["ENG-1", "ENG-2", "ENG-3", "ENG-4", "ENG-5"]);
+  });
+});
+
+describe("markInterruptedTurns", () => {
+  const message = (
+    id: string,
+    role: "user" | "assistant",
+    text: string,
+    turnId: string | null,
+  ) => ({
+    id,
+    role,
+    text,
+    turnId,
+  });
+
+  it("notes the last message of each interrupted turn", () => {
+    const marked = markInterruptedTurns(
+      [
+        message("review", "user", "/code-review", null),
+        message("partial", "assistant", "Reviewing the diff", "review-turn"),
+        message("resume", "user", "sorry continue", null),
+      ],
+      [{ turnId: "review-turn", pendingMessageId: "review" }],
+    );
+    expect(marked.map((entry) => entry.text)).toEqual([
+      "/code-review",
+      `Reviewing the diff\n${INTERRUPTED_TURN_NOTE}`,
+      "sorry continue",
+    ]);
+  });
+
+  it("notes the request itself when the turn left no reply", () => {
+    const messages = [message("review", "user", "/code-review", null)];
+    expect(
+      markInterruptedTurns(messages, [{ turnId: "review-turn", pendingMessageId: "review" }])[0]
+        ?.text,
+    ).toBe(`/code-review\n${INTERRUPTED_TURN_NOTE}`);
+    expect(markInterruptedTurns(messages, [])).toBe(messages);
+  });
+});
+
+describe("interruptedRequests", () => {
+  it("returns the latest interrupted user requests, oldest first", () => {
+    const messages = ["one", "two", "three", "four", "kept"].map((text, index) => ({
+      id: `m${index}`,
+      role: "user" as const,
+      text: index === 1 ? `  ${text}\n ` : text,
+    }));
+    expect(
+      interruptedRequests(messages, [
+        { pendingMessageId: "m0" },
+        { pendingMessageId: "m1" },
+        { pendingMessageId: "m2" },
+        { pendingMessageId: "m3" },
+        { pendingMessageId: null },
+      ]),
+    ).toEqual(["two", "three", "four"]);
   });
 });
 

@@ -393,6 +393,19 @@ describe("buildThreadRecapPrompt", () => {
     expect(prompt).not.toMatch(/lookup|Linear tools|sub-issues/i);
   });
 
+  it("lists interrupted requests only when there are some", () => {
+    const { prompt } = buildThreadRecapPrompt({
+      message: "USER:\n/code-review",
+      linearIssueIds: [],
+      interruptedRequests: ["/code-review"],
+    });
+    expect(prompt).toContain("Requests the user interrupted before they finished");
+    expect(prompt).toContain('- "/code-review"');
+    expect(
+      buildThreadRecapPrompt({ message: "USER:\nFix login", linearIssueIds: [] }).prompt,
+    ).not.toContain("Requests the user interrupted before they finished");
+  });
+
   it("marks a first recap and a thread without issues explicitly", () => {
     const { prompt } = buildThreadRecapPrompt({ message: "USER:\nFix login", linearIssueIds: [] });
     expect(prompt).toContain("Linear issues in this thread: none");

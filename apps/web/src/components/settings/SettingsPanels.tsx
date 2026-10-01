@@ -607,6 +607,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.maxConcurrentAgents !== DEFAULT_UNIFIED_SETTINGS.maxConcurrentAgents
         ? ["Max agents allowed to run"]
         : []),
+      ...(settings.recapEnabledByDefault !== DEFAULT_UNIFIED_SETTINGS.recapEnabledByDefault
+        ? ["Resume map for new threads"]
+        : []),
       ...(isBackgroundActivityDirty ? ["Background activity"] : []),
       ...(settings.defaultThreadEnvMode !== DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode
         ? ["New thread mode"]
@@ -675,6 +678,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.enableProviderUpdateChecks,
       settings.continueThreadsAfterServerUpdate,
       settings.maxConcurrentAgents,
+      settings.recapEnabledByDefault,
       settings.sidebarAutoSettleAfterDays,
       settings.sidebarAutoSettleOnMerge,
       settings.sidebarProjectGroupingMode,
@@ -780,6 +784,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       enableProviderUpdateChecks: DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks,
       continueThreadsAfterServerUpdate: DEFAULT_UNIFIED_SETTINGS.continueThreadsAfterServerUpdate,
       maxConcurrentAgents: DEFAULT_UNIFIED_SETTINGS.maxConcurrentAgents,
+      recapEnabledByDefault: DEFAULT_UNIFIED_SETTINGS.recapEnabledByDefault,
       backgroundActivity: DEFAULT_UNIFIED_SETTINGS.backgroundActivity,
       backgroundActivityProfile: DEFAULT_UNIFIED_SETTINGS.backgroundActivityProfile,
       automaticGitFetchInterval: DEFAULT_UNIFIED_SETTINGS.automaticGitFetchInterval,
@@ -2789,6 +2794,35 @@ export function GeneralSettingsPanel() {
         />
 
         <MaxConcurrentAgentsSettings />
+
+        <SettingsRow
+          {...searchableSetting("recap-enabled-by-default")}
+          serverScoped
+          settingKeys={["recapEnabledByDefault"]}
+          description="Turn on the resume map when a thread starts. Threads you already have keep their own setting."
+          resetAction={
+            settings.recapEnabledByDefault !== DEFAULT_UNIFIED_SETTINGS.recapEnabledByDefault ? (
+              <SettingResetButton
+                label="resume map for new threads"
+                onClick={() =>
+                  updateSettings({
+                    recapEnabledByDefault: DEFAULT_UNIFIED_SETTINGS.recapEnabledByDefault,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <ScopedSwitch
+              settingKeys={["recapEnabledByDefault"]}
+              checked={settings.recapEnabledByDefault}
+              onCheckedChange={(checked) =>
+                updateSettings({ recapEnabledByDefault: Boolean(checked) })
+              }
+              aria-label="Resume map for new threads"
+            />
+          }
+        />
 
         <SettingsRow
           serverScoped

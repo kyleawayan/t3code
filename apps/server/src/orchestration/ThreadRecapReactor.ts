@@ -17,11 +17,15 @@ import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 import { resolveThreadWorkspaceCwd } from "../checkpointing/Utils.ts";
+import { ProjectionTurnRepository } from "../persistence/Services/ProjectionTurns.ts";
 import { forkParked } from "../serverActivation.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import { TextGeneration } from "../textGeneration/TextGeneration.ts";
 import {
   detectLinearIssueIds,
   formatThreadRecapContext,
+  interruptedRequests,
+  markInterruptedTurns,
 } from "../textGeneration/ThreadRecapContext.ts";
 import * as OrchestrationEngine from "./Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./Services/ProjectionSnapshotQuery.ts";
@@ -69,6 +73,8 @@ export const make = Effect.gen(function* () {
   const engine = yield* OrchestrationEngine.OrchestrationEngineService;
   const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const textGeneration = yield* TextGeneration;
+  const turns = yield* ProjectionTurnRepository;
+  const serverSettings = yield* ServerSettingsService;
   const crypto = yield* Crypto.Crypto;
 
   const regenerate = Effect.fn("ThreadRecapReactor.regenerate")(function* ({
@@ -96,13 +102,17 @@ export const make = Effect.gen(function* () {
       previousLinearIssueIds: previousSummary?.linearIssueIds,
     });
     const project = yield* snapshots.getProjectShellById(thread.projectId);
+    const interruptedTurns = (yield* turns.listByThreadId({ threadId })).filter(
+      (turn) => turn.state === "interrupted",
+    );
     const generated = yield* textGeneration.generateThreadRecap({
       cwd:
         resolveThreadWorkspaceCwd({ thread, projects: Option.toArray(project) }) ?? process.cwd(),
-      message: formatThreadRecapContext(thread.messages),
+      message: formatThreadRecapContext(markInterruptedTurns(thread.messages, interruptedTurns)),
       title: thread.title,
       previousSummary,
       linearIssueIds,
+      interruptedRequests: interruptedRequests(thread.messages, interruptedTurns),
       modelSelection: RECAP_MODEL_SELECTION,
     });
     yield* engine.dispatch({
@@ -140,8 +150,26 @@ export const make = Effect.gen(function* () {
     ),
   );
 
+  // Turning the recap on emits its own event, which then queues the first generation.
+  const applyRecapDefault = Effect.fn("ThreadRecapReactor.applyRecapDefault")(function* (
+    threadId: ThreadId,
+  ) {
+    const settings = yield* serverSettings.getSettings;
+    if (!settings.recapEnabledByDefault) return;
+    yield* engine.dispatch({
+      type: "thread.meta.update",
+      commandId: CommandId.make(`server:thread-recap-default:${yield* crypto.randomUUIDv4}`),
+      threadId,
+      recapEnabled: true,
+    });
+  });
+
   const processEvent = Effect.fn("ThreadRecapReactor.processEvent")(
     function* (event: OrchestrationEvent) {
+      if (event.type === "thread.created") {
+        yield* applyRecapDefault(event.payload.threadId);
+        return;
+      }
       const request = recapRequestFor(event);
       if (request === null) return;
       const { threadId, force } = request;
