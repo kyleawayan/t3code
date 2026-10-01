@@ -352,15 +352,21 @@ A title prefix like "42.1:" refers to issue 42 of the thread's Linear team; ".1"
 
 Summarize at the level of the task's milestones, anchored to the goal. The goal comes from the first user message and any Linear issues listed below. Do not narrate the last turn's tool calls, file reads, searches, or commands.
 
+IDs and numbers:
+- Whenever goal, done, now, next, blocked, or a step label names something by ID or number (a PR such as #87, a Linear issue such as ENG-42, or any other ticket, run, or build ID), say what it is right after it in at most 6 words: after a dash when the ID ends the text, in parentheses when the sentence goes on. For example "Review and approve #87 – the login form PR", not just "Review and approve #87", and "Pick test data for ENG-42 (baseline suite issue) first".
+- Take the description from the thread. When the thread never says what an ID is, leave it alone.
+- Describe every ID each time it appears, even when another field already describes it.
+- The description does not count toward the word limits below.
+
 Fields:
 - goal: the outcome the user wants, at most 12 words. Keep it unless the user changed what the thread is about.
 - done: the latest finished milestone, at most 12 words, naming the artifact. null when nothing is finished.
 - now: the milestone in progress as verb + object, at most 10 words.
 - next: exactly one concrete next action, at most 12 words, naming the artifact. null when the goal is complete.
 - blocked: the blocker, only when the conversation explicitly states one. Otherwise null. Do not guess blockers.
-- steps: the task's milestones in order, at most 12. Exactly one step has status "now", and it is the same task as now. Each step is an object with:
+- steps: the whole path of the task as milestones, from the first one in the thread through the goal, at most 20. Include finished milestones, not only what is left. Exactly one step has status "now", and it is the same task as now. Each step is an object with:
   - id: short kebab-case id. Reuse the previous summary's id for the same step.
-  - label: the milestone, at most 8 words.
+  - label: the milestone, at most 8 words, plus the description of any ID it names (see IDs and numbers).
   - status: "done", "now", "next", "blocked", or "unknown". Use "unknown" when unsure. A step with no stated blocker is not automatically ready.
   - source: "chat" when the conversation states the step, "linear" only for a Linear issue listed below, otherwise "inferred".
   - linearIssueId: one of the Linear issue IDs listed below, or null.
@@ -373,8 +379,9 @@ Links:
 - Copy every URL exactly as it appears in the thread, character for character. Never invent, shorten, complete, or rewrite a URL.
 - Prefer URLs the user pasted over URLs the assistant found.
 
-The steps are drawn as a dependency diagram, so map the dependencies:
-- For every step after the first, list in blockedBy the ids of the steps it depends on whenever the conversation implies an order or a prerequisite.
+The steps are drawn as a dependency diagram of the whole thread, so map the dependencies, finished steps included:
+- For every step after the first, list in blockedBy the ids of the steps it depends on whenever the conversation implies an order or a prerequisite. Do this for finished steps too, so the diagram shows how the work flowed: what led to what, where it split into parallel tracks, and where the tracks joined.
+- List only direct prerequisites. When c needs b and b needs a, c lists only b.
 - A step depends on another only when it cannot start until that one finishes. The "next" step depends on the "now" step when it needs its result. A sub-task depends on its prerequisites. A verification step depends on the work it verifies.
 - Work that can happen at the same time must not depend on each other (for example, setting up monitoring while waiting on a content review). Leave those as separate branches so the diagram shows them in parallel.
 - When a step waits on a person or an outside event (a review, an approval, access), give it status "blocked" and name what it waits on in its label. Steps that do not need that outcome stay unblocked.
@@ -382,9 +389,9 @@ The steps are drawn as a dependency diagram, so map the dependencies:
 - Never invent Linear issue IDs or relationships between Linear issues. Use only IDs and relations stated in the thread.
 
 Stability matters more than polish:
-- Keep wording identical to the previous summary unless the underlying state changed.
-- For a step that already exists, reuse its id and label exactly and update only its status and dependencies.
-- Add or remove steps only when the plan changed.
+- Keep wording identical to the previous summary unless the underlying state changed or it names an ID without a description. Add the missing description; that is the only wording change allowed without a state change.
+- For a step that already exists, reuse its id and label, adding any missing ID description, and update only its status and dependencies.
+- Add or remove steps only when the plan changed, or to add a finished milestone the previous summary left out.
 
 Cancelled steps override stability:
 - When the conversation says a step is cancelled, dropped, skipped, or no longer needed (for example "ok cancelling this task" or "skip the approval"), remove that step from steps, even if the previous summary had it.
@@ -392,7 +399,7 @@ Cancelled steps override stability:
 - Do not mention it in blocked or next.
 
 Example for a thread about moving an app to a new UI library, where the user pasted a migration doc:
-{"goal":"Migrate to the new UI library","done":"E2E tests written","now":"Migrating Modal and Button components","next":"Get the E2E suite passing on the new UI","blocked":null,"steps":[{"id":"write-e2e-tests","label":"Write E2E tests","status":"done","source":"chat","linearIssueId":null,"url":null,"blockedBy":[]},{"id":"migrate-components","label":"Migrate Modal and Button","status":"now","source":"chat","linearIssueId":null,"url":"https://docs.example.com/ui-migration","blockedBy":[]},{"id":"pass-e2e-suite","label":"Pass E2E suite on the new UI","status":"next","source":"inferred","linearIssueId":null,"url":null,"blockedBy":["write-e2e-tests","migrate-components"]}],"links":[{"label":"UI migration guide","url":"https://docs.example.com/ui-migration"}],"linearWorkspace":null}`;
+{"goal":"Migrate to the new UI library","done":"Merged #41 – the E2E test suite PR","now":"Migrating Modal and Button components","next":"Get the E2E suite passing on the new UI","blocked":null,"steps":[{"id":"audit-components","label":"Audit components to migrate","status":"done","source":"chat","linearIssueId":null,"url":null,"blockedBy":[]},{"id":"write-e2e-tests","label":"Merge #41 – the E2E test suite PR","status":"done","source":"chat","linearIssueId":null,"url":null,"blockedBy":[]},{"id":"migrate-components","label":"Migrate Modal and Button","status":"now","source":"chat","linearIssueId":null,"url":"https://docs.example.com/ui-migration","blockedBy":["audit-components"]},{"id":"pass-e2e-suite","label":"Pass E2E suite on the new UI","status":"next","source":"inferred","linearIssueId":null,"url":null,"blockedBy":["write-e2e-tests","migrate-components"]}],"links":[{"label":"UI migration guide","url":"https://docs.example.com/ui-migration"}],"linearWorkspace":null}`;
 
 const nullDefault = Effect.succeed(null);
 

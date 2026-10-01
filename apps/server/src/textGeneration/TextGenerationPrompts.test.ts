@@ -650,27 +650,27 @@ describe("finalizeThreadRecap", () => {
       );
       expect(reused.steps.map((entry) => entry.id)).toEqual(["write-tests", "fix-login"]);
 
-      const full = Array.from({ length: 12 }, (_, index) => ({
+      const full = Array.from({ length: 20 }, (_, index) => ({
         ...step,
         id: `step-${index}`,
         status:
-          index < 6 ? ("done" as const) : index < 9 ? ("next" as const) : ("unknown" as const),
+          index < 10 ? ("done" as const) : index < 15 ? ("next" as const) : ("unknown" as const),
       }));
       const capped = yield* current(full);
-      expect(capped).toHaveLength(12);
-      expect(capped[6]).toEqual(["now-fixing-the-login-flow", "now"]);
-      expect(capped.map(([id]) => id)).not.toContain("step-11");
+      expect(capped).toHaveLength(20);
+      expect(capped[10]).toEqual(["now-fixing-the-login-flow", "now"]);
+      expect(capped.map(([id]) => id)).not.toContain("step-19");
     }),
   );
 
   effectIt.effect("caps steps and fails without a goal", () =>
     Effect.gen(function* () {
-      const steps = Array.from({ length: 20 }, (_, index) => ({ ...step, id: `step-${index}` }));
+      const steps = Array.from({ length: 30 }, (_, index) => ({ ...step, id: `step-${index}` }));
       const capped = yield* finalizeThreadRecap(recap({ steps }), {
         linearIssueIds: [],
         message: "",
       });
-      expect(capped.steps).toHaveLength(12);
+      expect(capped.steps).toHaveLength(20);
 
       const error = yield* Effect.flip(
         finalizeThreadRecap(recap({ goal: " " }), { linearIssueIds: [], message: "" }),

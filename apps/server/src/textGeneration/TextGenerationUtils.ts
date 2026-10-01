@@ -77,10 +77,11 @@ export function sanitizeThreadTitle(raw: string): string {
   return `${normalized.slice(0, MAX_THREAD_TITLE_CHARS - 3).trimEnd()}...`;
 }
 
-// Prompts ask for 8-12 words. This cap only stops a runaway model from
+// Prompts ask for 8-12 words, plus up to 6 describing each ID they name.
+// This cap only stops a runaway model from
 // pushing a paragraph into the recap card.
 const MAX_RECAP_TEXT_CHARS = 160;
-const MAX_RECAP_STEPS = 12;
+const MAX_RECAP_STEPS = 20;
 const MAX_RECAP_LINKS = 8;
 const HTTP_URL = /^https?:\/\/\S+$/i;
 // What may follow a URL that ends there: sentence punctuation, then a delimiter or the end.

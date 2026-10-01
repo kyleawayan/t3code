@@ -1,11 +1,11 @@
 /**
- * Resume map right-panel surface, read like a quest map: the thread's steps
- * in one column in dependency order, with arrows in a narrow left gutter from
- * each prerequisite to the step it unlocks. Layout lives in
- * `recapMapLayout.logic`. Status always reads from a shape and a word, never
- * color alone; green marks only the current step and amber only blocked or
- * waiting ones. Everything is static: no pulses or spinners, since the
- * summary only changes between turns.
+ * Resume map right-panel surface, read like a quest map: every step of the
+ * thread, cleared ones included, in one column in dependency order, with
+ * arrows in a narrow left gutter from each prerequisite to the step it
+ * unlocks. Layout lives in `recapMapLayout.logic`. Status always reads from a
+ * shape and a word, never color alone; green marks only the current step and
+ * amber only blocked or waiting ones. Everything is static: no pulses or
+ * spinners, since the summary only changes between turns.
  */
 import type {
   ScopedThreadRef,
@@ -128,6 +128,19 @@ function SideArrow({
 
 function MarkerShape({ row, x, y }: { row: RecapPathRow; x: number; y: number }) {
   switch (row.kind) {
+    case "done":
+      return (
+        <>
+          <circle cx={x} cy={y} r={5} className="fill-muted-foreground/70" />
+          <path
+            d={`M ${x - 2.25} ${y} L ${x - 0.6} ${y + 1.75} L ${x + 2.4} ${y - 1.6}`}
+            strokeWidth={1.4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="stroke-background"
+          />
+        </>
+      );
     case "now":
       return <circle cx={x} cy={y} r={5.5} className="fill-success" />;
     case "side-quest":
@@ -257,6 +270,13 @@ type OpenRecapLink = (url: string, event: ReactMouseEvent) => void;
 
 function RowTag({ row }: { row: RecapPathRow }) {
   switch (row.kind) {
+    case "done":
+      return (
+        <span className="inline-flex items-center gap-1 text-muted-foreground">
+          <Check aria-hidden className="size-3" />
+          cleared
+        </span>
+      );
     case "now":
       return (
         <span className="inline-flex items-center gap-1 font-semibold text-success-foreground">
@@ -373,6 +393,7 @@ function PathRow({
 }) {
   const isNow = row.kind === "now";
   const isFog = row.kind === "unknown";
+  const isDone = row.kind === "done";
   const url = row.step.url === undefined ? null : safeRecapLinkUrl(row.step.url);
   return (
     <li ref={rowRef} className="flex min-h-9 items-stretch gap-2">
@@ -411,7 +432,7 @@ function PathRow({
                   <p
                     className={cn(
                       "line-clamp-2 text-xs leading-[15px] [overflow-wrap:anywhere]",
-                      isFog ? "text-muted-foreground" : "text-foreground/90",
+                      isFog || isDone ? "text-muted-foreground" : "text-foreground/90",
                     )}
                   />
                 }
@@ -644,7 +665,7 @@ export const RecapMapPanel = memo(function RecapMapPanel({
     );
   }
 
-  const { done, rows, cells, laneCount, now, canStart, waiting, wait } = layout;
+  const { doneCount, rows, cells, laneCount, now, canStart, waiting, wait } = layout;
   const firstNowIndex = now === null ? -1 : rows.indexOf(now);
   const waitingText =
     waiting !== null
@@ -670,7 +691,7 @@ export const RecapMapPanel = memo(function RecapMapPanel({
         </div>
         <div className="flex min-h-6 items-center justify-between gap-2">
           <p className="text-[11px] text-muted-foreground tabular-nums">
-            {layout.totalCount > 0 ? `${done.length} of ${layout.totalCount} cleared` : null}
+            {layout.totalCount > 0 ? `${doneCount} of ${layout.totalCount} cleared` : null}
           </p>
           {refreshButton}
         </div>
@@ -724,35 +745,6 @@ export const RecapMapPanel = memo(function RecapMapPanel({
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <div className="px-3 py-2">
-          {/* Cleared steps stay on the map so the whole path is always visible. */}
-          {done.length > 0 ? (
-            <ol aria-label="Cleared steps" className="mb-1 flex flex-col gap-1 pb-1">
-              {done.map((entry) => (
-                <li
-                  key={entry.step.id}
-                  className="flex min-w-0 items-start gap-2 text-xs text-muted-foreground"
-                >
-                  <span
-                    className="flex shrink-0 justify-center pt-0.5"
-                    style={{ width: laneCount * LANE_WIDTH }}
-                  >
-                    <Check aria-label="cleared" className="size-3.5 text-muted-foreground" />
-                  </span>
-                  <span className="w-4 shrink-0 pt-px text-right text-[11px] tabular-nums">
-                    {entry.number}
-                  </span>
-                  <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-                    {entry.step.label}
-                  </span>
-                  <StepBadges
-                    step={entry.step}
-                    workspace={linearWorkspace}
-                    onOpenLink={openRecapLink}
-                  />
-                </li>
-              ))}
-            </ol>
-          ) : null}
           {rows.length > 0 ? (
             <ol aria-label="Steps in order">
               {rows.map((row, index) => (

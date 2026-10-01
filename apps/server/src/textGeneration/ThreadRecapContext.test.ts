@@ -76,11 +76,11 @@ describe("formatThreadRecapContext", () => {
   it("keeps the goal and the latest progress report within budget", () => {
     const message = formatThreadRecapContext([
       { role: "user", text: "Migrate to the new UI library" },
-      { role: "assistant", text: "Earlier work. ".repeat(3_000) },
+      { role: "assistant", text: "Earlier work. ".repeat(10_000) },
       { role: "user", text: "Now do Modal and Button." },
-      { role: "assistant", text: `Migrated Modal. ${"Details. ".repeat(3_000)}Button is next.` },
+      { role: "assistant", text: `Migrated Modal. ${"Details. ".repeat(10_000)}Button is next.` },
     ]);
-    expect(message.length).toBeLessThanOrEqual(16_000);
+    expect(message.length).toBeLessThanOrEqual(48_000);
     expect(message).toContain("USER:\nMigrate to the new UI library");
     expect(message).toContain("USER:\nNow do Modal and Button.");
     expect(message).toContain("ASSISTANT:\nMigrated Modal.");

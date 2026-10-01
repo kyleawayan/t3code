@@ -4,12 +4,13 @@ import {
   type ThreadTitleMessage,
 } from "./ThreadTitleContext.ts";
 
-// Recaps lean on assistant progress reports as much as on user intent, so they
-// get twice the title budget with a larger share held for assistant messages.
+// Recaps map the whole thread, finished milestones included, so they get six
+// times the title budget, with a larger share held for assistant progress
+// reports. About 12k tokens, small next to the provider's context window.
 const RECAP_CONTEXT_BUDGET: ThreadContextBudget = {
-  total: 16_000,
+  total: 48_000,
   perMessage: 3_000,
-  assistantReserve: 6_000,
+  assistantReserve: 16_000,
 };
 
 /** Thread history for recap generation. Attachments appear by name only. */

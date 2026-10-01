@@ -1,16 +1,16 @@
 import type { ThreadRecapStep } from "@t3tools/contracts";
 
 /**
- * Single-column resume map, drawn like a quest map: one row per step in
- * dependency order so every arrow points down, from a prerequisite to the
- * step it unlocks, in a narrow gutter of at most `RECAP_MAX_LANES` lanes.
- * Small graphs (about a dozen steps) only, so every pass is a plain loop over
- * all steps.
+ * Single-column resume map, drawn like a quest map: one row per step, cleared
+ * ones included, in dependency order so every arrow points down, from a
+ * prerequisite to the step it unlocks, in a narrow gutter of at most
+ * `RECAP_MAX_LANES` lanes. Small graphs (about twenty steps) only, so every
+ * pass is a plain loop over all steps.
  */
 
-export const RECAP_MAX_LANES = 3;
+export const RECAP_MAX_LANES = 4;
 
-export type RecapRowMarker = Exclude<ThreadRecapStep["status"], "done">;
+export type RecapRowMarker = ThreadRecapStep["status"];
 
 /**
  * What a row means to the reader. `locked` waits on another step here;
@@ -18,11 +18,18 @@ export type RecapRowMarker = Exclude<ThreadRecapStep["status"], "done">;
  * event. `side-quest` can start now beside the current step; `ready` can
  * start now when there is no current step.
  */
-export type RecapRowKind = "now" | "side-quest" | "ready" | "locked" | "waiting" | "unknown";
+export type RecapRowKind =
+  | "done"
+  | "now"
+  | "side-quest"
+  | "ready"
+  | "locked"
+  | "waiting"
+  | "unknown";
 
 export interface RecapPathRow {
   readonly step: ThreadRecapStep;
-  /** 1-based across every step, done steps first; what "after N" refers to. */
+  /** 1-based in row order, done steps first; what "after N" refers to. */
   readonly number: number;
   readonly marker: RecapRowMarker;
   readonly kind: RecapRowKind;
@@ -35,8 +42,8 @@ export interface RecapPathRow {
 
 /**
  * Every segment in a cell is part of a real `blockedBy` edge. A step with no
- * unfinished dependency gets no incoming line, so a marker may sit alone in
- * its lane: an unconnected neighbor above must never read as a prerequisite.
+ * dependency gets no incoming line, so a marker may sit alone in its lane: an
+ * unconnected neighbor above must never read as a prerequisite.
  */
 export interface RecapGutterCell {
   /** Lanes whose line crosses this row without touching its marker. */
@@ -51,7 +58,7 @@ export interface RecapGutterCell {
 }
 
 export interface RecapPathLayout {
-  readonly done: ReadonlyArray<{ readonly step: ThreadRecapStep; readonly number: number }>;
+  readonly doneCount: number;
   readonly rows: ReadonlyArray<RecapPathRow>;
   /** Parallel to `rows`; null when the lines would need more than `RECAP_MAX_LANES` lanes. */
   readonly cells: ReadonlyArray<RecapGutterCell> | null;
@@ -65,7 +72,13 @@ export interface RecapPathLayout {
   readonly wait: { readonly count: number; readonly cause: RecapPathRow } | null;
 }
 
-const MARKER_RANK: Record<RecapRowMarker, number> = { now: 0, next: 1, blocked: 2, unknown: 3 };
+const MARKER_RANK: Record<RecapRowMarker, number> = {
+  done: -1,
+  now: 0,
+  next: 1,
+  blocked: 2,
+  unknown: 3,
+};
 
 /** Kahn's algorithm; among ready steps the lowest `rank` goes first, then input order. */
 function topologicalOrder(
@@ -167,21 +180,41 @@ export function layoutRecapPath(
     if (!visitState.has(id)) visit(id);
   }
 
-  const isDone = (id: string) => stepsById.get(id)!.status === "done";
   const depsOf = (id: string) => depsById.get(id)!;
-  const doneOrder = topologicalOrder(ids.filter(isDone), depsOf, () => 0);
-  const rowOrder = topologicalOrder(
-    ids.filter((id) => !isDone(id)),
-    depsOf,
-    (id) => MARKER_RANK[stepsById.get(id)!.status as RecapRowMarker],
-  );
-  const numberById = new Map([...doneOrder, ...rowOrder].map((id, index) => [id, index + 1]));
+  // Drop a dependency a longer path already implies (c on a when c waits on b
+  // and b on a), so each line in the gutter means one direct prerequisite.
+  // Ancestors are memoized: a dense graph has too many paths to walk each time.
+  const ancestorsById = new Map<string, Set<string>>();
+  const ancestorsOf = (id: string): Set<string> => {
+    const cached = ancestorsById.get(id);
+    if (cached) return cached;
+    const found = new Set<string>();
+    for (const dep of depsOf(id)) {
+      found.add(dep);
+      for (const ancestor of ancestorsOf(dep)) found.add(ancestor);
+    }
+    ancestorsById.set(id, found);
+    return found;
+  };
+  for (const id of ids) ancestorsOf(id);
+  for (const id of ids) {
+    const deps = depsOf(id);
+    depsById.set(
+      id,
+      deps.filter((dep) => !deps.some((other) => other !== dep && ancestorsOf(other).has(dep))),
+    );
+  }
+
+  const isDone = (id: string) => stepsById.get(id)!.status === "done";
+  // Among steps whose prerequisites are placed, cleared ones come first.
+  const rowOrder = topologicalOrder(ids, depsOf, (id) => MARKER_RANK[stepsById.get(id)!.status]);
+  const numberById = new Map(rowOrder.map((id, index) => [id, index + 1]));
   const rowIndexById = new Map(rowOrder.map((id, index) => [id, index]));
 
   const unfinishedDeps = (id: string) => depsOf(id).filter((dep) => !isDone(dep));
   const childrenById = new Map<string, string[]>(rowOrder.map((id) => [id, []]));
   for (const id of rowOrder) {
-    for (const dep of unfinishedDeps(id)) childrenById.get(dep)!.push(id);
+    for (const dep of depsOf(id)) childrenById.get(dep)!.push(id);
   }
   const lastChildRow = (id: string) =>
     Math.max(-1, ...childrenById.get(id)!.map((child) => rowIndexById.get(child)!));
@@ -200,17 +233,19 @@ export function layoutRecapPath(
       .toSorted((a, b) => a - b);
     const canStartNow = step.status === "next" && after.length === 0;
     const kind: RecapRowKind =
-      step.status === "now"
-        ? "now"
-        : step.status === "unknown"
-          ? "unknown"
-          : after.length > 0
-            ? "locked"
-            : step.status === "blocked"
-              ? "waiting"
-              : hasNow
-                ? "side-quest"
-                : "ready";
+      step.status === "done"
+        ? "done"
+        : step.status === "now"
+          ? "now"
+          : step.status === "unknown"
+            ? "unknown"
+            : after.length > 0
+              ? "locked"
+              : step.status === "blocked"
+                ? "waiting"
+                : hasNow
+                  ? "side-quest"
+                  : "ready";
     const busy = new Set(busyAt(rowIndex).map((owner) => owner.lane));
     // Parallel work gets its own lane beside the current step's line.
     let lane = canStartNow && hasNow ? 1 : 0;
@@ -221,7 +256,7 @@ export function layoutRecapPath(
     return {
       step,
       number: numberById.get(id)!,
-      marker: step.status as RecapRowMarker,
+      marker: step.status,
       kind,
       canStartNow,
       after,
@@ -234,7 +269,7 @@ export function layoutRecapPath(
   const rows: RecapPathRow[] = drawLines ? rowsBase : rowsBase.map((row) => ({ ...row, lane: 0 }));
   const cells: RecapGutterCell[] | null = drawLines
     ? rowOrder.map((id, rowIndex) => {
-        const parents = unfinishedDeps(id);
+        const parents = depsOf(id);
         return {
           through: busyAt(rowIndex).map((owner) => owner.lane),
           arrivals: parents.map((parent) => ({
@@ -246,12 +281,12 @@ export function layoutRecapPath(
       })
     : null;
 
-  const descendantCount = (id: string) => {
+  const unfinishedDescendantCount = (id: string) => {
     const seen = new Set<string>();
     const stack = [...childrenById.get(id)!];
     while (stack.length > 0) {
       const next = stack.pop()!;
-      if (seen.has(next)) continue;
+      if (seen.has(next) || isDone(next)) continue;
       seen.add(next);
       stack.push(...childrenById.get(next)!);
     }
@@ -259,12 +294,13 @@ export function layoutRecapPath(
   };
   let wait: { count: number; cause: RecapPathRow } | null = null;
   for (const [rowIndex, row] of rows.entries()) {
-    const count = descendantCount(rowOrder[rowIndex]!);
+    if (row.kind === "done") continue;
+    const count = unfinishedDescendantCount(rowOrder[rowIndex]!);
     if (count > 0 && (wait === null || count > wait.count)) wait = { count, cause: row };
   }
 
   return {
-    done: doneOrder.map((id) => ({ step: stepsById.get(id)!, number: numberById.get(id)! })),
+    doneCount: rows.filter((row) => row.kind === "done").length,
     rows,
     cells,
     laneCount: drawLines ? laneCount : 1,

@@ -22,13 +22,12 @@ const MOCKUP = [
 ];
 
 describe("layoutRecapPath", () => {
-  it("numbers done steps first and orders rows so every dependency points down", () => {
+  it("puts done steps first and orders rows so every dependency points down", () => {
     const layout = layoutRecapPath(MOCKUP);
-    expect(layout.done.map(({ step: entry, number }) => [entry.id, number])).toEqual([
+    expect(layout.doneCount).toBe(2);
+    expect(layout.rows.map((row) => [row.step.id, row.number])).toEqual([
       ["read", 1],
       ["find", 2],
-    ]);
-    expect(layout.rows.map((row) => [row.step.id, row.number])).toEqual([
       ["refresh", 3],
       ["readme", 4],
       ["tests", 5],
@@ -50,7 +49,7 @@ describe("layoutRecapPath", () => {
     expect(layout.wait).toMatchObject({ count: 2, cause: { step: { id: "refresh" } } });
   });
 
-  it("names what each row means: current, side quest, locked, waiting, unknown", () => {
+  it("names what each row means: cleared, current, side quest, locked, waiting, unknown", () => {
     const layout = layoutRecapPath([
       ...MOCKUP,
       step("approval", "blocked"),
@@ -58,6 +57,8 @@ describe("layoutRecapPath", () => {
     ]);
     const kinds = new Map(layout.rows.map((row) => [row.step.id, row.kind]));
     expect(Object.fromEntries(kinds)).toEqual({
+      read: "done",
+      find: "done",
       refresh: "now",
       readme: "side-quest",
       tests: "locked",
@@ -85,10 +86,13 @@ describe("layoutRecapPath", () => {
 
   it("puts parallel work in its own lane and joins lines where they meet", () => {
     const layout = layoutRecapPath(MOCKUP);
-    expect(layout.rows.map((row) => row.lane)).toEqual([0, 1, 0, 0, 0]);
+    expect(layout.rows.map((row) => row.lane)).toEqual([0, 0, 0, 1, 0, 0, 0]);
     expect(layout.laneCount).toBe(2);
     expect(layout.cells).toEqual([
+      // Cleared steps keep their arrows, so the path reads from the start.
       { through: [], arrivals: [], down: true },
+      { through: [], arrivals: [{ lane: 0, continues: false }], down: true },
+      { through: [], arrivals: [{ lane: 0, continues: false }], down: true },
       // The side quest depends on nothing: its marker sits alone in lane 1
       // beside the current step's line, with no connector into it.
       { through: [0], arrivals: [], down: true },
@@ -133,7 +137,7 @@ describe("layoutRecapPath", () => {
     const byId = new Map(layout.rows.map((row, index) => [row.step.id, index]));
     expect(cells[byId.get("build")!]!.arrivals).toEqual([]);
     expect(cells[byId.get("review")!]!.arrivals).toEqual([]);
-    // One arrival per real edge between unfinished steps, and nothing else.
+    // One arrival per real edge, and nothing else.
     const edgeCount = steps.reduce((sum, entry) => sum + entry.blockedBy.length, 0);
     expect(cells.reduce((sum, cell) => sum + cell.arrivals.length, 0)).toBe(edgeCount);
     for (const [index, row] of layout.rows.entries()) {
@@ -147,19 +151,34 @@ describe("layoutRecapPath", () => {
     }
   });
 
-  it("drops the lines when more than three lanes would be needed", () => {
+  it("drops a dependency that a longer path already implies", () => {
+    const layout = layoutRecapPath([
+      step("plan", "done"),
+      step("build", "done", ["plan"]),
+      step("ship", "now", ["plan", "build"]),
+    ]);
+    expect(layout.cells?.[2]).toEqual({
+      through: [],
+      arrivals: [{ lane: 0, continues: false }],
+      down: false,
+    });
+    expect(layout.cells?.[0]?.down).toBe(true);
+  });
+
+  it("drops the lines when more than four lanes would be needed", () => {
     const layout = layoutRecapPath([
       step("root", "now"),
       step("a", "blocked", ["root"]),
       step("b", "blocked", ["root"]),
       step("c", "blocked", ["root"]),
       step("d", "blocked", ["root"]),
-      step("end", "blocked", ["a", "b", "c", "d"]),
+      step("e", "blocked", ["root"]),
+      step("end", "blocked", ["a", "b", "c", "d", "e"]),
     ]);
     expect(layout.cells).toBeNull();
     expect(layout.laneCount).toBe(1);
     expect(layout.rows.every((row) => row.lane === 0)).toBe(true);
-    expect(layout.rows.at(-1)?.after).toEqual([2, 3, 4, 5]);
+    expect(layout.rows.at(-1)?.after).toEqual([2, 3, 4, 5, 6]);
   });
 
   it("drops cycle back-edges, self-references, duplicates, and unknown ids", () => {
@@ -186,6 +205,7 @@ describe("layoutRecapPath", () => {
       "  Wire up the widget  ",
     );
     expect(layout.rows.map((row) => [row.step.id, row.step.label, row.kind])).toEqual([
+      ["setup", "setup", "done"],
       [SYNTHETIC_NOW_STEP_ID, "Wire up the widget", "now"],
       ["docs", "docs", "side-quest"],
       ["approval", "approval", "waiting"],
@@ -199,7 +219,10 @@ describe("layoutRecapPath", () => {
       [step("setup", "done"), { ...step("widget", "next"), label: "Wire Up The Widget" }],
       "wire up the widget",
     );
-    expect(layout.rows.map((row) => [row.step.id, row.kind])).toEqual([["widget", "now"]]);
+    expect(layout.rows.map((row) => [row.step.id, row.kind])).toEqual([
+      ["setup", "done"],
+      ["widget", "now"],
+    ]);
     expect(layout.totalCount).toBe(2);
   });
 
