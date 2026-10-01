@@ -199,6 +199,9 @@ const makeHarness = Effect.fn("makeThreadRecapHarness")(function* (options: {
   const shellReads = yield* Queue.unbounded<ThreadId>();
   const updates = yield* Queue.unbounded<RecapUpdate>();
   const metaUpdates = yield* Queue.unbounded<MetaUpdate>();
+  const refreshStates = yield* Ref.make<ReadonlyArray<{ threadId: ThreadId; started: boolean }>>(
+    [],
+  );
   const generations = yield* Ref.make<ReadonlyArray<ThreadRecapGenerationInput>>([]);
   let uuid = 0;
 
@@ -238,6 +241,12 @@ const makeHarness = Effect.fn("makeThreadRecapHarness")(function* (options: {
         if (command.type === "thread.meta.update") {
           return Queue.offer(metaUpdates, command).pipe(Effect.as({ sequence: 1 }));
         }
+        if (command.type === "thread.recap.refresh-state") {
+          return Ref.update(refreshStates, (current) => [
+            ...current,
+            { threadId: command.threadId, started: command.refreshStartedAt !== null },
+          ]).pipe(Effect.as({ sequence: 1 }));
+        }
         if (command.type !== "thread.recap.update") {
           return Effect.die(`Unexpected command: ${command.type}`);
         }
@@ -265,6 +274,7 @@ const makeHarness = Effect.fn("makeThreadRecapHarness")(function* (options: {
     shellReads,
     updates,
     metaUpdates,
+    refreshStates,
     generations,
     publish: (event: OrchestrationEvent) => PubSub.publish(events, event),
     layer: ThreadRecapReactor.layer.pipe(Layer.provide(dependencies)),
@@ -571,14 +581,13 @@ describe("ThreadRecapReactor", () => {
   it.effect("keeps the old summary and keeps working after a generation fails", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        let calls = 0;
         const fixture = yield* makeHarness({
           threads: [
             thread("flaky", { enabled: true, summary: null }),
             thread("healthy", { enabled: true, summary: null }),
           ],
-          generate: () =>
-            ++calls === 1
+          generate: (input) =>
+            input.title === "flaky"
               ? Effect.fail(
                   new TextGenerationError({ operation: "generateThreadRecap", detail: "offline" }),
                 )
@@ -595,6 +604,15 @@ describe("ThreadRecapReactor", () => {
             enabled: true,
             summary: null,
           });
+          // The failed run clears its refresh marker; the new summary clears the other.
+          const states = yield* Ref.get(fixture.refreshStates);
+          expect(states.filter((state) => state.threadId === "flaky")).toEqual([
+            { threadId: "flaky", started: true },
+            { threadId: "flaky", started: false },
+          ]);
+          expect(states.filter((state) => state.threadId === "healthy")).toEqual([
+            { threadId: "healthy", started: true },
+          ]);
         }).pipe(Effect.provide(fixture.layer));
       }),
     ),

@@ -11,7 +11,10 @@ import {
   RECAP_REFRESH_TIMEOUT_MS,
   LEFT_OFF_ROW_ID,
   linearIssueUrl,
+  isServerRecapRefreshing,
+  latestRecapMessageId,
   recapBeforeText,
+  recapCoveredAt,
   recapStepSourceLabel,
   safeRecapLinkUrl,
 } from "./threadResume.logic";
@@ -256,5 +259,37 @@ describe("recapBeforeText", () => {
   it("falls back to the latest finished milestone, then to nothing", () => {
     expect(recapBeforeText({ done: "Wired the DSN", steps: [] })).toBe("Wired the DSN");
     expect(recapBeforeText({ done: null, steps: [{ label: "Plan", status: "now" }] })).toBeNull();
+  });
+});
+
+describe("recap refresh and coverage", () => {
+  it("trusts the server's refresh marker for a few minutes only", () => {
+    expect(isServerRecapRefreshing(undefined, "2026-01-01T10:00")).toBe(false);
+    expect(isServerRecapRefreshing("2026-01-01T10:00:30.000Z", "2026-01-01T10:01")).toBe(true);
+    expect(isServerRecapRefreshing("2026-01-01T10:00:00.000Z", "2026-01-01T10:05")).toBe(false);
+  });
+
+  it("dates a summary by the newest message it covers", () => {
+    const messages = [
+      { id: MessageId.make("a"), createdAt: "2026-01-01T10:00:00.000Z" },
+      { id: MessageId.make("b"), createdAt: "2026-01-01T10:02:00.000Z" },
+    ];
+    const summary = { generatedAt: "2026-01-01T10:05:00.000Z" };
+    expect(recapCoveredAt({ ...summary, basedOnMessageId: MessageId.make("a") }, messages)).toBe(
+      "2026-01-01T10:00:00.000Z",
+    );
+    expect(recapCoveredAt({ ...summary, basedOnMessageId: MessageId.make("gone") }, messages)).toBe(
+      "2026-01-01T10:05:00.000Z",
+    );
+  });
+
+  it("ignores system notices when finding the newest message", () => {
+    expect(
+      latestRecapMessageId([
+        { id: MessageId.make("reply"), role: "assistant" },
+        { id: MessageId.make("notice"), role: "system" },
+      ]),
+    ).toBe("reply");
+    expect(latestRecapMessageId([])).toBeNull();
   });
 });

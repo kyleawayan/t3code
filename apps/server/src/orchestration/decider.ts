@@ -1283,6 +1283,36 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       };
     }
 
+    case "thread.recap.refresh-state": {
+      const thread = yield* requireThread({ readModel, command, threadId: command.threadId });
+      const recap =
+        thread.deletedAt === null && thread.recap?.enabled === true ? thread.recap : null;
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: yield* nowIso,
+          commandId: command.commandId,
+        })),
+        type: "thread.meta-updated",
+        payload: {
+          threadId: command.threadId,
+          ...(recap
+            ? {
+                recap: {
+                  enabled: true,
+                  summary: recap.summary,
+                  ...(command.refreshStartedAt !== null
+                    ? { refreshStartedAt: command.refreshStartedAt }
+                    : {}),
+                },
+              }
+            : {}),
+          updatedAt: thread.updatedAt,
+        },
+      };
+    }
+
     case "thread.title.refine": {
       const thread = yield* requireThread({ readModel, command, threadId: command.threadId });
       const current =

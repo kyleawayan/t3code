@@ -39,6 +39,10 @@ const RECAP_MODEL_SELECTION: ModelSelection = {
   options: [{ id: "effort", value: "medium" }],
 };
 
+// Each run is a Claude CLI process for up to a couple of minutes; two keep one
+// busy thread from holding back the others without spawning a process per thread.
+const RECAP_WORKER_COUNT = 2;
+
 /** Regenerates a thread's resume recap after each turn while the recap is enabled. */
 export class ThreadRecapReactor extends Context.Service<
   ThreadRecapReactor,
@@ -77,6 +81,17 @@ export const make = Effect.gen(function* () {
   const serverSettings = yield* ServerSettingsService;
   const crypto = yield* Crypto.Crypto;
 
+  // Lets clients show that a summary is on its way; a new summary clears it.
+  const setRefreshState = (threadId: ThreadId, refreshStartedAt: string | null) =>
+    Effect.gen(function* () {
+      yield* engine.dispatch({
+        type: "thread.recap.refresh-state",
+        commandId: CommandId.make(`server:thread-recap-refresh:${yield* crypto.randomUUIDv4}`),
+        threadId,
+        refreshStartedAt,
+      });
+    });
+
   const regenerate = Effect.fn("ThreadRecapReactor.regenerate")(function* ({
     threadId,
     force,
@@ -105,16 +120,19 @@ export const make = Effect.gen(function* () {
     const interruptedTurns = (yield* turns.listByThreadId({ threadId })).filter(
       (turn) => turn.state === "interrupted",
     );
-    const generated = yield* textGeneration.generateThreadRecap({
-      cwd:
-        resolveThreadWorkspaceCwd({ thread, projects: Option.toArray(project) }) ?? process.cwd(),
-      message: formatThreadRecapContext(markInterruptedTurns(thread.messages, interruptedTurns)),
-      title: thread.title,
-      previousSummary,
-      linearIssueIds,
-      interruptedRequests: interruptedRequests(thread.messages, interruptedTurns),
-      modelSelection: RECAP_MODEL_SELECTION,
-    });
+    yield* setRefreshState(threadId, DateTime.formatIso(yield* DateTime.now));
+    const generated = yield* textGeneration
+      .generateThreadRecap({
+        cwd:
+          resolveThreadWorkspaceCwd({ thread, projects: Option.toArray(project) }) ?? process.cwd(),
+        message: formatThreadRecapContext(markInterruptedTurns(thread.messages, interruptedTurns)),
+        title: thread.title,
+        previousSummary,
+        linearIssueIds,
+        interruptedRequests: interruptedRequests(thread.messages, interruptedTurns),
+        modelSelection: RECAP_MODEL_SELECTION,
+      })
+      .pipe(Effect.onError(() => setRefreshState(threadId, null).pipe(Effect.ignoreCause)));
     yield* engine.dispatch({
       type: "thread.recap.update",
       commandId: CommandId.make(`server:thread-recap:${yield* crypto.randomUUIDv4}`),
@@ -128,11 +146,13 @@ export const make = Effect.gen(function* () {
     });
   });
 
-  // One worker runs every generation, so a thread never has two at once. Each run
-  // reads the thread fresh, so a request for a queued thread is already covered
-  // (a forced one upgrades it), while a request during a run queues exactly one more.
+  // Each thread always goes to the same worker, so it never has two runs at once,
+  // while threads on different workers generate side by side instead of waiting
+  // a whole run behind each other. Each run reads the thread fresh, so a request
+  // for a queued thread is already covered (a forced one upgrades it), while a
+  // request during a run queues exactly one more.
   const queued = new Map<ThreadId, boolean>();
-  const worker = yield* makeDrainableWorker((threadId: ThreadId) =>
+  const processRequest = (threadId: ThreadId) =>
     Effect.sync(() => {
       const force = queued.get(threadId) === true;
       queued.delete(threadId);
@@ -147,8 +167,14 @@ export const make = Effect.gen(function* () {
               cause: Cause.pretty(cause),
             }),
       ),
-    ),
+    );
+  const workers = yield* Effect.forEach(Array.from({ length: RECAP_WORKER_COUNT }), () =>
+    makeDrainableWorker(processRequest),
   );
+  const workerFor = (threadId: ThreadId) =>
+    workers[
+      Array.from(threadId).reduce((hash, char) => hash + char.charCodeAt(0), 0) % workers.length
+    ]!;
 
   // Turning the recap on emits its own event, which then queues the first generation.
   const applyRecapDefault = Effect.fn("ThreadRecapReactor.applyRecapDefault")(function* (
@@ -181,7 +207,7 @@ export const make = Effect.gen(function* () {
       const shell = yield* snapshots.getThreadShellById(threadId);
       if (Option.isNone(shell) || shell.value.recap?.enabled !== true) return;
       queued.set(threadId, force);
-      yield* worker.enqueue(threadId);
+      yield* workerFor(threadId).enqueue(threadId);
     },
     (effect) =>
       effect.pipe(
@@ -200,7 +226,9 @@ export const make = Effect.gen(function* () {
     },
   );
 
-  return { start, drain: worker.drain } satisfies ThreadRecapReactor["Service"];
+  const drain = Effect.forEach(workers, (worker) => worker.drain, { discard: true });
+
+  return { start, drain } satisfies ThreadRecapReactor["Service"];
 });
 
 export const layer = Layer.effect(ThreadRecapReactor, make);

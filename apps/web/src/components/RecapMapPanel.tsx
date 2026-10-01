@@ -51,6 +51,7 @@ import { toastManager } from "~/components/ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { MarkdownLinkFavicon } from "./ChatMarkdown";
 import { ProjectBranchLine } from "./ProjectBranchLine";
+import { RecapActivityBar } from "./chat/RecapActivityBar";
 import type { ProjectFaviconProject } from "./ProjectFavicon";
 import { resolveExternalWebLinkHost } from "./chat/externalLinkContextMenu";
 import {
@@ -61,6 +62,7 @@ import {
 import {
   isLinearWorkspaceSlug,
   isRecapRefreshPending,
+  isServerRecapRefreshing,
   latestLinearWorkspace,
   RECAP_REFRESH_TIMEOUT_MS,
   linearIssueUrl,
@@ -555,19 +557,22 @@ function LinkChips({
 
 export const RecapMapPanel = memo(function RecapMapPanel({
   recap,
+  coveredAt,
   threadRef,
   project,
   branch,
   onSetEnabled,
 }: {
   recap: ThreadRecap | null;
+  /** When the newest message the summary covers was sent (see recapCoveredAt). */
+  coveredAt: string | null;
   threadRef: ScopedThreadRef | null;
   project: ProjectFaviconProject | null;
   branch: string | null;
   /** Absent for drafts, which have no server thread to turn recap on for yet. */
   onSetEnabled: ((enabled: boolean) => void) | null;
 }) {
-  useNowMinute();
+  const nowMinute = useNowMinute();
   // Cleared steps start folded so what is left leads; opening them shows the whole flow.
   const [showCleared, setShowCleared] = useState(false);
   const steps = recap?.summary?.steps ?? EMPTY_STEPS;
@@ -593,11 +598,9 @@ export const RecapMapPanel = memo(function RecapMapPanel({
     return () => window.clearTimeout(timer);
   }, [currentGeneratedAt, refreshRequest, threadKey]);
   // The effect above clears a timed-out request, so render only compares summaries.
-  const refreshing = isRecapRefreshPending(
-    refreshRequest,
-    currentGeneratedAt,
-    refreshRequest?.requestedAtMs ?? 0,
-  );
+  const refreshing =
+    isRecapRefreshPending(refreshRequest, currentGeneratedAt, refreshRequest?.requestedAtMs ?? 0) ||
+    isServerRecapRefreshing(recap?.refreshStartedAt, nowMinute);
   const layout = useMemo(() => layoutRecapPath(steps, summaryNow), [steps, summaryNow]);
   const openLink = useOpenLink(threadRef);
   const openRecapLink = useCallback<OpenRecapLink>(
@@ -688,7 +691,8 @@ export const RecapMapPanel = memo(function RecapMapPanel({
         : summary.blocked;
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex flex-col gap-1 border-b border-border/60 px-3 py-2.5">
+      <header className="relative flex flex-col gap-1 border-b border-border/60 px-3 py-2.5">
+        {refreshing ? <RecapActivityBar className="absolute inset-x-0 top-0" /> : null}
         <div className="mb-1">
           <p className="text-xs font-medium text-muted-foreground">Goal</p>
           <h2 className="line-clamp-3 text-base font-semibold leading-6 text-foreground [overflow-wrap:anywhere]">
@@ -801,7 +805,9 @@ export const RecapMapPanel = memo(function RecapMapPanel({
         </div>
       </ScrollArea>
       <footer className="mt-auto flex items-center justify-between border-t border-border/60 px-3 py-1 text-[.7rem] text-muted-foreground">
-        <span className="tabular-nums">as of {formatRelativeTimeLabel(summary.generatedAt)}</span>
+        <span className="tabular-nums">
+          as of {formatRelativeTimeLabel(coveredAt ?? summary.generatedAt)}
+        </span>
         {turnOff}
       </footer>
     </div>

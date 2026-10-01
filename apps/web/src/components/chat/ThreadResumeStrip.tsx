@@ -1,12 +1,15 @@
 import type { ThreadRecapSummary } from "@t3tools/contracts";
-import { Check, CircleIcon, Hourglass, MapPin } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, CircleIcon, Hourglass, MapPin } from "lucide-react";
 import { memo, type ReactNode } from "react";
+import * as Schema from "effect/Schema";
 
+import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useNowMinute } from "~/hooks/useNowMinute";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { RecapActivityBar } from "./RecapActivityBar";
 import {
+  isServerRecapRefreshing,
   recapBeforeText,
   resumeWhoseMoveLabel,
   type RecapFreshness,
@@ -16,6 +19,10 @@ import {
 interface ThreadResumeStripProps {
   /** Null while recap is on but the first summary has not been written yet. */
   summary: ThreadRecapSummary | null;
+  /** When the newest message the summary covers was sent (see recapCoveredAt). */
+  coveredAt: string | null;
+  /** Set by the server while it writes a new summary. */
+  refreshStartedAt: string | undefined;
   whoseMove: ResumeWhoseMove;
   freshness: RecapFreshness;
   onOpenMap: () => void;
@@ -33,7 +40,7 @@ const TWO_LINE_SLOT_CLASS = "block h-[2lh] min-w-0 line-clamp-2 break-words";
 const GOAL_SLOT_CLASS = cn(TWO_LINE_SLOT_CLASS, "font-semibold text-foreground text-sm");
 
 const STRIP_CLASS =
-  "mb-1.5 flex w-full min-w-0 flex-col gap-3 rounded-lg border border-border/70 bg-background px-3 py-3 text-left text-muted-foreground text-xs";
+  "flex w-full min-w-0 flex-col gap-3 rounded-lg border border-border/70 bg-background px-3 py-3 text-left text-muted-foreground text-xs";
 const STRIP_BUTTON_CLASS = cn(
   STRIP_CLASS,
   "cursor-pointer hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
@@ -46,24 +53,26 @@ const FRESHNESS_LABEL: Record<RecapFreshness, string | null> = {
 };
 
 /**
- * Summary age. Its own component so only strips showing a summary subscribe
- * to the minute clock, not every thread's strip.
+ * How current the summary is. Its own component so only strips showing a
+ * summary subscribe to the minute clock, not every thread's strip.
  */
 function RecapAge({
-  summary,
+  coveredAt,
   freshness,
+  refreshing,
 }: {
-  summary: ThreadRecapSummary;
+  coveredAt: string;
   freshness: RecapFreshness;
+  refreshing: boolean;
 }) {
-  useNowMinute();
+  const label = refreshing ? "updating…" : FRESHNESS_LABEL[freshness];
   return (
     <span className="shrink-0 tabular-nums">
-      as of {formatRelativeTimeLabel(summary.generatedAt)}
-      {FRESHNESS_LABEL[freshness] ? (
-        <span className={cn(freshness === "stale" && "text-warning-foreground")}>
+      as of {formatRelativeTimeLabel(coveredAt)}
+      {label ? (
+        <span className={cn(!refreshing && freshness === "stale" && "text-warning-foreground")}>
           {" "}
-          · {FRESHNESS_LABEL[freshness]}
+          · {label}
         </span>
       ) : null}
     </span>
@@ -117,14 +126,71 @@ const BAND_SPACER_CLASS = "block h-[calc(3lh+--spacing(6))]";
  * Resume recap above the composer, only while the map is on: the goal leads,
  * then what came before, the suggested move, and what is next. Project and
  * branch live in the composer's bottom bar. Every slot has a fixed height, so
- * switching threads never moves the composer. Clicking opens the map.
+ * switching threads never moves the composer. Clicking opens the map; the
+ * chevron folds the note down to its goal.
  */
-export const ThreadResumeStrip = memo(function ThreadResumeStrip({
+export const ThreadResumeStrip = memo(function ThreadResumeStrip(props: ThreadResumeStripProps) {
+  // One choice for every thread, so switching threads never changes the note's height.
+  const [collapsed, setCollapsed] = useLocalStorage(NOTE_COLLAPSED_KEY, false, Schema.Boolean);
+  const refreshing = isServerRecapRefreshing(props.refreshStartedAt, useNowMinute());
+  return (
+    <div className="relative mb-1.5">
+      {/* Over the top border, so showing it never moves anything. */}
+      {refreshing ? <RecapActivityBar className="absolute inset-x-3 top-0 rounded-full" /> : null}
+      <NoteBody {...props} collapsed={collapsed} refreshing={refreshing} />
+      <button
+        type="button"
+        onClick={() => setCollapsed((current) => !current)}
+        aria-label={collapsed ? "Expand note" : "Collapse note"}
+        aria-expanded={!collapsed}
+        className="absolute top-2 right-1.5 flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {collapsed ? (
+          <ChevronDown aria-hidden className="size-3.5" />
+        ) : (
+          <ChevronUp aria-hidden className="size-3.5" />
+        )}
+      </button>
+    </div>
+  );
+});
+
+const NOTE_COLLAPSED_KEY = "t3code:resume-note-collapsed";
+// Leaves room in the Goal row for the collapse button over its corner.
+const GOAL_LABEL_CLASS = "pe-6";
+
+function NoteBody({
   summary,
+  coveredAt,
   whoseMove,
   freshness,
   onOpenMap,
-}: ThreadResumeStripProps) {
+  collapsed,
+  refreshing,
+}: ThreadResumeStripProps & { collapsed: boolean; refreshing: boolean }) {
+  const age = summary ? (
+    <RecapAge
+      coveredAt={coveredAt ?? summary.generatedAt}
+      freshness={freshness}
+      refreshing={refreshing}
+    />
+  ) : null;
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        onClick={onOpenMap}
+        data-thread-resume-strip
+        className={STRIP_BUTTON_CLASS}
+      >
+        <Field label="Goal" aside={age} labelClassName={GOAL_LABEL_CLASS}>
+          <span className="block h-[1lh] min-w-0 truncate font-semibold text-foreground text-sm">
+            {summary?.goal ?? "Recap appears after the next turn."}
+          </span>
+        </Field>
+      </button>
+    );
+  }
   if (summary === null) {
     return (
       <button
@@ -133,7 +199,7 @@ export const ThreadResumeStrip = memo(function ThreadResumeStrip({
         data-thread-resume-strip
         className={STRIP_BUTTON_CLASS}
       >
-        <Field label="Goal">
+        <Field label="Goal" labelClassName={GOAL_LABEL_CLASS}>
           <span className={cn(TWO_LINE_SLOT_CLASS, "text-muted-foreground")}>
             Recap appears after the next turn.
           </span>
@@ -150,65 +216,51 @@ export const ThreadResumeStrip = memo(function ThreadResumeStrip({
   const nextText = blocked ?? summary.next;
   const beforeText = recapBeforeText(summary);
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            onClick={onOpenMap}
-            data-thread-resume-strip
-            className={STRIP_BUTTON_CLASS}
-          />
-        }
-      >
-        <Field label="Goal" aside={<RecapAge summary={summary} freshness={freshness} />}>
-          <span className={GOAL_SLOT_CLASS}>{summary.goal}</span>
-        </Field>
-        <span aria-hidden className={GOAL_DIVIDER_CLASS} />
-        {/* Icons and colors match the map: check for cleared, green pin for now,
+    <button
+      type="button"
+      onClick={onOpenMap}
+      data-thread-resume-strip
+      className={STRIP_BUTTON_CLASS}
+    >
+      <Field label="Goal" aside={age} labelClassName={GOAL_LABEL_CLASS}>
+        <span className={GOAL_SLOT_CLASS}>{summary.goal}</span>
+      </Field>
+      <span aria-hidden className={GOAL_DIVIDER_CLASS} />
+      {/* Icons and colors match the map: check for cleared, green pin for now,
             amber hourglass for blocked, hollow circle for next. */}
-        <Field label="Before" icon={<Check aria-hidden className={ICON_CLASS} />}>
-          <span className={TWO_LINE_SLOT_CLASS}>{beforeText ?? "Nothing finished yet."}</span>
-        </Field>
+      <Field label="Before" icon={<Check aria-hidden className={ICON_CLASS} />}>
+        <span className={TWO_LINE_SLOT_CLASS}>{beforeText ?? "Nothing finished yet."}</span>
+      </Field>
+      <Field
+        label={resumeWhoseMoveLabel(whoseMove)}
+        icon={<MapPin aria-hidden className={cn(ICON_CLASS, "text-success-foreground")} />}
+        // A full-width band: the tint spans the strip's padding, and the text stays on the Goal's edge.
+        className="-mx-3 bg-success/8 px-3 py-2.5"
+        labelClassName={WHOSE_MOVE_CLASS[whoseMove]}
+      >
+        <span className={cn(TWO_LINE_SLOT_CLASS, "font-medium text-success-foreground")}>
+          {summary.now}
+        </span>
+      </Field>
+      {nextText ? (
         <Field
-          label={resumeWhoseMoveLabel(whoseMove)}
-          icon={<MapPin aria-hidden className={cn(ICON_CLASS, "text-success-foreground")} />}
-          // A full-width band: the tint spans the strip's padding, and the text stays on the Goal's edge.
-          className="-mx-3 bg-success/8 px-3 py-2.5"
-          labelClassName={WHOSE_MOVE_CLASS[whoseMove]}
+          label={blocked ? "Blocked" : "Next"}
+          icon={
+            blocked ? (
+              <Hourglass aria-hidden className={ICON_CLASS} />
+            ) : (
+              <CircleIcon aria-hidden className={ICON_CLASS} />
+            )
+          }
+          labelClassName={blocked ? "text-warning-foreground" : undefined}
         >
-          <span className={cn(TWO_LINE_SLOT_CLASS, "font-medium text-success-foreground")}>
-            {summary.now}
+          <span className={cn(TWO_LINE_SLOT_CLASS, blocked && "text-warning-foreground")}>
+            {nextText}
           </span>
         </Field>
-        {nextText ? (
-          <Field
-            label={blocked ? "Blocked" : "Next"}
-            icon={
-              blocked ? (
-                <Hourglass aria-hidden className={ICON_CLASS} />
-              ) : (
-                <CircleIcon aria-hidden className={ICON_CLASS} />
-              )
-            }
-            labelClassName={blocked ? "text-warning-foreground" : undefined}
-          >
-            <span className={cn(TWO_LINE_SLOT_CLASS, blocked && "text-warning-foreground")}>
-              {nextText}
-            </span>
-          </Field>
-        ) : (
-          <span aria-hidden className={FIELD_SPACER_CLASS} />
-        )}
-      </TooltipTrigger>
-      <TooltipPopup side="top" className="max-w-96 whitespace-normal">
-        <span className="flex flex-col gap-1">
-          <span>Goal: {summary.goal}</span>
-          {beforeText ? <span>Before: {beforeText}</span> : null}
-          <span>Now: {summary.now}</span>
-          {nextText ? <span>{`${blocked ? "Blocked" : "Next"}: ${nextText}`}</span> : null}
-        </span>
-      </TooltipPopup>
-    </Tooltip>
+      ) : (
+        <span aria-hidden className={FIELD_SPACER_CLASS} />
+      )}
+    </button>
   );
-});
+}

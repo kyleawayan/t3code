@@ -129,6 +129,45 @@ export interface RecapRefreshRequest {
   readonly baselineGeneratedAt: string | null;
 }
 
+/**
+ * The server is writing a new summary. Its marker can outlive a crashed run,
+ * so it stops counting after the same timeout as a requested refresh.
+ * `nowMinute` is the minute clock ("YYYY-MM-DDTHH:MM", UTC).
+ */
+export function isServerRecapRefreshing(
+  refreshStartedAt: string | undefined,
+  nowMinute: string,
+): boolean {
+  if (refreshStartedAt === undefined) return false;
+  const startedMs = Date.parse(refreshStartedAt);
+  const nowMs = Date.parse(`${nowMinute}:00.000Z`);
+  if (Number.isNaN(startedMs) || Number.isNaN(nowMs)) return false;
+  return nowMs - startedMs < RECAP_REFRESH_TIMEOUT_MS;
+}
+
+/**
+ * When the conversation stood at the point a summary covers: its newest
+ * message's time. A summary written just now can cover an older point, so
+ * this, not when it was written, is what "as of" means.
+ */
+export function recapCoveredAt(
+  summary: { readonly basedOnMessageId: MessageId | null; readonly generatedAt: string },
+  messages: ReadonlyArray<{ readonly id: MessageId; readonly createdAt: string }>,
+): string {
+  const covered =
+    summary.basedOnMessageId === null
+      ? undefined
+      : messages.findLast((message) => message.id === summary.basedOnMessageId);
+  return covered?.createdAt ?? summary.generatedAt;
+}
+
+/** The newest message a summary could cover; system notices never count, as on the server. */
+export function latestRecapMessageId(
+  messages: ReadonlyArray<{ readonly id: MessageId; readonly role: string }>,
+): MessageId | null {
+  return messages.findLast((message) => message.role !== "system")?.id ?? null;
+}
+
 /** Still waiting on a requested refresh: no newer summary yet, and not timed out. */
 export function isRecapRefreshPending(
   request: RecapRefreshRequest | undefined,

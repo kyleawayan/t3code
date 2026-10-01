@@ -216,6 +216,8 @@ import { ThreadResumeStrip } from "./chat/ThreadResumeStrip";
 import {
   deriveRecapFreshness,
   deriveResumeWhoseMove,
+  latestRecapMessageId,
+  recapCoveredAt,
   type LeftOffSnapshot,
 } from "./chat/threadResume.logic";
 import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
@@ -4561,9 +4563,13 @@ export default function ChatView(props: ChatViewProps) {
   });
   const resumeRecapFreshness = deriveRecapFreshness({
     basedOnMessageId: activeThreadRecap?.summary?.basedOnMessageId ?? null,
-    latestMessageId: activeServerThread?.messages.at(-1)?.id ?? null,
+    latestMessageId: latestRecapMessageId(activeServerThread?.messages ?? []),
     isWorking,
   });
+  const activeRecapSummary = activeThreadRecap?.summary ?? null;
+  const activeRecapCoveredAt = activeRecapSummary
+    ? recapCoveredAt(activeRecapSummary, activeServerThread?.messages ?? [])
+    : null;
   const supportsThreadPullRequests =
     serverConfig?.environment.capabilities.threadPullRequests === true;
   const visiblePullRequestCount = visibleThreadPullRequests(
@@ -9342,6 +9348,7 @@ export default function ChatView(props: ChatViewProps) {
       <RecapMapPanel
         key={activeThreadKey}
         recap={activeThreadRecap}
+        coveredAt={activeRecapCoveredAt}
         threadRef={activeThreadRef}
         project={activeProject}
         branch={activeThread.branch}
@@ -9702,7 +9709,9 @@ export default function ChatView(props: ChatViewProps) {
                   ) : null}
                   {!isDraftHeroState && isServerThread && activeThreadRecapEnabled ? (
                     <ThreadResumeStrip
-                      summary={activeThreadRecap?.summary ?? null}
+                      summary={activeRecapSummary}
+                      coveredAt={activeRecapCoveredAt}
+                      refreshStartedAt={activeThreadRecap?.refreshStartedAt}
                       whoseMove={resumeWhoseMove}
                       freshness={resumeRecapFreshness}
                       onOpenMap={addRecapMapSurface}

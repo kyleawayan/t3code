@@ -742,6 +742,11 @@ export type ThreadRecapSummary = typeof ThreadRecapSummary.Type;
 export const ThreadRecap = Schema.Struct({
   enabled: Schema.Boolean,
   summary: Schema.NullOr(ThreadRecapSummary),
+  /**
+   * Set while the server writes a new summary. A crash can leave it behind,
+   * so clients stop trusting it after a few minutes.
+   */
+  refreshStartedAt: Schema.optional(IsoDateTime),
 });
 export type ThreadRecap = typeof ThreadRecap.Type;
 
@@ -1634,6 +1639,14 @@ const ThreadRecapUpdateCommand = Schema.Struct({
   summary: ThreadRecapSummary,
 });
 
+/** Marks a recap generation as started, or as ended without a new summary (null). */
+const ThreadRecapRefreshStateCommand = Schema.Struct({
+  type: Schema.Literal("thread.recap.refresh-state"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  refreshStartedAt: Schema.NullOr(IsoDateTime),
+});
+
 const ThreadTitleRefineCommand = Schema.Struct({
   type: Schema.Literal("thread.title.refine"),
   commandId: CommandId,
@@ -1692,6 +1705,7 @@ const InternalOrchestrationCommand = Schema.Union([
   ThreadTitleGenerateCompleteCommand,
   ThreadTitleRefineCommand,
   ThreadRecapUpdateCommand,
+  ThreadRecapRefreshStateCommand,
   ThreadPullRequestSyncCommand,
   ThreadPullRequestLinkSyncCommand,
 ]);
