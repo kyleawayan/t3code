@@ -3273,9 +3273,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         setIsComposerFooterCompact(true);
         return;
       }
-      const actions = container.parentElement?.querySelector<HTMLElement>(
-        '[data-chat-composer-actions="right"]',
-      );
+      // On two rows the actions have a row of their own, so nothing there makes
+      // room in the controls row. Counting it would let a control bounce between
+      // the rows forever.
+      const actions =
+        container.parentElement?.dataset.chatComposerFooterRows === "2"
+          ? null
+          : container.parentElement?.querySelector<HTMLElement>(
+              '[data-chat-composer-actions="right"]',
+            );
       const currentStage = composerFooterLabelStageRef.current;
       const measuredStage = resolveComposerFooterLabelStage({
         ...measureComposerFooterControls(container, actions ?? null),
@@ -4984,9 +4990,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // would go first.
   const composerLabelStage =
     composerControlsCompact && !showProviderUnavailable ? composerFooterLabelStage : 0;
-  const composerRuntimeModeInActions = isComposerFooterControlInActions("mode", composerLabelStage);
+  // On two rows every control stays in its own row, at whatever variant its stage asks for.
+  const composerFooterTwoRows = isComposerFooterCompact && !isComposerResting;
+  const composerRuntimeModeInActions =
+    !composerFooterTwoRows && isComposerFooterControlInActions("mode", composerLabelStage);
   const composerTraitsInActions =
-    providerTraitsPicker !== null && isComposerFooterControlInActions("traits", composerLabelStage);
+    !composerFooterTwoRows &&
+    providerTraitsPicker !== null &&
+    isComposerFooterControlInActions("traits", composerLabelStage);
   const restingProviderTraitsPicker = renderProviderTraitsPicker({
     ...providerTraitsPickerInput,
     size: "xs",
@@ -5031,6 +5042,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           runtimeMode={runtimeMode}
           size={composerControlsInStrip ? "xs" : "sm"}
           compact={composerControlsCompact}
+          iconOnly={
+            composerFooterTwoRows && composerFooterLabelVariant("mode", composerLabelStage) === 1
+          }
           showRuntimeMode={!composerRuntimeModeInActions}
           hidden={composerControlsHidden || restingHiddenBlockCount > 0}
           onToggleInteractionMode={toggleInteractionMode}
@@ -6894,7 +6908,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         : activePendingProgress
                           ? isChoiceOnlyPendingQuestion
                             ? "Choose an option above"
-                            : "Type your own answer, or leave this blank to use the selected option"
+                            : (contextPlaceholder ??
+                              "Type your own answer, or leave this blank to use the selected option")
                           : showPlanFollowUpPrompt && activeProposedPlan
                             ? "Add feedback to refine the plan, or leave this blank to implement it"
                             : projectSelectionRequired
@@ -6910,7 +6925,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       contextPlaceholder !== null &&
                       placeholderProject !== null &&
                       !isComposerApprovalState &&
-                      !activePendingProgress &&
+                      !isChoiceOnlyPendingQuestion &&
                       !(showPlanFollowUpPrompt && activeProposedPlan) &&
                       !projectSelectionRequired &&
                       !showProviderUnavailable ? (
@@ -6974,10 +6989,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               <div
                 data-chat-composer-footer="true"
                 data-chat-composer-footer-compact={isComposerFooterCompact ? "true" : "false"}
+                data-chat-composer-footer-rows={composerFooterTwoRows ? "2" : "1"}
                 className={cn(
                   "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-3 pb-3 sm:px-4 sm:pb-4",
                   pendingUserInputs.length > 0 && "pt-2",
                   isComposerFooterCompact ? "gap-1.5" : "gap-2 sm:gap-0",
+                  // A narrow footer splits in two: the model, effort, and mode get
+                  // a row of their own, so their labels never clip, and the
+                  // actions sit below.
+                  composerFooterTwoRows && "flex-wrap gap-y-2",
                   showMobilePendingAnswerActions && "hidden sm:flex",
                   isComposerResting &&
                     "absolute bottom-px right-px z-10 h-12 w-auto gap-0 py-0 sm:gap-0 sm:py-0",
@@ -6995,6 +7015,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     // labels keep their characters. The threshold is in rem so
                     // it tracks the user's UI font size.
                     "@max-[20rem]/composer-surface:[&_svg[data-composer-control-chevron]]:hidden",
+                    composerFooterTwoRows && "basis-full",
                     isComposerResting && "hidden",
                   )}
                 >
@@ -7010,6 +7031,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   }
                   className={cn(
                     "flex shrink-0 flex-nowrap items-center justify-end gap-2",
+                    composerFooterTwoRows && "ms-auto",
                     // Same rule as the controls row, so a control keeps its
                     // width when it moves between the two.
                     "@max-[20rem]/composer-surface:[&_svg[data-composer-control-chevron]]:hidden",
