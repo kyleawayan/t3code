@@ -17,6 +17,7 @@ import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import {
   ModelEsque,
   getShortTriggerModelLabel,
+  getTightTriggerModelLabel,
   getTriggerDisplayModelLabel,
   getTriggerDisplayModelName,
 } from "./providerIconUtils";
@@ -33,6 +34,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   compact?: boolean | undefined;
   /** A tight compact footer drops the brand the provider icon already shows. */
   shortLabel?: boolean | undefined;
+  /** The narrowest footers drop the brand even before a version (see getTightTriggerModelLabel). */
+  tightLabel?: boolean | undefined;
   /**
    * The instance currently selected in the composer. Drives the trigger
    * icon, label and the default-highlighted combobox row.
@@ -101,6 +104,10 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     activeEntry && props.triggerLabel === undefined
       ? getShortTriggerModelLabel(fullTriggerText, activeEntry.driverKind)
       : fullTriggerText;
+  const tightTriggerText =
+    activeEntry && props.triggerLabel === undefined
+      ? getTightTriggerModelLabel(fullTriggerText, activeEntry.driverKind)
+      : shortTriggerText;
   const showInstanceBadge =
     activeEntry !== null && shouldShowInstanceBadge(activeEntry, props.instanceEntries);
 
@@ -228,7 +235,13 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                 />
               }
             >
-              <SquishText>{props.shortLabel ? shortTriggerText : fullTriggerText}</SquishText>
+              <SquishText>
+                {props.tightLabel
+                  ? tightTriggerText
+                  : props.shortLabel
+                    ? shortTriggerText
+                    : fullTriggerText}
+              </SquishText>
             </TooltipTrigger>
             <TooltipPopup side="top">{triggerTooltipContent}</TooltipPopup>
           </Tooltip>
@@ -244,7 +257,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         {props.compact ? (
           <SquishTextProbe
             data-composer-footer-label="model"
-            variants={[fullTriggerText, shortTriggerText]}
+            variants={[fullTriggerText, shortTriggerText, tightTriggerText]}
           />
         ) : null}
       </PopoverTrigger>

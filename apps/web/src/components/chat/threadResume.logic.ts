@@ -95,20 +95,18 @@ export function linearIssueUrl(workspace: string | null, issueId: string): strin
   return `https://linear.app/${workspace}/issue/${issueId.toUpperCase()}`;
 }
 
-/** Distinct openable links in a summary, across the link list and the steps. */
-export function countRecapLinks(summary: {
-  readonly links: ReadonlyArray<{ readonly url: string }>;
-  readonly steps: ReadonlyArray<{ readonly url?: string | undefined }>;
-}): number {
-  const urls = new Set<string>();
-  for (const url of [
-    ...summary.links.map((link) => link.url),
-    ...summary.steps.map((step) => step.url),
-  ]) {
-    const safe = url === undefined ? null : safeRecapLinkUrl(url);
-    if (safe !== null) urls.add(safe);
-  }
-  return urls.size;
+/**
+ * What came before the current step, newest first: the cleared steps, which
+ * answer "did we already do that?" without opening the map. Falls back to the
+ * summary's latest finished milestone for summaries without cleared steps.
+ */
+export function recapBeforeText(summary: {
+  readonly done: string | null;
+  readonly steps: ReadonlyArray<Pick<ThreadRecapStep, "label" | "status">>;
+}): string | null {
+  const cleared = summary.steps.filter((step) => step.status === "done").map((step) => step.label);
+  if (cleared.length > 0) return cleared.toReversed().join(" · ");
+  return summary.done;
 }
 
 export function recapStepSourceLabel(step: ThreadRecapStep): string {

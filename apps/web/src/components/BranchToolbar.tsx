@@ -622,6 +622,19 @@ export const BranchToolbar = memo(function BranchToolbar({
 
   if (!hasActiveThread || !activeProject) return null;
 
+  const projectLabel = (
+    <span
+      className={cn(
+        "inline-flex h-7 items-center gap-1 border border-transparent px-[calc(--spacing(2)-1px)] sm:h-6",
+        COMPOSER_CONTEXT_PINNED_CONTROL_CLASS_NAME,
+      )}
+      data-composer-context-control
+    >
+      <ProjectFavicon project={activeProject} className="size-3 shrink-0" />
+      <ComposerContextLabel>{activeProject.title}</ComposerContextLabel>
+    </span>
+  );
+
   return (
     <ComposerSurface.ContextStrip
       ref={setStripElement}
@@ -707,28 +720,23 @@ export const BranchToolbar = memo(function BranchToolbar({
         />
       ) : null}
 
-      <div
-        className={cn(
-          "flex items-center @3xl/composer-surface:ml-auto",
-          COMPOSER_CONTEXT_PINNED_CONTROL_CLASS_NAME,
-        )}
-      >
-        <span
+      {showGitControls ? null : (
+        <div
           className={cn(
-            "inline-flex h-7 items-center gap-1 border border-transparent px-[calc(--spacing(2)-1px)] sm:h-6",
+            "flex items-center @3xl/composer-surface:ml-auto",
             COMPOSER_CONTEXT_PINNED_CONTROL_CLASS_NAME,
           )}
-          data-composer-context-control
         >
-          <ProjectFavicon project={activeProject} className="size-3 shrink-0" />
-          <ComposerContextLabel>{activeProject.title}</ComposerContextLabel>
-        </span>
-      </div>
+          {projectLabel}
+        </div>
+      )}
 
       {showGitControls ? (
         <BranchToolbarBranchSelector
           ref={branchSelectorRef}
-          className="flex-initial justify-end"
+          // The pull request badge leads, then the project, then the branch.
+          className="flex-initial justify-end @3xl/composer-surface:ml-auto"
+          leadingLabel={projectLabel}
           environmentId={environmentId}
           threadId={threadId}
           {...(draftId ? { draftId } : {})}

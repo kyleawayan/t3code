@@ -9700,12 +9700,8 @@ export default function ChatView(props: ChatViewProps) {
                       </div>
                     </div>
                   ) : null}
-                  {!isDraftHeroState ? (
+                  {!isDraftHeroState && isServerThread && activeThreadRecapEnabled ? (
                     <ThreadResumeStrip
-                      project={activeProject}
-                      branch={activeThread.branch}
-                      title={isServerThread ? activeThread.title : null}
-                      recapEnabled={activeThreadRecapEnabled}
                       summary={activeThreadRecap?.summary ?? null}
                       whoseMove={resumeWhoseMove}
                       freshness={resumeRecapFreshness}
@@ -9741,6 +9737,7 @@ export default function ChatView(props: ChatViewProps) {
                             promptHistoryMessages={timelineMessages}
                             isServerThread={isServerThread}
                             isLocalDraftThread={isLocalDraftThread}
+                            placeholderProject={activeProject}
                             forceExpandedOnMobile={forceExpandedMobileComposer && isDraftHeroState}
                             projectSelectionRequired={isLocalDraftThread && activeProject === null}
                             phase={phase}

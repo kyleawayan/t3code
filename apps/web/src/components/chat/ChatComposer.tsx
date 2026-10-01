@@ -75,7 +75,10 @@ import {
   formatAssistantCitationForComposer,
   replaceTextRange,
 } from "../../composer-logic";
-import { DISCONNECTED_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
+import {
+  composerContextPlaceholder,
+  DISCONNECTED_COMPOSER_PLACEHOLDER,
+} from "../../composerPlaceholder";
 import {
   deriveComposerSendState,
   getAntigravitySendBlockReason,
@@ -980,6 +983,7 @@ import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { serverEnvironment } from "../../state/server";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
+import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
 
 const WORKSPACE_SNAPSHOT_RETRY_COOLDOWN_MS = 10_000;
 // How far the form must grow past the width where the full-label footer row
@@ -1351,6 +1355,8 @@ export interface ChatComposerProps {
   promptHistoryMessages: ReadonlyArray<ChatMessage>;
   isServerThread: boolean;
   isLocalDraftThread: boolean;
+  /** Names the thread's project in the resting placeholder. */
+  placeholderProject: ProjectFaviconProject | null;
   forceExpandedOnMobile: boolean;
   projectSelectionRequired: boolean;
 
@@ -1506,8 +1512,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThreadEnvironmentId: _activeThreadEnvironmentId,
     activeThread,
     promptHistoryMessages,
-    isServerThread: _isServerThread,
+    isServerThread,
     isLocalDraftThread: _isLocalDraftThread,
+    placeholderProject,
     forceExpandedOnMobile,
     projectSelectionRequired,
     phase,
@@ -4962,6 +4969,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setIsComposerScrollCollapsed,
   ]);
 
+  const placeholderThread = activeThread ?? props.activeThreadShell;
+  const contextPlaceholder =
+    placeholderProject === null
+      ? null
+      : composerContextPlaceholder({
+          projectTitle: placeholderProject.title,
+          branch: placeholderThread?.branch ?? null,
+          threadTitle: isServerThread ? (placeholderThread?.title ?? null) : null,
+        });
   const restingHiddenBlockCount = composerControlsInStrip ? restingControlsHiddenBlockCount : 0;
   const composerControlsCompact = !composerControlsInStrip && isComposerFooterCompact;
   // At their narrowest stage the runtime mode and the effort join the fixed
@@ -5056,6 +5072,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       <ProviderModelPicker
         compact={composerControlsCompact}
         shortLabel={composerFooterLabelVariant("model", composerLabelStage) === 1}
+        tightLabel={composerFooterLabelVariant("model", composerLabelStage) === 2}
         isComposerOwned
         disabled={providerCatalogPending}
         activeInstanceId={
@@ -6885,9 +6902,28 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                               ? "Choose a project above to start a thread"
                               : showProviderUnavailable
                                 ? "Enable a provider in Settings to send a message"
-                                : phase === "disconnected"
-                                  ? DISCONNECTED_COMPOSER_PLACEHOLDER
-                                  : "Ask anything, @tag files/folders, $use skills, or / for commands"
+                                : (contextPlaceholder ??
+                                  (phase === "disconnected"
+                                    ? DISCONNECTED_COMPOSER_PLACEHOLDER
+                                    : "Ask anything, @tag files/folders, $use skills, or / for commands"))
+                    }
+                    placeholderContent={
+                      contextPlaceholder !== null &&
+                      placeholderProject !== null &&
+                      !isComposerApprovalState &&
+                      !activePendingProgress &&
+                      !(showPlanFollowUpPrompt && activeProposedPlan) &&
+                      !projectSelectionRequired &&
+                      !showProviderUnavailable ? (
+                        // Two lines at most, so a long branch or title never grows the composer.
+                        <span className="line-clamp-2">
+                          <ProjectFavicon
+                            project={placeholderProject}
+                            className="me-1.5 inline-block size-4 align-[-0.2em]"
+                          />
+                          {contextPlaceholder}
+                        </span>
+                      ) : undefined
                     }
                     disabled={
                       isConnecting ||

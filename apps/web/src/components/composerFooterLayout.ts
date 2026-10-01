@@ -208,8 +208,9 @@ export type ComposerFooterLabelControl = "model" | "traits" | "mode";
 /**
  * The steps footer labels take as the footer narrows, each switching one
  * control to its next variant: the runtime mode goes icon-only, the effort
- * shortens, the model drops its brand prefix, the effort tightens, and finally
- * only the effort level shows. Every variant still squishes to its floor but
+ * shortens, the model drops its brand prefix, the effort tightens, only the
+ * effort level shows, and finally the model drops its brand even before a
+ * version ("GPT-5.5" → "5.5"). Every variant still squishes to its floor but
  * never clips.
  */
 const COMPOSER_FOOTER_LABEL_GIVE_WAY: ReadonlyArray<
@@ -220,6 +221,7 @@ const COMPOSER_FOOTER_LABEL_GIVE_WAY: ReadonlyArray<
   ["model", 1],
   ["traits", 2],
   ["traits", 3],
+  ["model", 2],
 ];
 
 /** The last give-way stage; past it the row may only scroll. */

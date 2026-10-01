@@ -1,6 +1,6 @@
 /**
  * Resume map right-panel surface, read like a quest map: every step of the
- * thread, cleared ones included, in one column in dependency order, with
+ * thread in one column in dependency order (cleared ones folded until opened), with
  * arrows in a narrow left gutter from each prerequisite to the step it
  * unlocks. Layout lives in `recapMapLayout.logic`. Status always reads from a
  * shape and a word, never color alone; green marks only the current step and
@@ -13,13 +13,24 @@ import type {
   ThreadRecapLink,
   ThreadRecapStep,
 } from "@t3tools/contracts";
-import { Check, Hourglass, Lock, Map as MapIcon, MapPin, RefreshCw, Signpost } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Hourglass,
+  Lock,
+  Map as MapIcon,
+  MapPin,
+  RefreshCw,
+  Signpost,
+} from "lucide-react";
 import {
   memo,
   useCallback,
   useEffect,
   useMemo,
   useRef,
+  useState,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
@@ -480,7 +491,7 @@ function HeaderLine({
   return (
     <div className="flex min-w-0 items-start gap-1.5">
       <span className={cn("flex h-5 shrink-0 items-center", wordClass)}>{icon}</span>
-      <span className={cn("w-[5.25rem] shrink-0 text-[11px] font-semibold leading-5", wordClass)}>
+      <span className={cn("w-[5.25rem] shrink-0 text-xs font-medium leading-5", wordClass)}>
         {word}
       </span>
       {children}
@@ -557,6 +568,8 @@ export const RecapMapPanel = memo(function RecapMapPanel({
   onSetEnabled: ((enabled: boolean) => void) | null;
 }) {
   useNowMinute();
+  // Cleared steps start folded so what is left leads; opening them shows the whole flow.
+  const [showCleared, setShowCleared] = useState(false);
   const steps = recap?.summary?.steps ?? EMPTY_STEPS;
   const summaryNow = recap?.summary?.now ?? null;
   const fallbackLinearWorkspace = useAtomValue(latestLinearWorkspaceAtom);
@@ -677,9 +690,7 @@ export const RecapMapPanel = memo(function RecapMapPanel({
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex flex-col gap-1 border-b border-border/60 px-3 py-2.5">
         <div className="mb-1">
-          <p className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
-            Goal
-          </p>
+          <p className="text-xs font-medium text-muted-foreground">Goal</p>
           <h2 className="line-clamp-3 text-base font-semibold leading-6 text-foreground [overflow-wrap:anywhere]">
             {summary.goal}
           </h2>
@@ -745,20 +756,46 @@ export const RecapMapPanel = memo(function RecapMapPanel({
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <div className="px-3 py-2">
+          {doneCount > 0 ? (
+            <button
+              type="button"
+              aria-expanded={showCleared}
+              onClick={() => setShowCleared((shown) => !shown)}
+              className="mb-1 flex w-full cursor-pointer items-center gap-2 rounded-md py-1 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span
+                className="flex shrink-0 justify-center"
+                style={{ width: laneCount * LANE_WIDTH }}
+              >
+                <Check aria-hidden className="size-3.5" />
+              </span>
+              <span className="min-w-0 flex-1 tabular-nums">
+                {showCleared ? "Hide" : "Show"} {doneCount} cleared{" "}
+                {doneCount === 1 ? "step" : "steps"}
+              </span>
+              {showCleared ? (
+                <ChevronDown aria-hidden className="size-3.5 shrink-0" />
+              ) : (
+                <ChevronRight aria-hidden className="size-3.5 shrink-0" />
+              )}
+            </button>
+          ) : null}
           {rows.length > 0 ? (
             <ol aria-label="Steps in order">
-              {rows.map((row, index) => (
-                <PathRow
-                  key={row.step.id}
-                  row={row}
-                  cell={cells?.[index] ?? EMPTY_CELL}
-                  laneCount={laneCount}
-                  workspace={linearWorkspace}
-                  links={summary.links}
-                  onOpenLink={openRecapLink}
-                  rowRef={index === firstNowIndex ? scrollNowRowIntoView : undefined}
-                />
-              ))}
+              {rows.map((row, index) =>
+                row.kind === "done" && !showCleared ? null : (
+                  <PathRow
+                    key={row.step.id}
+                    row={row}
+                    cell={cells?.[index] ?? EMPTY_CELL}
+                    laneCount={laneCount}
+                    workspace={linearWorkspace}
+                    links={summary.links}
+                    onOpenLink={openRecapLink}
+                    rowRef={index === firstNowIndex ? scrollNowRowIntoView : undefined}
+                  />
+                ),
+              )}
             </ol>
           ) : null}
         </div>

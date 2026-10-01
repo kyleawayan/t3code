@@ -1,27 +1,19 @@
 import type { ThreadRecapSummary } from "@t3tools/contracts";
-import { CircleIcon, Hourglass, Link2Icon, MapPin } from "lucide-react";
+import { Check, CircleIcon, Hourglass, MapPin } from "lucide-react";
 import { memo, type ReactNode } from "react";
 
 import { useNowMinute } from "~/hooks/useNowMinute";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
-import { ProjectBranchLine } from "../ProjectBranchLine";
-import type { ProjectFaviconProject } from "../ProjectFavicon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
-  countRecapLinks,
+  recapBeforeText,
   resumeWhoseMoveLabel,
   type RecapFreshness,
   type ResumeWhoseMove,
 } from "./threadResume.logic";
 
 interface ThreadResumeStripProps {
-  /** Which project and branch this thread works in, so the strip answers "where" too. */
-  project: ProjectFaviconProject | null;
-  branch: string | null;
-  /** Null for drafts, which show only the project line and do not open the map. */
-  title: string | null;
-  recapEnabled: boolean;
   /** Null while recap is on but the first summary has not been written yet. */
   summary: ThreadRecapSummary | null;
   whoseMove: ResumeWhoseMove;
@@ -41,7 +33,7 @@ const TWO_LINE_SLOT_CLASS = "block h-[2lh] min-w-0 line-clamp-2 break-words";
 const GOAL_SLOT_CLASS = cn(TWO_LINE_SLOT_CLASS, "font-semibold text-foreground text-sm");
 
 const STRIP_CLASS =
-  "mb-1.5 flex w-full min-w-0 flex-col gap-2 rounded-lg border border-border/70 bg-background px-3 py-2.5 text-left text-muted-foreground text-xs";
+  "mb-1.5 flex w-full min-w-0 flex-col gap-3 rounded-lg border border-border/70 bg-background px-3 py-3 text-left text-muted-foreground text-xs";
 const STRIP_BUTTON_CLASS = cn(
   STRIP_CLASS,
   "cursor-pointer hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
@@ -54,8 +46,8 @@ const FRESHNESS_LABEL: Record<RecapFreshness, string | null> = {
 };
 
 /**
- * Summary age and link count. Its own component so only strips showing a
- * summary subscribe to the minute clock, not every thread's strip.
+ * Summary age. Its own component so only strips showing a summary subscribe
+ * to the minute clock, not every thread's strip.
  */
 function RecapAge({
   summary,
@@ -65,32 +57,20 @@ function RecapAge({
   freshness: RecapFreshness;
 }) {
   useNowMinute();
-  const linkCount = countRecapLinks(summary);
   return (
-    <>
-      {linkCount > 0 ? (
-        <span
-          aria-label={`${linkCount} ${linkCount === 1 ? "link" : "links"} in the map`}
-          className="flex shrink-0 items-center gap-0.5 tabular-nums"
-        >
-          <Link2Icon aria-hidden className="size-3" />
-          {linkCount}
+    <span className="shrink-0 tabular-nums">
+      as of {formatRelativeTimeLabel(summary.generatedAt)}
+      {FRESHNESS_LABEL[freshness] ? (
+        <span className={cn(freshness === "stale" && "text-warning-foreground")}>
+          {" "}
+          · {FRESHNESS_LABEL[freshness]}
         </span>
       ) : null}
-      <span className="shrink-0 tabular-nums">
-        as of {formatRelativeTimeLabel(summary.generatedAt)}
-        {FRESHNESS_LABEL[freshness] ? (
-          <span className={cn(freshness === "stale" && "text-warning-foreground")}>
-            {" "}
-            · {FRESHNESS_LABEL[freshness]}
-          </span>
-        ) : null}
-      </span>
-    </>
+    </span>
   );
 }
 
-/** Small uppercase label on its own line, value below: reads well in a narrow chat column. */
+/** Label on its own line, value below: reads well in a narrow chat column. */
 function Field({
   label,
   icon,
@@ -107,19 +87,17 @@ function Field({
   children: ReactNode;
 }) {
   return (
-    <span className={cn("flex min-w-0 flex-col gap-0.5", className)}>
+    <span className={cn("flex min-w-0 flex-col gap-1", className)}>
       <span
         className={cn(
-          "flex h-[1lh] min-w-0 items-center gap-1 font-semibold text-[10px] uppercase tracking-wide",
+          "flex h-[1lh] min-w-0 items-center gap-1 font-medium text-xs",
           labelClassName,
         )}
       >
         {icon}
         <span className="min-w-0 flex-1 truncate">{label}</span>
         {aside ? (
-          <span className="flex shrink-0 items-center gap-2 font-normal text-xs normal-case tracking-normal">
-            {aside}
-          </span>
+          <span className="flex shrink-0 items-center gap-2 font-normal">{aside}</span>
         ) : null}
       </span>
       {children}
@@ -128,41 +106,26 @@ function Field({
 }
 
 const ICON_CLASS = "size-3 shrink-0";
-const RECAP_DIVIDER_CLASS = "block border-t border-border/60";
+// Spans the strip's padding, like the suggested move's band.
+const GOAL_DIVIDER_CLASS = "-mx-3 block border-t border-border/60";
+// Hold a field's height (label, gap, two lines) while it has nothing to show,
+// and the suggested move's band, which adds its vertical padding.
+const FIELD_SPACER_CLASS = "block h-[calc(3lh+--spacing(1))]";
+const BAND_SPACER_CLASS = "block h-[calc(3lh+--spacing(6))]";
 
 /**
- * "Where was I" above the composer, for every thread: project and branch,
- * then the conversation name. With resume recap on, the goal leads and the
- * suggested move and what is next follow. Every slot has a fixed height.
- * Clicking opens the map, which also holds the recap's on switch.
+ * Resume recap above the composer, only while the map is on: the goal leads,
+ * then what came before, the suggested move, and what is next. Project and
+ * branch live in the composer's bottom bar. Every slot has a fixed height, so
+ * switching threads never moves the composer. Clicking opens the map.
  */
 export const ThreadResumeStrip = memo(function ThreadResumeStrip({
-  project,
-  branch,
-  title,
-  recapEnabled,
   summary,
   whoseMove,
   freshness,
   onOpenMap,
 }: ThreadResumeStripProps) {
-  const projectLine = project ? <ProjectBranchLine project={project} branch={branch} /> : null;
-
-  if (title === null) {
-    return projectLine ? <div className={STRIP_CLASS}>{projectLine}</div> : null;
-  }
-
-  const shownSummary = recapEnabled ? summary : null;
-  const conversationField = (
-    <Field
-      label="Conversation name"
-      aside={shownSummary ? <RecapAge summary={shownSummary} freshness={freshness} /> : null}
-    >
-      <span className="block h-[1lh] min-w-0 truncate text-foreground/90">{title}</span>
-    </Field>
-  );
-
-  if (shownSummary === null) {
+  if (summary === null) {
     return (
       <button
         type="button"
@@ -170,29 +133,22 @@ export const ThreadResumeStrip = memo(function ThreadResumeStrip({
         data-thread-resume-strip
         className={STRIP_BUTTON_CLASS}
       >
-        {recapEnabled ? (
-          <Field label="Goal">
-            <span className={cn(TWO_LINE_SLOT_CLASS, "text-muted-foreground")}>
-              Recap appears after the next turn.
-            </span>
-          </Field>
-        ) : null}
-        {recapEnabled ? (
-          <>
-            <span aria-hidden className="block h-[3lh] py-0.5" />
-            <span aria-hidden className="block h-[3lh]" />
-          </>
-        ) : null}
-        {recapEnabled ? <span aria-hidden className={RECAP_DIVIDER_CLASS} /> : null}
-        {/* Where-am-I lines stay last, next to the composer, so they never move. */}
-        {projectLine}
-        {conversationField}
+        <Field label="Goal">
+          <span className={cn(TWO_LINE_SLOT_CLASS, "text-muted-foreground")}>
+            Recap appears after the next turn.
+          </span>
+        </Field>
+        <span aria-hidden className={GOAL_DIVIDER_CLASS} />
+        <span aria-hidden className={FIELD_SPACER_CLASS} />
+        <span aria-hidden className={BAND_SPACER_CLASS} />
+        <span aria-hidden className={FIELD_SPACER_CLASS} />
       </button>
     );
   }
 
-  const blocked = shownSummary.blocked;
-  const nextText = blocked ?? shownSummary.next;
+  const blocked = summary.blocked;
+  const nextText = blocked ?? summary.next;
+  const beforeText = recapBeforeText(summary);
   return (
     <Tooltip>
       <TooltipTrigger
@@ -205,19 +161,24 @@ export const ThreadResumeStrip = memo(function ThreadResumeStrip({
           />
         }
       >
-        <Field label="Goal">
-          <span className={GOAL_SLOT_CLASS}>{shownSummary.goal}</span>
+        <Field label="Goal" aside={<RecapAge summary={summary} freshness={freshness} />}>
+          <span className={GOAL_SLOT_CLASS}>{summary.goal}</span>
         </Field>
-        {/* Done steps live in the map; the strip only answers "what now". Icons and colors
-            match the map: green pin for now, amber hourglass for blocked, hollow circle for next. */}
+        <span aria-hidden className={GOAL_DIVIDER_CLASS} />
+        {/* Icons and colors match the map: check for cleared, green pin for now,
+            amber hourglass for blocked, hollow circle for next. */}
+        <Field label="Before" icon={<Check aria-hidden className={ICON_CLASS} />}>
+          <span className={TWO_LINE_SLOT_CLASS}>{beforeText ?? "Nothing finished yet."}</span>
+        </Field>
         <Field
           label={resumeWhoseMoveLabel(whoseMove)}
           icon={<MapPin aria-hidden className={cn(ICON_CLASS, "text-success-foreground")} />}
-          className="rounded-md bg-success/8 px-2 py-1.5"
+          // A full-width band: the tint spans the strip's padding, and the text stays on the Goal's edge.
+          className="-mx-3 bg-success/8 px-3 py-2.5"
           labelClassName={WHOSE_MOVE_CLASS[whoseMove]}
         >
           <span className={cn(TWO_LINE_SLOT_CLASS, "font-medium text-success-foreground")}>
-            {shownSummary.now}
+            {summary.now}
           </span>
         </Field>
         {nextText ? (
@@ -230,7 +191,6 @@ export const ThreadResumeStrip = memo(function ThreadResumeStrip({
                 <CircleIcon aria-hidden className={ICON_CLASS} />
               )
             }
-            className="px-2"
             labelClassName={blocked ? "text-warning-foreground" : undefined}
           >
             <span className={cn(TWO_LINE_SLOT_CLASS, blocked && "text-warning-foreground")}>
@@ -238,16 +198,14 @@ export const ThreadResumeStrip = memo(function ThreadResumeStrip({
             </span>
           </Field>
         ) : (
-          <span aria-hidden className="block h-[3lh]" />
+          <span aria-hidden className={FIELD_SPACER_CLASS} />
         )}
-        <span aria-hidden className={RECAP_DIVIDER_CLASS} />
-        {projectLine}
-        {conversationField}
       </TooltipTrigger>
       <TooltipPopup side="top" className="max-w-96 whitespace-normal">
         <span className="flex flex-col gap-1">
-          <span>Goal: {shownSummary.goal}</span>
-          <span>Now: {shownSummary.now}</span>
+          <span>Goal: {summary.goal}</span>
+          {beforeText ? <span>Before: {beforeText}</span> : null}
+          <span>Now: {summary.now}</span>
           {nextText ? <span>{`${blocked ? "Blocked" : "Next"}: ${nextText}`}</span> : null}
         </span>
       </TooltipPopup>

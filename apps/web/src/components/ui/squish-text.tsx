@@ -14,11 +14,29 @@ export const SQUISH_TEXT_MIN_SCALE = 0.5;
 const SQUISH_TEXT_FIT_TOLERANCE_PX = 1;
 
 /** The horizontal scale that fits `naturalWidth` of text into `availableWidth`. */
-export function resolveSquishScale(availableWidth: number, naturalWidth: number): number {
+export function resolveSquishScale(
+  availableWidth: number,
+  naturalWidth: number,
+  minScale: number = SQUISH_TEXT_MIN_SCALE,
+): number {
   if (naturalWidth <= 0 || availableWidth + SQUISH_TEXT_FIT_TOLERANCE_PX >= naturalWidth) {
     return 1;
   }
-  return Math.max(SQUISH_TEXT_MIN_SCALE, availableWidth / naturalWidth);
+  return Math.max(minScale, availableWidth / naturalWidth);
+}
+
+/**
+ * The unscaled width an ellipsizing SquishText's text box needs so that, at
+ * `scale`, it fills `availableWidth` exactly; null when the text fits whole.
+ */
+export function resolveSquishEllipsisWidth(
+  availableWidth: number,
+  naturalWidth: number,
+  scale: number,
+): number | null {
+  return naturalWidth * scale > availableWidth + SQUISH_TEXT_FIT_TOLERANCE_PX
+    ? availableWidth / scale
+    : null;
 }
 
 /**
@@ -111,6 +129,8 @@ export function measureSquishTextProbe(probe: HTMLElement): number[] {
 export interface SquishTarget {
   root: HTMLElement;
   text: HTMLElement;
+  /** Set for text that squishes only this far, then ends in an ellipsis. */
+  ellipsisScale?: number | undefined;
 }
 
 // One observer for every SquishText: sidebars render hundreds, and each
@@ -127,12 +147,21 @@ function fitSquishTargets(entries: readonly ResizeObserverEntry[]): void {
   // Read every width before writing any transform, so one batch lays out once.
   // Written straight to the DOM: a resize never re-renders, and a transform
   // never resizes anything, so the observer cannot feed itself.
-  const scales = Array.from(targets, (target) => ({
-    target,
-    scale: resolveSquishScale(target.root.clientWidth, target.text.offsetWidth),
-  }));
-  for (const { target, scale } of scales) {
+  const fits = Array.from(targets, (target) => {
+    const available = target.root.clientWidth;
+    if (target.ellipsisScale === undefined) {
+      return { target, scale: resolveSquishScale(available, target.text.offsetWidth), width: null };
+    }
+    // An ellipsizing text box is narrowed below its content, so read the content.
+    const natural = target.text.scrollWidth;
+    const scale = resolveSquishScale(available, natural, target.ellipsisScale);
+    return { target, scale, width: resolveSquishEllipsisWidth(available, natural, scale) };
+  });
+  for (const { target, scale, width } of fits) {
     target.text.style.transform = scale === 1 ? "" : `scaleX(${scale})`;
+    if (target.ellipsisScale !== undefined) {
+      target.text.style.width = width === null ? "" : `${width}px`;
+    }
   }
 }
 
@@ -164,12 +193,19 @@ export function observeSquishTarget(target: SquishTarget): () => void {
  * minimum scale, so an ancestor with `min-w-min` (or the default flex minimum)
  * cannot squeeze it any further. An ancestor with `min-w-0` can, and the text
  * clips.
+ *
+ * With `ellipsisScale`, the text squishes only that far, where it still reads
+ * easily, then ends in an ellipsis instead of clipping.
  */
 export function SquishText({
   children,
   className,
+  ellipsisScale,
   ...props
-}: Omit<ComponentProps<"span">, "children" | "ref"> & { children: string }) {
+}: Omit<ComponentProps<"span">, "children" | "ref"> & {
+  children: string;
+  ellipsisScale?: number;
+}) {
   const rootRef = useRef<HTMLSpanElement>(null);
   const textRef = useRef<HTMLSpanElement>(null);
 
@@ -177,8 +213,8 @@ export function SquishText({
     const root = rootRef.current;
     const text = textRef.current;
     if (!root || !text) return;
-    return observeSquishTarget({ root, text });
-  }, []);
+    return observeSquishTarget({ root, text, ellipsisScale });
+  }, [ellipsisScale]);
 
   const [head, tail] = splitSquishTextHalves(children);
   return (
@@ -210,7 +246,10 @@ export function SquishText({
         <span
           ref={textRef}
           data-squish-text-content=""
-          className="inline-block origin-left whitespace-pre"
+          className={cn(
+            "inline-block origin-left whitespace-pre",
+            ellipsisScale !== undefined && "overflow-hidden text-ellipsis align-top",
+          )}
         >
           {children}
         </span>

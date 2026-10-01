@@ -79,3 +79,25 @@ export function getShortTriggerModelLabel(label: string, driverKind: ProviderDri
   const rest = label.slice(brand.length + 1).trimStart();
   return /^\p{L}/u.test(rest) ? rest : label;
 }
+
+// Brands the tightest label drops even before a version. GPT names lead with
+// one ("GPT-5.5"), so only this stage can shorten them.
+const TIGHT_BRAND_PREFIX: Partial<Record<ProviderDriverKind, string>> = {
+  ...PROVIDER_BRAND_PREFIX,
+  [ProviderDriverKind.make("codex")]: "GPT",
+};
+
+/**
+ * The tightest model label, for the narrowest footers: the brand goes even
+ * when the version leads ("GPT-5.5" → "5.5", "Gemini 3 Pro" → "3 Pro"). The
+ * icon beside it still names the provider, and the version is what tells the
+ * models apart, so it must never be the part that gets cut off.
+ */
+export function getTightTriggerModelLabel(label: string, driverKind: ProviderDriverKind): string {
+  const short = getShortTriggerModelLabel(label, driverKind);
+  if (short !== label) return short;
+  const brand = TIGHT_BRAND_PREFIX[driverKind];
+  if (!brand || !(label.startsWith(`${brand} `) || label.startsWith(`${brand}-`))) return label;
+  const rest = label.slice(brand.length + 1).trimStart();
+  return rest.length > 0 ? rest : label;
+}

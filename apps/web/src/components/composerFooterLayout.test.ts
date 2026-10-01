@@ -473,19 +473,22 @@ describe("resolveScrollToEndClearance", () => {
 describe("resolveComposerFooterLabelStage", () => {
   // A narrow expanded footer. Each label control is its chrome plus a 4px gap
   // and the floor of the variant it shows:
-  //   model   30 chrome; "Claude Opus 5.5" 52, "Opus 5.5" 30
+  //   model   30 chrome; "Claude Opus 5.5" 52, "Opus 5.5" 30, still "Opus 5.5" 30
   //   traits  10 chrome; "Extra High · 1M" 48, "XHigh·1M" 30, "XH·1M" 22, "XH" 16
   //   mode    30 chrome; "Auto" 14, icon only
   // plus the 28px plan toggle and 4px row gaps. A control at its narrowest moves
   // into the actions and costs the 8px actions gap instead of a row gap. The
-  // stages need 236, 222, 204, 182, 174, and 172px.
-  function controls(rendered: { model?: number; mode?: number } = {}) {
+  // stages need 236, 222, 204, 182, 174, 172, and 172px.
+  function controls(
+    rendered: { model?: number; mode?: number } = {},
+    modelFloors: readonly number[] = [52, 30, 30],
+  ) {
     const model = rendered.model ?? 100;
     const mode = rendered.mode ?? 28;
     return [
       {
         width: 34 + model,
-        label: { control: "model" as const, rendered: model, gap: 4, floors: [52, 30] },
+        label: { control: "model" as const, rendered: model, gap: 4, floors: modelFloors },
       },
       {
         width: 109,
@@ -538,10 +541,25 @@ describe("resolveComposerFooterLabelStage", () => {
     expect(composerFooterLabelVariant("model", stage)).toBe(1);
   });
 
+  it("drops the GPT brand last, so the version stays readable", () => {
+    // "GPT-5.5 Codex" leads with its version, so only the last stage shortens
+    // it, to "5.5 Codex" (30): the last three stages need 196, 194, and 172px.
+    const gptStageAt = (availableWidth: number) =>
+      resolveComposerFooterLabelStage({
+        stage: 0,
+        availableWidth,
+        gap: 4,
+        actionsGap: 8,
+        controls: controls({}, [52, 52, 30]),
+      });
+    expect(gptStageAt(195)).toBe(5);
+    expect(gptStageAt(180)).toBe(6);
+  });
+
   it("lets the row scroll rather than squeeze a label past its floor", () => {
     // Even the last stage needs 172px. The labels keep their floors, so
     // "Opus 5.5" never loses its ".5".
-    expect(stageAt(150)).toBe(5);
+    expect(stageAt(150)).toBe(6);
   });
 
   it("gives the same answer however the labels are showing now", () => {
@@ -692,8 +710,8 @@ describe("resolveComposerFooterStageFloor", () => {
     expect(
       resolveComposerFooterStageFloor({
         ...base,
-        measuredStage: 5,
-        currentStage: 5,
+        measuredStage: 6,
+        currentStage: 6,
         overflows: true,
       }),
     ).toBeNull();

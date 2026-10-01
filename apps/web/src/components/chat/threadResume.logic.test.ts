@@ -5,13 +5,13 @@ import type { MessagesTimelineRow } from "./MessagesTimeline.logic";
 import {
   deriveRecapFreshness,
   deriveResumeWhoseMove,
-  countRecapLinks,
   insertLeftOffDividerRow,
   isRecapRefreshPending,
   latestLinearWorkspace,
   RECAP_REFRESH_TIMEOUT_MS,
   LEFT_OFF_ROW_ID,
   linearIssueUrl,
+  recapBeforeText,
   recapStepSourceLabel,
   safeRecapLinkUrl,
 } from "./threadResume.logic";
@@ -185,19 +185,6 @@ describe("recap links", () => {
     expect(safeRecapLinkUrl("file:///etc/passwd")).toBeNull();
     expect(safeRecapLinkUrl("not a url")).toBeNull();
   });
-
-  it("counts distinct openable links across the list and steps", () => {
-    expect(
-      countRecapLinks({
-        links: [
-          { url: "https://example.com/a" },
-          { url: "https://example.com/b" },
-          { url: "javascript:void(0)" },
-        ],
-        steps: [{ url: "https://example.com/a" }, { url: "https://example.com/c" }, {}],
-      }),
-    ).toBe(3);
-  });
 });
 
 describe("recap step labels", () => {
@@ -249,5 +236,25 @@ describe("insertLeftOffDividerRow", () => {
     ]) {
       expect(insertLeftOffDividerRow(rows, snapshot)).toBe(rows);
     }
+  });
+});
+
+describe("recapBeforeText", () => {
+  it("lists cleared steps newest first", () => {
+    expect(
+      recapBeforeText({
+        done: "Wired the DSN",
+        steps: [
+          { label: "Move the error tracking project", status: "done" },
+          { label: "Wire the DSN", status: "done" },
+          { label: "Verify events", status: "now" },
+        ],
+      }),
+    ).toBe("Wire the DSN · Move the error tracking project");
+  });
+
+  it("falls back to the latest finished milestone, then to nothing", () => {
+    expect(recapBeforeText({ done: "Wired the DSN", steps: [] })).toBe("Wired the DSN");
+    expect(recapBeforeText({ done: null, steps: [{ label: "Plan", status: "now" }] })).toBeNull();
   });
 });

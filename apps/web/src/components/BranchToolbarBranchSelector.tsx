@@ -23,6 +23,7 @@ import {
   useState,
   useTransition,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
   type Ref,
 } from "react";
 
@@ -96,6 +97,8 @@ interface BranchToolbarBranchSelectorProps {
   onStartFromOriginChange: (startFromOrigin: boolean) => void;
   onCheckoutPullRequestRequest?: (reference: string) => void;
   onComposerFocusRequest?: () => void;
+  /** Shown between the pull request badge and the branch, such as the project. */
+  leadingLabel?: ReactNode;
 }
 
 function toBranchActionErrorMessage(error: unknown): string {
@@ -116,6 +119,7 @@ export function BranchToolbarBranchSelector({
   onStartFromOriginChange,
   onCheckoutPullRequestRequest,
   onComposerFocusRequest,
+  leadingLabel,
 }: BranchToolbarBranchSelectorProps) {
   const composerFloatingLayerProps = useComposerMenuProps();
   const startFromOriginSwitchId = useId();
@@ -792,6 +796,7 @@ export function BranchToolbarBranchSelector({
             if (prUrl) openPrLink(event, prUrl);
           }}
         />
+        {leadingLabel}
         {/* Context menu lives on the wrapper: the disabled Button has
             pointer-events-none, so the trigger itself never sees right-clicks
             while refs are loading or a branch action is pending. */}

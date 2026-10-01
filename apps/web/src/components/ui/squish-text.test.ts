@@ -3,9 +3,24 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   SQUISH_TEXT_MIN_SCALE,
   observeSquishTarget,
+  resolveSquishEllipsisWidth,
   resolveSquishScale,
   splitSquishTextHalves,
 } from "./squish-text";
+
+describe("resolveSquishEllipsisWidth", () => {
+  it("narrows the text box so its readable floor fills the room exactly", () => {
+    const scale = resolveSquishScale(60, 100, 0.8);
+    expect(scale).toBe(0.8);
+    expect(resolveSquishEllipsisWidth(60, 100, scale)).toBe(75);
+  });
+
+  it("leaves text whole while squishing alone fits it", () => {
+    const scale = resolveSquishScale(90, 100, 0.8);
+    expect(scale).toBe(0.9);
+    expect(resolveSquishEllipsisWidth(90, 100, scale)).toBeNull();
+  });
+});
 
 describe("resolveSquishScale", () => {
   it("leaves text that fits at full width", () => {
