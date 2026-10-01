@@ -185,7 +185,9 @@ import {
   COMPOSER_FOOTER_WIDE_ACTIONS_COMPACT_BREAKPOINT_PX,
   composerFooterLabelVariant,
   getRestingComposerImagePreviewCounts,
+  isComposerFooterControlInActions,
   resolveComposerFooterLabelStage,
+  resolveComposerFooterStageFloor,
   resolveRestingComposerControlsLayout,
   shouldAnimateComposerRestingTransition,
   shouldUseCompactComposerPrimaryActions,
@@ -983,6 +985,7 @@ const WORKSPACE_SNAPSHOT_RETRY_COOLDOWN_MS = 10_000;
 // How far the form must grow past the width where the full-label footer row
 // overflowed before full labels get another try.
 const COMPOSER_FOOTER_OVERFLOW_RELEASE_PX = 24;
+const TRAITS_LABEL_SIZE_BY_VARIANT = ["full", "short", "tight", "icon"] as const;
 
 const extendReplacementRangeForTrailingSpace = (
   text: string,
@@ -3244,6 +3247,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // width moves with the send actions, and its labels with the model and
   // traits, so watch both the box and its text.
   const composerFooterLabelStageRef = useRef(0);
+  const composerFooterStageFloorRef = useRef<{ stage: number; rowWidth: number } | null>(null);
   useLayoutEffect(() => {
     const container = composerFooterControlsRef.current;
     if (!container || typeof ResizeObserver === "undefined") return;
@@ -3265,10 +3269,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       const actions = container.parentElement?.querySelector<HTMLElement>(
         '[data-chat-composer-actions="right"]',
       );
-      const stage = resolveComposerFooterLabelStage({
+      const currentStage = composerFooterLabelStageRef.current;
+      const measuredStage = resolveComposerFooterLabelStage({
         ...measureComposerFooterControls(container, actions ?? null),
-        stage: composerFooterLabelStageRef.current,
+        stage: currentStage,
       });
+      composerFooterStageFloorRef.current = resolveComposerFooterStageFloor({
+        floor: composerFooterStageFloorRef.current,
+        measuredStage,
+        currentStage,
+        rowWidth: container.clientWidth,
+        overflows: container.scrollWidth > container.clientWidth + 1,
+      });
+      const stage = Math.max(measuredStage, composerFooterStageFloorRef.current?.stage ?? 0);
       if (stage === composerFooterLabelStageRef.current) return;
       composerFooterLabelStageRef.current = stage;
       setComposerFooterLabelStage(stage);
@@ -4951,24 +4964,31 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   const restingHiddenBlockCount = composerControlsInStrip ? restingControlsHiddenBlockCount : 0;
   const composerControlsCompact = !composerControlsInStrip && isComposerFooterCompact;
-  // At its icon-only stage the runtime mode joins the fixed actions. The
-  // controls row scrolls as a last resort, and its last item would go first.
-  const composerRuntimeModeInActions =
-    composerControlsCompact &&
-    !showProviderUnavailable &&
-    composerFooterLabelVariant("mode", composerFooterLabelStage) === 1;
+  // At their icon-only stage the runtime mode and the effort join the fixed
+  // actions. The controls row scrolls as a last resort, and its last items
+  // would go first.
+  const composerLabelStage =
+    composerControlsCompact && !showProviderUnavailable ? composerFooterLabelStage : 0;
+  const composerRuntimeModeInActions = isComposerFooterControlInActions("mode", composerLabelStage);
+  const composerTraitsInActions =
+    providerTraitsPicker !== null && isComposerFooterControlInActions("traits", composerLabelStage);
   const restingProviderTraitsPicker = renderProviderTraitsPicker({
     ...providerTraitsPickerInput,
     size: "xs",
     hidden: composerControlsHidden || restingHiddenBlockCount > 1,
   });
-  const compactProviderTraitsPicker = composerControlsCompact
-    ? renderProviderTraitsPicker({
-        ...providerTraitsPickerInput,
-        compact: true,
-        shortLabel: composerFooterLabelVariant("traits", composerFooterLabelStage) === 1,
-      })
-    : providerTraitsPicker;
+  const compactProviderTraitsPicker = composerTraitsInActions
+    ? null
+    : composerControlsCompact
+      ? renderProviderTraitsPicker({
+          ...providerTraitsPickerInput,
+          compact: true,
+          labelSize:
+            TRAITS_LABEL_SIZE_BY_VARIANT[
+              composerFooterLabelVariant("traits", composerLabelStage)
+            ] ?? "icon",
+        })
+      : providerTraitsPicker;
   const restingBlockDefs = [
     ...(providerTraitsPicker
       ? [
@@ -5035,10 +5055,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ) : null}
       <ProviderModelPicker
         compact={composerControlsCompact}
-        shortLabel={
-          composerControlsCompact &&
-          composerFooterLabelVariant("model", composerFooterLabelStage) === 1
-        }
+        shortLabel={composerFooterLabelVariant("model", composerLabelStage) === 1}
         isComposerOwned
         disabled={providerCatalogPending}
         activeInstanceId={
@@ -6148,7 +6165,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             restingControlsHost,
           )
         : null}
-      <ComposerBanner.Dock>
+      <ComposerBanner.Dock reserve={!isComposerCollapsedMobile}>
         <ComposerBanner.Column>
           <ComposerBannerStack
             key={activeThreadId}
@@ -6956,8 +6973,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   data-chat-composer-primary-actions-compact={
                     isComposerPrimaryActionsCompact ? "true" : "false"
                   }
-                  className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
+                  className={cn(
+                    "flex shrink-0 flex-nowrap items-center justify-end gap-2",
+                    // Same rule as the controls row, so a control keeps its
+                    // width when it moves between the two.
+                    "@max-[20rem]/composer-surface:[&_svg[data-composer-control-chevron]]:hidden",
+                  )}
                 >
+                  {composerTraitsInActions
+                    ? renderProviderTraitsPicker({
+                        ...providerTraitsPickerInput,
+                        compact: true,
+                        labelSize: "icon",
+                      })
+                    : null}
                   {composerRuntimeModeInActions ? (
                     <ComposerFooterModeControls
                       showInteractionModeToggle={false}

@@ -98,13 +98,15 @@ function measureComposerFooterControl(
   const probe = element.querySelector<HTMLElement>("[data-composer-footer-label]");
   const labelControl = probe?.dataset.composerFooterLabel;
   if (probe && (labelControl === "model" || labelControl === "traits" || labelControl === "mode")) {
-    const [fullFloor = 0, shortFloor = 0] = measureSquishTextProbe(probe);
-    const label = element.querySelector<HTMLElement>("[data-squish-text]");
+    // An icon standing in for the label marks itself as the label's slot.
+    const label =
+      element.querySelector<HTMLElement>("[data-composer-footer-label-slot]") ??
+      element.querySelector<HTMLElement>("[data-squish-text]");
     control.label = {
       control: labelControl,
-      rendered: label ? (measureSquishText(label)?.rendered ?? 0) : 0,
+      rendered: label?.offsetWidth ?? 0,
       gap: Number.parseFloat(style.columnGap) || 0,
-      floors: [fullFloor, shortFloor],
+      floors: measureSquishTextProbe(probe),
     };
   }
   return control;
@@ -112,8 +114,8 @@ function measureComposerFooterControl(
 
 /**
  * Read the expanded footer for resolveComposerFooterLabelStage: each in-flow
- * control in the scrolling row, plus the runtime mode when it sits among the
- * fixed actions. The room it takes there counts as the row's.
+ * control in the scrolling row, plus any label control sitting among the fixed
+ * actions. The room those take there counts as the row's.
  */
 export function measureComposerFooterControls(
   row: HTMLElement,
@@ -138,13 +140,9 @@ export function measureComposerFooterControls(
     row.clientWidth -
     (Number.parseFloat(style.paddingInlineStart) || 0) -
     (Number.parseFloat(style.paddingInlineEnd) || 0);
-  const modeInActions = actions
-    ? Array.from(actions.children).find((child) =>
-        child.querySelector('[data-composer-footer-label="mode"]'),
-      )
-    : undefined;
-  if (modeInActions) {
-    const element = modeInActions as HTMLElement;
+  for (const child of actions?.children ?? []) {
+    if (!child.querySelector("[data-composer-footer-label]")) continue;
+    const element = child as HTMLElement;
     const control = measureComposerFooterControl(element, getComputedStyle(element));
     controls.push(control);
     availableWidth += control.width + actionsGap;

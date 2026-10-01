@@ -206,38 +206,73 @@ export function resolveRestingComposerControlsLayout(
 export type ComposerFooterLabelControl = "model" | "traits" | "mode";
 
 /**
- * The order the footer labels switch to their short variant as the footer
- * narrows: the runtime mode goes icon-only (and moves into the fixed actions,
- * out of the scrolling row), then the effort shortens, then the model drops
- * its brand prefix. Each variant still squishes to its floor, but never clips.
+ * The steps footer labels take as the footer narrows, each switching one
+ * control to its next variant: the runtime mode goes icon-only, the effort
+ * shortens, the model drops its brand prefix, the effort tightens, and finally
+ * the effort goes icon-only. Every variant still squishes to its floor but
+ * never clips.
  */
-const COMPOSER_FOOTER_LABEL_GIVE_WAY: readonly ComposerFooterLabelControl[] = [
-  "mode",
-  "traits",
-  "model",
+const COMPOSER_FOOTER_LABEL_GIVE_WAY: ReadonlyArray<
+  readonly [control: ComposerFooterLabelControl, variant: number]
+> = [
+  ["mode", 1],
+  ["traits", 1],
+  ["model", 1],
+  ["traits", 2],
+  ["traits", 3],
 ];
 
-/** Which variant a control shows at a give-way stage: 0 full, 1 short. */
+/** The last give-way stage; past it the row may only scroll. */
+export const COMPOSER_FOOTER_LAST_LABEL_STAGE = COMPOSER_FOOTER_LABEL_GIVE_WAY.length;
+
+/**
+ * The icon-only variant of each control that has one. Icon-only controls move
+ * out of the scrolling row into the fixed actions, where the row's last-resort
+ * scroll can never carry them out of view.
+ */
+export const COMPOSER_FOOTER_ICON_ONLY_VARIANT: Partial<
+  Record<ComposerFooterLabelControl, number>
+> = { mode: 1, traits: 3 };
+
+/** Which variant a control shows at a give-way stage; 0 is the full label. */
 export function composerFooterLabelVariant(
   control: ComposerFooterLabelControl,
   stage: number,
-): 0 | 1 {
-  return stage > COMPOSER_FOOTER_LABEL_GIVE_WAY.indexOf(control) ? 1 : 0;
+): number {
+  let variant = 0;
+  for (const [stepControl, stepVariant] of COMPOSER_FOOTER_LABEL_GIVE_WAY.slice(0, stage)) {
+    if (stepControl === control) variant = Math.max(variant, stepVariant);
+  }
+  return variant;
+}
+
+/** Whether a control sits among the fixed actions at a give-way stage. */
+export function isComposerFooterControlInActions(
+  control: ComposerFooterLabelControl,
+  stage: number,
+): boolean {
+  return composerFooterLabelVariant(control, stage) === COMPOSER_FOOTER_ICON_ONLY_VARIANT[control];
 }
 
 export interface ComposerFooterControlWidths {
   /** Laid-out width, inline margins included. */
   width: number;
-  /** Present on a control whose label has a short variant. */
+  /** Present on a control whose label has shorter variants. */
   label?: {
     control: ComposerFooterLabelControl;
-    /** The label as laid out now; 0 when the control shows none. */
+    /** The label (or the icon standing in for it) as laid out now; 0 when absent. */
     rendered: number;
     /** The flex gap the label adds beside its siblings. */
     gap: number;
-    /** Each variant's floor, full then short. 0 means no label (icon only). */
-    floors: readonly [number, number];
+    /** Each variant's floor, in give-way order. 0 means nothing in the label's place. */
+    floors: readonly number[];
   };
+}
+
+export interface ComposerFooterControlsMeasurement {
+  gap: number;
+  actionsGap: number;
+  controls: ReadonlyArray<ComposerFooterControlWidths>;
 }
 
 // Rounding moves each control's measured chrome by a pixel as its label
@@ -245,26 +280,10 @@ export interface ComposerFooterControlWidths {
 const FOOTER_LABEL_STAGE_HYSTERESIS_PX = 4;
 
 /**
- * The fewest give-way steps that fit every footer control with its labels at
- * their floor. Past the last step the row scrolls, which beats clipping a
- * label mid-text into something that reads like another model.
- *
- * `controls` holds the row's controls plus the runtime mode wherever it is
- * now, and `availableWidth` the row's room plus whatever the runtime mode
- * takes from the actions today. Once icon-only, the runtime mode costs its
- * icon and the actions gap instead of a place in the row.
- *
- * Built from each control's chrome and its variants' floors, never from how
- * squished the labels are now or where the runtime mode sits, so a switch
- * cannot flip the answer.
+ * The width the footer's controls take from the row at a give-way stage, with
+ * labels at their floor. A control in the actions costs its own width plus the
+ * actions gap instead of a place in the row.
  */
-export interface ComposerFooterControlsMeasurement {
-  gap: number;
-  actionsGap: number;
-  controls: ReadonlyArray<ComposerFooterControlWidths>;
-}
-
-/** The width the footer controls need at a give-way stage, labels at their floor. */
 export function resolveComposerFooterControlsWidth(
   input: ComposerFooterControlsMeasurement,
   stage: number,
@@ -279,31 +298,71 @@ export function resolveComposerFooterControlsWidth(
       continue;
     }
     const chrome = control.width - (label.rendered > 0 ? label.rendered + label.gap : 0);
-    const variant = composerFooterLabelVariant(label.control, stage);
-    if (label.control === "mode" && variant === 1) {
-      width += chrome + input.actionsGap;
-      continue;
-    }
-    const floor = label.floors[variant];
+    const floor = label.floors[composerFooterLabelVariant(label.control, stage)] ?? 0;
     width += chrome + (floor > 0 ? label.gap + floor : 0);
-    rowCount += 1;
+    if (isComposerFooterControlInActions(label.control, stage)) {
+      width += input.actionsGap;
+    } else {
+      rowCount += 1;
+    }
   }
   return width + input.gap * Math.max(0, rowCount - 1);
 }
 
+/**
+ * The fewest give-way steps that fit every footer control with its labels at
+ * their floor. Past the last step the row scrolls, which beats clipping a
+ * label mid-text into something that reads like another model.
+ *
+ * `controls` holds the row's controls plus any sitting among the actions now,
+ * and `availableWidth` the row's room plus what those take from the actions
+ * today. Built from each control's chrome and its variants' floors, never from
+ * how squished the labels are now or where a control sits, so a switch cannot
+ * flip the answer.
+ */
 export function resolveComposerFooterLabelStage(
   input: ComposerFooterControlsMeasurement & { stage: number; availableWidth: number },
 ): number {
   if (!input.controls.some((control) => control.label)) return 0;
-  const lastStage = COMPOSER_FOOTER_LABEL_GIVE_WAY.length;
-  for (let stage = 0; stage < lastStage; stage += 1) {
+  for (let stage = 0; stage < COMPOSER_FOOTER_LAST_LABEL_STAGE; stage += 1) {
     const slack = stage < input.stage ? FOOTER_LABEL_STAGE_HYSTERESIS_PX : 0;
     if (resolveComposerFooterControlsWidth(input, stage) <= input.availableWidth - slack) {
       return stage;
     }
   }
-  return lastStage;
+  return COMPOSER_FOOTER_LAST_LABEL_STAGE;
 }
+
+/**
+ * A floor under the measured stage, for when the row overflows at a stage the
+ * measurement said fits (something in the footer it does not model, like a
+ * wide answer button arriving mid-layout). The floor moves one stage on, and
+ * holds until the row grows well past the width it overflowed at.
+ */
+export function resolveComposerFooterStageFloor(input: {
+  floor: { stage: number; rowWidth: number } | null;
+  measuredStage: number;
+  currentStage: number;
+  rowWidth: number;
+  overflows: boolean;
+}): { stage: number; rowWidth: number } | null {
+  const floor =
+    input.floor && input.rowWidth <= input.floor.rowWidth + FOOTER_STAGE_FLOOR_RELEASE_PX
+      ? input.floor
+      : null;
+  // Overflow before the measured stage renders is the old stage's, not news.
+  if (
+    input.overflows &&
+    input.measuredStage <= input.currentStage &&
+    input.currentStage < COMPOSER_FOOTER_LAST_LABEL_STAGE
+  ) {
+    return { stage: input.currentStage + 1, rowWidth: input.rowWidth };
+  }
+  return floor;
+}
+
+// How far the row must grow past where it overflowed before the floor lifts.
+const FOOTER_STAGE_FLOOR_RELEASE_PX = 24;
 
 export function resolveScrollToEndClearance(input: {
   overlayHeight: number;

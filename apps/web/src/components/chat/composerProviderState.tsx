@@ -20,7 +20,12 @@ import type { buttonVariants } from "../ui/button";
 import type { DraftId } from "../../composerDraftStore";
 import { getProviderModelCapabilities } from "../../providerModels";
 import type { ComposerControlSize } from "./ComposerControl";
-import { shouldRenderTraitsControls, TraitsMenuContent, TraitsPicker } from "./TraitsPicker";
+import {
+  shouldRenderTraitsControls,
+  TraitsMenuContent,
+  TraitsPicker,
+  type TraitsLabelSize,
+} from "./TraitsPicker";
 
 export type ComposerProviderStateInput = {
   provider: ProviderDriverKind;
@@ -55,7 +60,7 @@ type TraitsRenderInput = {
   planModeEnabled: boolean;
   size?: ComposerControlSize;
   compact?: boolean;
-  shortLabel?: boolean;
+  labelSize?: TraitsLabelSize;
   hidden?: boolean;
   triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
   triggerClassName?: string;
@@ -180,7 +185,7 @@ function renderTraitsControl(
     planModeEnabled,
     size,
     compact,
-    shortLabel,
+    labelSize,
     hidden,
     triggerVariant,
     triggerClassName,
@@ -221,7 +226,7 @@ function renderTraitsControl(
       planModeEnabled={planModeEnabled}
       {...(size !== undefined ? { size } : {})}
       {...(compact !== undefined ? { compact } : {})}
-      {...(shortLabel ? { shortLabel } : {})}
+      {...(labelSize !== undefined ? { labelSize } : {})}
       {...(hidden !== undefined ? { hidden } : {})}
       {...(triggerVariant !== undefined ? { triggerVariant } : {})}
       {...(triggerClassName !== undefined ? { triggerClassName } : {})}

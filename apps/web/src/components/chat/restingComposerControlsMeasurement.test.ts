@@ -125,16 +125,34 @@ describe("measureComposerFooterControls", () => {
     });
   });
 
-  it("counts the icon-only runtime mode among the actions as the row's room", () => {
+  it("counts icon-only controls among the actions as the row's room", () => {
+    // The runtime mode shows its icon with no label; the effort shows a 16px
+    // gauge in its label's place, marked as the label slot.
     const modeProbe = probe("mode", variant(14, 12), variant(0, 0));
     const runtimeMode = {
       offsetWidth: 30,
       querySelector: (selector: string) =>
-        selector.startsWith("[data-composer-footer-label") ? modeProbe : null,
+        selector === "[data-composer-footer-label]" ? modeProbe : null,
     };
-    const attach = { offsetWidth: 32, querySelector: () => null };
-    const actions = { children: [runtimeMode, attach] };
-    const row = { clientWidth: 160, children: [] };
+    const traitsProbe = probe(
+      "traits",
+      variant(52, 48),
+      variant(34, 30),
+      variant(24, 20),
+      variant(16),
+    );
+    const traits = {
+      offsetWidth: 34,
+      querySelector: (selector: string) =>
+        selector === "[data-composer-footer-label]"
+          ? traitsProbe
+          : selector === "[data-composer-footer-label-slot]"
+            ? { offsetWidth: 16 }
+            : null,
+    };
+    const attach = { offsetWidth: 28, querySelector: () => null };
+    const actions = { children: [traits, runtimeMode, attach] };
+    const row = { clientWidth: 96, children: [] };
     vi.stubGlobal("getComputedStyle", (element: unknown) =>
       element === actions
         ? { columnGap: "8px" }
@@ -149,10 +167,16 @@ describe("measureComposerFooterControls", () => {
         actions as unknown as HTMLElement,
       ),
     ).toEqual({
-      availableWidth: 198,
+      availableWidth: 96 + 34 + 8 + 30 + 8,
       gap: 4,
       actionsGap: 8,
-      controls: [{ width: 30, label: { control: "mode", rendered: 0, gap: 4, floors: [14, 0] } }],
+      controls: [
+        {
+          width: 34,
+          label: { control: "traits", rendered: 16, gap: 4, floors: [52, 34, 24, 16] },
+        },
+        { width: 30, label: { control: "mode", rendered: 0, gap: 4, floors: [14, 0] } },
+      ],
     });
   });
 });

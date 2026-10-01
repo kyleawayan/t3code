@@ -119,11 +119,32 @@ function Attachment({ className, ...props }: ComponentProps<"div">) {
   );
 }
 
-function Dock({ className, ...props }: ComponentProps<"div">) {
+/**
+ * The row of attachments resting on the composer. With `reserve`, it always
+ * holds the height of its tallest collapsed single row (a comfortable banner
+ * row, the same as the stash and tasks tabs), empty or not, so switching
+ * threads never moves what sits above the composer. Its content aligns to the
+ * bottom. Only an expanded stack or a top drawer grows past it.
+ */
+function Dock({
+  className,
+  reserve = false,
+  ...props
+}: ComponentProps<"div"> & { reserve?: boolean }) {
   return (
     <Attachment
       className={cn(
-        "flex items-end gap-1 not-has-data-[composer-banner-surface=attached]:hidden",
+        "flex items-end gap-1",
+        reserve
+          ? cn(
+              // Comfortable padding plus a row as tall as the icon column, plus
+              // the overlap the attachment's negative margin tucks under the
+              // composer, so an empty dock leaves the same visible gap.
+              "[--composer-dock-row:calc(--spacing(2.5)+--spacing(7))] sm:[--composer-dock-row:calc(--spacing(2.5)+--spacing(6))]",
+              "min-h-[calc(var(--composer-dock-row)+1rem+1px)]",
+              "not-has-data-[composer-banner-surface=attached]:pointer-events-none",
+            )
+          : "not-has-data-[composer-banner-surface=attached]:hidden",
         className,
       )}
       {...props}

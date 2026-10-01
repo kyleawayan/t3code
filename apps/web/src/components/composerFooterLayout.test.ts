@@ -7,8 +7,10 @@ import {
   COMPOSER_RESTING_EXPANSION_MIN_PX,
   composerFooterLabelVariant,
   getRestingComposerImagePreviewCounts,
+  isComposerFooterControlInActions,
   resolveComposerFooterControlsWidth,
   resolveComposerFooterLabelStage,
+  resolveComposerFooterStageFloor,
   resolveComposerTimelineInset,
   resolveScrollToEndClearance,
   resolveRestingComposerControlsLayout,
@@ -471,27 +473,27 @@ describe("resolveScrollToEndClearance", () => {
 describe("resolveComposerFooterLabelStage", () => {
   // A narrow expanded footer. Each label control is its chrome plus a 4px gap
   // and the floor of the variant it shows:
-  //   model   30 chrome, "Claude Opus 5.5" floor 52, "Opus 5.5" floor 30
-  //   traits  10 chrome, "Extra High · 1M" floor 48, "XHigh·1M" floor 30
-  //   mode    30 chrome, "Auto" floor 14; icon only, it moves into the fixed
-  //           actions and costs its 30px plus the 8px actions gap
-  // plus the 28px plan toggle and 4px row gaps. The stages need
-  // 236, 222, 204, and 182px.
+  //   model   30 chrome; "Claude Opus 5.5" 52, "Opus 5.5" 30
+  //   traits  10 chrome; "Extra High · 1M" 48, "XHigh·1M" 30, "XH·1M" 22, icon 16
+  //   mode    30 chrome; "Auto" 14, icon only
+  // plus the 28px plan toggle and 4px row gaps. An icon-only control moves
+  // into the actions and costs the 8px actions gap instead of a row gap. The
+  // stages need 236, 222, 204, 182, 174, and 172px.
   function controls(rendered: { model?: number; mode?: number } = {}) {
     const model = rendered.model ?? 100;
     const mode = rendered.mode ?? 28;
     return [
       {
         width: 34 + model,
-        label: { control: "model" as const, rendered: model, gap: 4, floors: [52, 30] as const },
+        label: { control: "model" as const, rendered: model, gap: 4, floors: [52, 30] },
       },
       {
         width: 109,
-        label: { control: "traits" as const, rendered: 95, gap: 4, floors: [48, 30] as const },
+        label: { control: "traits" as const, rendered: 95, gap: 4, floors: [48, 30, 22, 16] },
       },
       {
         width: mode > 0 ? 34 + mode : 30,
-        label: { control: "mode" as const, rendered: mode, gap: 4, floors: [14, 0] as const },
+        label: { control: "mode" as const, rendered: mode, gap: 4, floors: [14, 0] },
       },
       { width: 28 },
     ];
@@ -513,48 +515,33 @@ describe("resolveComposerFooterLabelStage", () => {
     expect(stageAt(240)).toBe(0);
   });
 
-  it("turns the runtime mode into its icon before shortening any text", () => {
+  it("turns the runtime mode into an icon among the actions before shortening text", () => {
     const stage = stageAt(230);
     expect(stage).toBe(1);
-    expect(composerFooterLabelVariant("mode", stage)).toBe(1);
+    expect(isComposerFooterControlInActions("mode", stage)).toBe(true);
     expect(composerFooterLabelVariant("traits", stage)).toBe(0);
     expect(composerFooterLabelVariant("model", stage)).toBe(0);
   });
 
-  it("shortens the effort before the model", () => {
-    const stage = stageAt(210);
-    expect(stage).toBe(2);
-    expect(composerFooterLabelVariant("traits", stage)).toBe(1);
-    expect(composerFooterLabelVariant("model", stage)).toBe(0);
+  it("shortens the effort, then the model, then tightens the effort", () => {
+    expect(composerFooterLabelVariant("traits", stageAt(210))).toBe(1);
+    expect(composerFooterLabelVariant("model", stageAt(210))).toBe(0);
+    expect(composerFooterLabelVariant("model", stageAt(190))).toBe(1);
+    expect(composerFooterLabelVariant("traits", stageAt(190))).toBe(1);
+    expect(composerFooterLabelVariant("traits", stageAt(180))).toBe(2);
   });
 
-  it("shortens the model last", () => {
-    const stage = stageAt(190);
-    expect(stage).toBe(3);
+  it("moves the effort icon into the actions last", () => {
+    const stage = stageAt(173);
+    expect(stage).toBe(5);
+    expect(isComposerFooterControlInActions("traits", stage)).toBe(true);
     expect(composerFooterLabelVariant("model", stage)).toBe(1);
   });
 
   it("lets the row scroll rather than squeeze a label past its floor", () => {
-    // Even the short variants need 182px. The stage stops at the last step
-    // and the labels keep their floors, so "Opus 5.5" never loses its ".5".
-    expect(stageAt(150)).toBe(3);
-  });
-
-  it("fits a running turn's footer at 300px with the mode among the actions", () => {
-    // 300px footer: 24px of padding, a 6px gap, and 110px of attach, spinner,
-    // and stop leave the row 160px. The runtime mode's icon then sits in the
-    // actions, so the row's room grows by its 30px and the 8px gap.
-    const measurement = { gap: 4, actionsGap: 8, controls: controls({ mode: 0 }) };
-    const availableWidth = 300 - 24 - 6 - 110 + 30 + 8;
-    const stage = resolveComposerFooterLabelStage({ ...measurement, stage: 3, availableWidth });
-    expect(stage).toBe(3);
-    expect(composerFooterLabelVariant("mode", stage)).toBe(1);
-    expect(composerFooterLabelVariant("traits", stage)).toBe(1);
-    expect(composerFooterLabelVariant("model", stage)).toBe(1);
-    // Every short label fits at its floor, so nothing scrolls or clips.
-    expect(resolveComposerFooterControlsWidth(measurement, stage)).toBeLessThanOrEqual(
-      availableWidth,
-    );
+    // Even the last stage needs 172px. The labels keep their floors, so
+    // "Opus 5.5" never loses its ".5".
+    expect(stageAt(150)).toBe(5);
   });
 
   it("gives the same answer however the labels are showing now", () => {
@@ -580,5 +567,135 @@ describe("resolveComposerFooterLabelStage", () => {
         controls: [{ width: 28 }],
       }),
     ).toBe(0);
+  });
+});
+
+describe("composer footer at the narrowest chat column", () => {
+  // Beside an inline side panel the chat column stops at 360px (the preview
+  // panel's sibling minimum). The composer keeps 20px each side, so its
+  // footer holds 320 - 2 * 16 = 288px, and a 320px phone leaves 272px. The
+  // gap before the actions is 6px. Chevrons hide at this width. A running
+  // turn's actions (attach, spinner, stop) take 110px; idle ones 68px.
+  //   model   30 chrome; "Claude Opus 5.5" 52, "Opus 5.5" 30
+  //   traits  14 chrome; "Extra High · 1M" 52, "XHigh·1M" 34, "XH·1M" 24, icon 16
+  //   mode    30 chrome; "Auto" 16, icon only
+  const measurement = {
+    gap: 4,
+    actionsGap: 8,
+    controls: [
+      { width: 134, label: { control: "model" as const, rendered: 100, gap: 4, floors: [52, 30] } },
+      {
+        width: 118,
+        label: { control: "traits" as const, rendered: 100, gap: 4, floors: [52, 34, 24, 16] },
+      },
+      { width: 64, label: { control: "mode" as const, rendered: 30, gap: 4, floors: [16, 0] } },
+    ],
+  };
+  function fit(footerWidth: number, actionsWidth: number) {
+    const availableWidth = footerWidth - 6 - actionsWidth;
+    const stage = resolveComposerFooterLabelStage({ ...measurement, stage: 0, availableWidth });
+    return {
+      stage,
+      fits: resolveComposerFooterControlsWidth(measurement, stage) <= availableWidth,
+    };
+  }
+
+  it("keeps the model, effort, and mode visible on the desktop minimum while running", () => {
+    const { stage, fits } = fit(288, 110);
+    expect(fits).toBe(true);
+    expect(composerFooterLabelVariant("model", stage)).toBe(1);
+    expect(composerFooterLabelVariant("traits", stage)).toBe(1);
+    expect(isComposerFooterControlInActions("mode", stage)).toBe(true);
+  });
+
+  it("keeps full model and effort labels on the desktop minimum when idle", () => {
+    const { stage, fits } = fit(288, 68);
+    expect(fits).toBe(true);
+    expect(composerFooterLabelVariant("model", stage)).toBe(0);
+    expect(composerFooterLabelVariant("traits", stage)).toBe(0);
+  });
+
+  it("tightens the effort but keeps its context window on a phone while running", () => {
+    const { stage, fits } = fit(272, 110);
+    expect(fits).toBe(true);
+    expect(composerFooterLabelVariant("traits", stage)).toBe(2);
+    expect(isComposerFooterControlInActions("mode", stage)).toBe(true);
+  });
+
+  it("moves the effort icon into the actions when even its tightest label will not fit", () => {
+    // A few pixels narrower than the phone: 262px.
+    const { stage, fits } = fit(262, 110);
+    expect(fits).toBe(true);
+    expect(isComposerFooterControlInActions("traits", stage)).toBe(true);
+    expect(isComposerFooterControlInActions("mode", stage)).toBe(true);
+    expect(composerFooterLabelVariant("model", stage)).toBe(1);
+  });
+});
+
+describe("composer footer while answering a question", () => {
+  // A 430px composer leaves a 398px footer. Answering a question while the
+  // turn runs, the actions hold attach (28), the context meter (24), stop
+  // (28), and Submit (64) with 8px gaps: 168px before any label control joins
+  // them. Chevrons show at this width.
+  //   model   48 chrome; "GPT-6.1-Sol" 38 (no brand to drop)
+  //   traits  44 chrome with the fast icon; "Extra High · 1M" 52, "XHigh·1M" 34,
+  //           "XH·1M" 24, icon 16
+  //   mode    48 chrome; "Auto" 16, icon only
+  const measurement = {
+    gap: 4,
+    actionsGap: 8,
+    controls: [
+      { width: 90, label: { control: "model" as const, rendered: 38, gap: 4, floors: [38, 38] } },
+      {
+        width: 148,
+        label: { control: "traits" as const, rendered: 100, gap: 4, floors: [52, 34, 24, 16] },
+      },
+      { width: 68, label: { control: "mode" as const, rendered: 16, gap: 4, floors: [16, 0] } },
+    ],
+  };
+
+  it("tightens the effort instead of letting Submit push it out of the row", () => {
+    const availableWidth = 398 - 6 - 168;
+    const stage = resolveComposerFooterLabelStage({ ...measurement, stage: 0, availableWidth });
+    expect(composerFooterLabelVariant("traits", stage)).toBeGreaterThanOrEqual(2);
+    expect(isComposerFooterControlInActions("mode", stage)).toBe(true);
+    expect(resolveComposerFooterControlsWidth(measurement, stage)).toBeLessThanOrEqual(
+      availableWidth,
+    );
+  });
+});
+
+describe("resolveComposerFooterStageFloor", () => {
+  const base = { floor: null, measuredStage: 2, currentStage: 2, rowWidth: 200 };
+
+  it("steps past a stage the row overflows at though the measurement said it fits", () => {
+    expect(resolveComposerFooterStageFloor({ ...base, overflows: true })).toEqual({
+      stage: 3,
+      rowWidth: 200,
+    });
+  });
+
+  it("ignores overflow from a stage that has not rendered yet", () => {
+    expect(
+      resolveComposerFooterStageFloor({ ...base, measuredStage: 3, overflows: true }),
+    ).toBeNull();
+  });
+
+  it("holds until the row grows well past where it overflowed", () => {
+    const floor = { stage: 3, rowWidth: 200 };
+    const held = { ...base, floor, currentStage: 3, overflows: false };
+    expect(resolveComposerFooterStageFloor({ ...held, rowWidth: 220 })).toEqual(floor);
+    expect(resolveComposerFooterStageFloor({ ...held, rowWidth: 230 })).toBeNull();
+  });
+
+  it("has nowhere to go past the last stage", () => {
+    expect(
+      resolveComposerFooterStageFloor({
+        ...base,
+        measuredStage: 5,
+        currentStage: 5,
+        overflows: true,
+      }),
+    ).toBeNull();
   });
 });

@@ -17,7 +17,7 @@ import {
 } from "@t3tools/shared/model";
 import { memo, useCallback } from "react";
 import type { VariantProps } from "class-variance-authority";
-import { ZapIcon } from "lucide-react";
+import { GaugeIcon, ZapIcon } from "lucide-react";
 import { buttonVariants } from "../ui/button";
 import {
   Menu,
@@ -539,20 +539,27 @@ export function buildTraitsTriggerDisplay(input: {
   return { label: labels.join(" · "), showFastModeIcon: fastModeEnabled };
 }
 
-const TRAIT_LABEL_ABBREVIATIONS: Record<string, string> = {
-  "Extra High": "XHigh",
-  Medium: "Med",
-};
+const TRAIT_LABEL_ABBREVIATIONS = {
+  short: { "Extra High": "XHigh", Medium: "Med" },
+  tight: { "Extra High": "XH", High: "Hi", Medium: "Med", Low: "Lo" },
+} satisfies Record<string, Record<string, string>>;
+
+/** How much of the traits label a tight footer can show. */
+export type TraitsLabelSize = "full" | "short" | "tight" | "icon";
 
 /**
- * The traits label for a tight footer: long effort names abbreviate and the
- * separators close up ("Extra High · 1M" → "XHigh·1M"). Every trait keeps its
- * own token, so the context window still reads in full.
+ * The traits label for a tight footer: effort names abbreviate and the
+ * separators close up ("Extra High · 1M" → "XHigh·1M", tighter "XH·1M"). Every
+ * trait keeps its own token, so the context window still reads in full.
  */
-export function compactTraitsTriggerLabel(label: string): string {
+export function compactTraitsTriggerLabel(
+  label: string,
+  size: "short" | "tight" = "short",
+): string {
+  const abbreviations: Record<string, string> = TRAIT_LABEL_ABBREVIATIONS[size];
   return label
     .split(" · ")
-    .map((part) => TRAIT_LABEL_ABBREVIATIONS[part] ?? part)
+    .map((part) => abbreviations[part] ?? part)
     .join("·");
 }
 
@@ -571,7 +578,7 @@ export const TraitsPicker = memo(function TraitsPicker({
   isComposerOwned,
   size = "sm",
   compact = false,
-  shortLabel = false,
+  labelSize = "full",
   hidden = false,
   ...persistence
 }: TraitsMenuContentProps &
@@ -582,8 +589,11 @@ export const TraitsPicker = memo(function TraitsPicker({
      * the traits stay visible next to the model picker.
      */
     compact?: boolean;
-    /** A tight compact footer abbreviates the traits (see compactTraitsTriggerLabel). */
-    shortLabel?: boolean;
+    /**
+     * A tight compact footer abbreviates the traits (see
+     * compactTraitsTriggerLabel), and the tightest shows only an icon.
+     */
+    labelSize?: TraitsLabelSize;
     hidden?: boolean;
   }) {
   const composerFloatingLayerProps = useComposerMenuProps();
@@ -649,6 +659,7 @@ export const TraitsPicker = memo(function TraitsPicker({
         render={
           <ComposerControl
             data-composer-shortcut={isComposerOwned ? "composer.effort" : undefined}
+            aria-label={labelSize === "icon" ? `Effort: ${triggerLabel}` : undefined}
             variant={triggerVariant ?? "ghost"}
             size={size}
             className={cn(
@@ -673,11 +684,21 @@ export const TraitsPicker = memo(function TraitsPicker({
           >
             {fastModeIcon}
             <Tooltip>
-              <TooltipTrigger render={<span className="flex min-w-0" />}>
-                <SquishText>
-                  {shortLabel ? compactTraitsTriggerLabel(triggerLabel) : triggerLabel}
-                </SquishText>
-              </TooltipTrigger>
+              {labelSize === "icon" ? (
+                <TooltipTrigger
+                  render={<span data-composer-footer-label-slot="" className="flex" />}
+                >
+                  <ComposerControlIcon icon={GaugeIcon} size={size} />
+                </TooltipTrigger>
+              ) : (
+                <TooltipTrigger render={<span className="flex min-w-0" />}>
+                  <SquishText>
+                    {labelSize === "full"
+                      ? triggerLabel
+                      : compactTraitsTriggerLabel(triggerLabel, labelSize)}
+                  </SquishText>
+                </TooltipTrigger>
+              )}
               <TooltipPopup side="top">{triggerLabel}</TooltipPopup>
             </Tooltip>
             <ComposerControlChevron size={size} />
@@ -692,7 +713,12 @@ export const TraitsPicker = memo(function TraitsPicker({
         {compact ? (
           <SquishTextProbe
             data-composer-footer-label="traits"
-            variants={[triggerLabel, compactTraitsTriggerLabel(triggerLabel)]}
+            variants={[
+              triggerLabel,
+              compactTraitsTriggerLabel(triggerLabel, "short"),
+              compactTraitsTriggerLabel(triggerLabel, "tight"),
+            ]}
+            iconVariant={<ComposerControlIcon icon={GaugeIcon} size={size} />}
           />
         ) : null}
       </MenuTrigger>

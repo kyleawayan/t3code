@@ -1,4 +1,4 @@
-import { type ComponentProps, useLayoutEffect, useRef } from "react";
+import { type ComponentProps, type ReactNode, useLayoutEffect, useRef } from "react";
 
 import { cn } from "~/lib/utils";
 
@@ -64,8 +64,13 @@ export function measureSquishText(element: HTMLElement): SquishTextMeasurement |
  */
 export function SquishTextProbe({
   variants,
+  iconVariant,
   ...props
-}: Omit<ComponentProps<"span">, "children"> & { variants: readonly string[] }) {
+}: Omit<ComponentProps<"span">, "children"> & {
+  variants: readonly string[];
+  /** An icon that can stand in for the text, probed last. */
+  iconVariant?: ReactNode;
+}) {
   return (
     <span
       aria-hidden="true"
@@ -84,6 +89,11 @@ export function SquishTextProbe({
           </span>
         );
       })}
+      {iconVariant ? (
+        <span data-squish-probe-variant="" className="flex">
+          <span className="inline-flex">{iconVariant}</span>
+        </span>
+      ) : null}
     </span>
   );
 }

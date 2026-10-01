@@ -200,6 +200,12 @@ describe("compactTraitsTriggerLabel", () => {
     expect(compactTraitsTriggerLabel("Medium · 200k")).toBe("Med·200k");
   });
 
+  it("tightens further for the narrowest footers without touching the context window", () => {
+    expect(compactTraitsTriggerLabel("Extra High · 1M", "tight")).toBe("XH·1M");
+    expect(compactTraitsTriggerLabel("High · 200k", "tight")).toBe("Hi·200k");
+    expect(compactTraitsTriggerLabel("Max · 1M", "tight")).toBe("Max·1M");
+  });
+
   it("leaves a single short trait alone", () => {
     expect(compactTraitsTriggerLabel("High")).toBe("High");
     expect(compactTraitsTriggerLabel("")).toBe("");
