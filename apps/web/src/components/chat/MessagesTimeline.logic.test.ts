@@ -5735,20 +5735,21 @@ describe("timeline end and minimap geometry", () => {
     expect(resolveTimelineMinimapIndexFromPointer({ ...rail, pointerY: 350 })).toBe(50);
     expect(resolveTimelineMinimapIndexFromPointer({ ...rail, pointerY: 999 })).toBe(100);
 
-    expect(resolveTimelineMinimapHasPersistentGutter(832, 768)).toBe(false);
-    expect(resolveTimelineMinimapHasPersistentGutter(863, 768)).toBe(false);
-    expect(resolveTimelineMinimapHasPersistentGutter(864, 768)).toBe(true);
+    // The content column is left-aligned, so the whole remainder is the gutter.
+    expect(resolveTimelineMinimapHasPersistentGutter(800, 768)).toBe(false);
+    expect(resolveTimelineMinimapHasPersistentGutter(815, 768)).toBe(false);
+    expect(resolveTimelineMinimapHasPersistentGutter(816, 768)).toBe(true);
     expect(resolveTimelineMinimapHasPersistentGutter(1400, 1152)).toBe(true);
-    expect(resolveTimelineMinimapHasPersistentGutter(1200, 1152)).toBe(false);
+    expect(resolveTimelineMinimapHasPersistentGutter(1199, 1152)).toBe(false);
     expect(resolveTimelineMinimapHasPersistentGutter(2560, 2560)).toBe(false);
 
     expect(resolveTimelineMinimapHitStripWidth(768, 768)).toBe(0);
-    expect(resolveTimelineMinimapHitStripWidth(792, 768)).toBe(0);
-    expect(resolveTimelineMinimapHitStripWidth(820, 768)).toBe(14);
-    expect(resolveTimelineMinimapHitStripWidth(872, 768)).toBe(40);
+    expect(resolveTimelineMinimapHitStripWidth(780, 768)).toBe(0);
+    expect(resolveTimelineMinimapHitStripWidth(794, 768)).toBe(14);
+    expect(resolveTimelineMinimapHitStripWidth(820, 768)).toBe(40);
     expect(resolveTimelineMinimapHitStripWidth(1400, 768)).toBe(40);
     expect(resolveTimelineMinimapHitStripWidth(2560, 2560)).toBe(0);
-    expect(resolveTimelineMinimapHitStripWidth(1204, 1152)).toBe(14);
+    expect(resolveTimelineMinimapHitStripWidth(1178, 1152)).toBe(14);
     expect(resolveTimelineMinimapHitStripWidth(0, 0)).toBe(0);
     expect(resolveTimelineMinimapHitStripWidth(Number.NaN, 768)).toBe(0);
 
