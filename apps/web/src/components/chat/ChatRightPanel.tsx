@@ -6,7 +6,6 @@ type ChatRightPanelProps = Omit<RightPanelTabsProps, "mode" | "inlineSize" | "ma
   readonly sheet: boolean;
   readonly maximized: boolean;
   readonly workspaceLayoutElement: HTMLElement | null;
-  readonly widthStorageKey: string;
   readonly sheetAnimationDurationMs: number;
   readonly onCloseSheet: () => void;
 };
@@ -20,17 +19,14 @@ export function ChatRightPanel(props: ChatRightPanelProps) {
   const {
     sheet,
     workspaceLayoutElement,
-    widthStorageKey,
     sheetAnimationDurationMs,
     onCloseSheet,
     maximized,
     layoutControls,
     ...tabs
   } = props;
-  const inlineSize = usePreviewPanelInlineSize({
-    container: workspaceLayoutElement,
-    widthStorageKey,
-  });
+  // One panel width for every thread, so switching threads keeps the layout.
+  const inlineSize = usePreviewPanelInlineSize({ container: workspaceLayoutElement });
   if (!sheet) {
     return <RightPanelTabs {...tabs} mode="inline" maximized={maximized} inlineSize={inlineSize} />;
   }
