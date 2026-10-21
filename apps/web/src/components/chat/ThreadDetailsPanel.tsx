@@ -59,6 +59,8 @@ export interface ThreadDetailsPanelProps extends Pick<
   onCheckoutPullRequestRequest?: (reference: string) => void;
   onComposerFocusRequest: () => void;
   onOpenChanges?: () => void;
+  /** Hands Git actions to the thread's agent; absent, they run Git directly. */
+  onRequestGitAgentAction?: (prompt: string) => void;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;
   onUpdateProjectScript: (
@@ -175,6 +177,9 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                     activeThreadRef={activeThreadRef}
                     {...(props.draftId ? { draftId: props.draftId } : {})}
                     {...(props.onOpenChanges ? { onOpenChanges: props.onOpenChanges } : {})}
+                    {...(props.onRequestGitAgentAction
+                      ? { onRequestAgentAction: props.onRequestGitAgentAction }
+                      : {})}
                   />
                 ) : null}
               </div>

@@ -1805,6 +1805,18 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
   const sendAppMessageStable = useStableCallback(sendAppMessage);
+  // Header Git actions go to the agent as a queued message, so they wait behind a
+  // running turn and leave the composer draft alone.
+  const requestGitAgentAction = (prompt: string) => {
+    void sendAppMessage(prompt).catch((error: unknown) => {
+      toastManager.add({
+        type: "error",
+        title: "Could not ask the agent",
+        description: error instanceof Error ? error.message : "An error occurred.",
+      });
+    });
+  };
+  const requestGitAgentActionStable = useStableCallback(requestGitAgentAction);
   const queuedRunsControlRef = useRef<QueuedRunsControlHandle>(null);
 
   const {
@@ -3747,6 +3759,7 @@ export default function ChatView(props: ChatViewProps) {
               worktreePath={activeThread.worktreePath}
               isServerThread={isServerThread}
               {...(draftId ? { draftId } : {})}
+              {...(isServerThread ? { onRequestGitAgentAction: requestGitAgentActionStable } : {})}
               activeProjectName={activeProject?.title}
               activeProjectScripts={activeProject ? activeProjectScripts : undefined}
               preferredScriptId={

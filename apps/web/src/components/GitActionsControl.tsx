@@ -133,7 +133,22 @@ interface GitActionsControlProps {
   displayMode?: "toolbar" | "panel";
   compact?: boolean;
   onOpenChanges?: () => void;
+  /**
+   * When set, Git actions ask the thread's agent to do the work instead of running
+   * Git directly. The default-branch confirmation still comes first.
+   */
+  onRequestAgentAction?: (prompt: string) => void;
 }
+
+const AGENT_GIT_ACTION_PROMPTS: Record<GitStackedAction, string> = {
+  commit: "Commit.",
+  push: "Push.",
+  create_pr: "Create PR.",
+  commit_push: "Commit and push.",
+  commit_push_pr: "Commit and push, then create PR.",
+};
+const AGENT_PUBLISH_PROMPT =
+  "Publish repository. Ask the user whether it should be public or private.";
 
 interface PendingDefaultBranchAction {
   action: DefaultBranchConfirmableAction;
@@ -966,6 +981,7 @@ export default function GitActionsControl({
   displayMode = "toolbar",
   compact = false,
   onOpenChanges,
+  onRequestAgentAction,
 }: GitActionsControlProps) {
   const isPanel = displayMode === "panel";
   const ActionGroup = isPanel ? "div" : Group;
@@ -1234,6 +1250,13 @@ export default function GitActionsControl({
       return;
     }
     onConfirmed?.();
+    if (onRequestAgentAction) {
+      const prompt = AGENT_GIT_ACTION_PROMPTS[action];
+      onRequestAgentAction(
+        featureBranch ? `Create and check out a new feature branch. ${prompt}` : prompt,
+      );
+      return;
+    }
     setInlineSuccess(null);
 
     const scopedToastData = threadToastData ? { ...threadToastData } : undefined;
@@ -1379,6 +1402,14 @@ export default function GitActionsControl({
   };
 
   const runQuickAction = () => {
+    if (onRequestAgentAction && quickAction.kind === "open_publish") {
+      onRequestAgentAction(AGENT_PUBLISH_PROMPT);
+      return;
+    }
+    if (onRequestAgentAction && quickAction.kind === "run_pull") {
+      onRequestAgentAction("Pull.");
+      return;
+    }
     if (quickAction.kind === "open_publish") {
       setIsPublishDialogOpen(true);
       return;
@@ -1452,6 +1483,11 @@ export default function GitActionsControl({
 
   const openDialogForMenuItem = (item: GitActionMenuItem) => {
     if (item.disabled) return;
+    // The agent writes its own commit message, so the commit dialog is skipped.
+    if (onRequestAgentAction && item.dialogAction) {
+      void runGitActionWithToast({ action: item.dialogAction });
+      return;
+    }
     if (item.dialogAction === "push") {
       void runGitActionWithToast({ action: "push" });
       return;
@@ -1510,6 +1546,10 @@ export default function GitActionsControl({
     canWriteSourceControl && isRepo && gitStatusForActions !== null && !hasPrimaryRemote;
 
   const initializeGit = () => {
+    if (onRequestAgentAction) {
+      onRequestAgentAction("Initialize Git.");
+      return;
+    }
     void (async () => {
       const result = await initAction.run();
       if (result._tag === "Success" || isAtomCommandInterrupted(result)) {
@@ -1589,7 +1629,11 @@ export default function GitActionsControl({
           density={presentation === "menu" ? "touch" : "default"}
           disabled={isGitActionRunning}
           onClick={() => {
-            setIsPublishDialogOpen(true);
+            if (onRequestAgentAction) {
+              onRequestAgentAction(AGENT_PUBLISH_PROMPT);
+            } else {
+              setIsPublishDialogOpen(true);
+            }
           }}
         >
           <CloudUploadIcon />
