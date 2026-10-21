@@ -93,6 +93,7 @@ import {
   type WorkGroupViewState,
   type TimelineRow,
 } from "./timelineRowContext";
+import type { TurnMascotKind } from "./TurnMascot";
 import { TimelineRowTimestamp, ActivityShimmerOverlay } from "./TimelineRowParts";
 import {
   WorkGroupSection,
@@ -214,6 +215,8 @@ interface MessagesTimelineProps {
   onWorktreeSetupWorkLocally?: () => void;
   onOpenWorktreeSetupTerminal?: (terminalId: string) => void;
   isPreparingWorktree?: boolean;
+  /** Provider mascot shown on the working row while a turn runs. */
+  mascot?: TurnMascotKind | null;
   isCompacting?: boolean;
   awaitingUser?: "approval" | "input" | null;
   /** Which request is waiting, so a second one of the same kind is announced too. */
@@ -322,6 +325,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   onWorktreeSetupWorkLocally,
   onOpenWorktreeSetupTerminal,
   isPreparingWorktree = false,
+  mascot = null,
   isCompacting = false,
   awaitingUser = null,
   awaitingRequestId = null,
@@ -1063,6 +1067,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
       : null;
   const activityState: TimelineRowActivityState = {
     isWorking,
+    mascot,
+    liveThinking: rows.some((row) => row.kind === "thinking"),
     isCompacting: compactionAwaitingRow,
     isRevertingCheckpoint,
     backgroundWorktreeSetup,

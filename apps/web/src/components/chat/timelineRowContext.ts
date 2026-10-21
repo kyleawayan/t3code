@@ -23,6 +23,7 @@ import { type MessagesTimelineRow, type WorkGroupScrollAnchor } from "./Messages
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import type { TurnItemDetailSource } from "../../state/queries";
 import { type HandoffTimelineRun } from "./V2LifecycleRow";
+import type { TurnMascotKind } from "./TurnMascot";
 
 /**
  * Where an expanded row reads an item's detail and a command's output. The owner's rows read them
@@ -92,6 +93,9 @@ export interface TimelineRowSharedState {
 
 export interface TimelineRowActivityState {
   isWorking: boolean;
+  mascot: TurnMascotKind | null;
+  /** The live row at the end of the turn reads "Thinking": no tool is running. */
+  liveThinking: boolean;
   isCompacting: boolean;
   isRevertingCheckpoint: boolean;
   activeTurnInProgress: boolean;
