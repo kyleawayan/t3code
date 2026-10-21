@@ -833,7 +833,7 @@ function PullRequestCodeTab({
 
   const diffViewOptions = {
     diffStyle: diffLayout === "split" ? ("split" as const) : ("unified" as const),
-    lineDiffType: "none" as const,
+    lineDiffType: "word" as const,
     overflow: wordWrap ? ("wrap" as const) : ("scroll" as const),
     theme: resolveDiffThemeName(resolvedTheme),
     preferredHighlighter: PREFERRED_HIGHLIGHTER,

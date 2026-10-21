@@ -9,6 +9,8 @@ import {
 /* oxlint-enable eslint/no-restricted-imports */
 import type { Ref } from "react";
 
+import { diffLineHeightForCodeSize } from "~/appearanceFonts";
+import { useClientSettings } from "~/hooks/useSettings";
 import { DIFF_SURFACE_THEME_UNSAFE_CSS } from "~/lib/diffRendering";
 import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
 
@@ -201,6 +203,16 @@ export const DIFF_VIEW_UNSAFE_CSS = `${DIFF_SURFACE_THEME_UNSAFE_CSS}
     transition: none;
   }
 }
+
+/* The changed-word emphasis reads as a square block filling the full line rather
+   than Pierre's rounded inline chip. Vertical padding is the line's half-leading,
+   derived from the diff font vars, so the fill tracks the code size. */
+[data-diff-span] {
+  border-radius: 0 !important;
+  padding-block: calc((var(--diffs-line-height, 20px) - var(--diffs-font-size, 13px)) / 2) !important;
+  -webkit-box-decoration-break: clone !important;
+  box-decoration-break: clone !important;
+}
 `;
 
 export type StyledDiffCodeViewOptions<LAnnotation> = Omit<
@@ -224,6 +236,7 @@ export function StyledDiffCodeView<LAnnotation = undefined>({
   unsafeCSSExtra,
   ...props
 }: StyledDiffCodeViewProps<LAnnotation>) {
+  const codeFontSize = useClientSettings((settings) => settings.fontSizeCode);
   return (
     <DiffWorkerPoolProvider>
       <CodeView<LAnnotation>
@@ -240,6 +253,8 @@ export function StyledDiffCodeView<LAnnotation = undefined>({
             ? `${DIFF_VIEW_UNSAFE_CSS}\n${unsafeCSSExtra}`
             : DIFF_VIEW_UNSAFE_CSS,
           itemMetrics: {
+            // Matches --diffs-line-height so unmeasured rows are estimated at their real height.
+            lineHeight: diffLineHeightForCodeSize(codeFontSize),
             diffHeaderHeight: 32,
             hunkSeparatorHeight: 24,
             // Zero both spacing and paddingTop; Pierre's expanded-file fallback otherwise adds an 8px header

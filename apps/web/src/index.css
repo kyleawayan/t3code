@@ -2310,6 +2310,10 @@ code {
   --diff-deletion: var(--destructive);
   --diff-addition-foreground: light-dark(var(--color-emerald-700), var(--color-emerald-400));
   --diff-deletion-foreground: light-dark(var(--color-red-700), var(--color-red-400));
+  /* Changed-word chips in diffs: solid fills whose lightness flips per mode so
+     the word, recolored to the code background, keeps WCAG AAA contrast. */
+  --diff-addition-emphasis: light-dark(#1d652a, #52c062);
+  --diff-deletion-emphasis: light-dark(#9e3235, #ff8787);
 }
 
 /* Chat width setting. Comfortable keeps the default --chat-content-max-width,
@@ -2327,6 +2331,8 @@ code {
   --diff-deletion: light-dark(var(--color-orange-600), var(--color-orange-400));
   --diff-addition-foreground: var(--diff-addition);
   --diff-deletion-foreground: var(--diff-deletion);
+  --diff-addition-emphasis: light-dark(var(--color-blue-800), var(--color-blue-300));
+  --diff-deletion-emphasis: light-dark(var(--color-orange-800), var(--color-orange-300));
   --diffs-addition-color-override: var(--diff-addition);
   --diffs-deletion-color-override: var(--diff-deletion);
   --trees-status-added-override: var(--diff-addition);

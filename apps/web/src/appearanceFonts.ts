@@ -19,6 +19,15 @@ export const DEFAULT_CODE_FONT_STACK =
 
 export const TYPOGRAPHY_ADVANCED_STORAGE_KEY = "t3code:typography-advanced";
 
+// Pierre's diff rows default to a loose 20px (~1.67 at 12px). We run tighter so
+// diffs read denser, scaled with the code size so text and row height stay in sync.
+const DIFF_LINE_HEIGHT_RATIO = 17 / 12;
+
+/** Row height of Pierre diff and file surfaces, in px, for a code font size. */
+export function diffLineHeightForCodeSize(codeFontSize: number): number {
+  return Math.round(clampCodeFontSize(codeFontSize) * DIFF_LINE_HEIGHT_RATIO);
+}
+
 export function resolveTerminalFontPreference(input: {
   readonly advanced: boolean;
   readonly code: string;
@@ -92,6 +101,7 @@ export function applyAppearanceFontVariables(
   const code = clampCodeFontSize(preferences.sizeCode);
   root.style.setProperty("--font-size-code", `${code}px`);
   root.style.setProperty("--diffs-font-size", `${code}px`);
+  root.style.setProperty("--diffs-line-height", `${diffLineHeightForCodeSize(code)}px`);
 
   if (preferences.smoothing) {
     root.style.setProperty("-webkit-font-smoothing", "antialiased");
