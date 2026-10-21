@@ -1,13 +1,25 @@
 import { parsePatchFiles } from "@pierre/diffs/utils/parsePatchFiles";
-import { parseDiffFromFile } from "@pierre/diffs";
-import type { FileDiffMetadata } from "@pierre/diffs/types";
+import { parseDiffFromFile, registerCustomTheme } from "@pierre/diffs";
+import type { FileDiffMetadata, ThemeRegistration } from "@pierre/diffs/types";
 
 const DIFF_THEME_NAMES = {
-  light: "pierre-light",
-  dark: "pierre-dark",
+  light: "xcode-hc-light",
+  dark: "xcode-hc-dark",
 } as const;
 
 export type DiffThemeName = (typeof DIFF_THEME_NAMES)[keyof typeof DIFF_THEME_NAMES];
+
+// Register the bundled Xcode High Contrast syntax themes with Pierre's shared
+// theme resolver. Idempotent (registerCustomTheme swallows duplicates), and the
+// worker pool forwards a resolved custom theme to its workers when the theme is
+// set, so this one registration covers both the chat highlighter and the diff
+// worker. JSON theme modules load lazily and may arrive under `default`.
+registerCustomTheme(DIFF_THEME_NAMES.dark, () =>
+  import("../themes/xcode-hc-dark.json").then((m) => (m.default ?? m) as ThemeRegistration),
+);
+registerCustomTheme(DIFF_THEME_NAMES.light, () =>
+  import("../themes/xcode-hc-light.json").then((m) => (m.default ?? m) as ThemeRegistration),
+);
 
 export function resolveDiffThemeName(theme: "light" | "dark"): DiffThemeName {
   return theme === "dark" ? DIFF_THEME_NAMES.dark : DIFF_THEME_NAMES.light;
@@ -302,6 +314,7 @@ export function getDiffCollapseIconClassName(fileDiff: FileDiffMetadata): string
 }
 
 export const DIFF_SURFACE_THEME_UNSAFE_CSS = `
+:host,
 [data-diffs-header],
 [data-diff],
 [data-file],
@@ -336,11 +349,10 @@ export const DIFF_SURFACE_THEME_UNSAFE_CSS = `
     color-mix(in srgb, var(--code-background) 60%, var(--diff-addition))
   );
   --diffs-bg-addition-hover-override: color-mix(in srgb, var(--code-background) 85%, var(--diff-addition));
-  --diffs-bg-addition-emphasis-override: color-mix(
-    in srgb,
-    var(--code-background) 80%,
-    var(--diff-addition)
-  );
+  /* The changed word is a solid "inverted" chip (see --diff-*-emphasis in
+     index.css). The emphasis overrides must resolve on :host, where Pierre
+     reads var(--*-emphasis-override, <default>). */
+  --diffs-bg-addition-emphasis-override: var(--diff-addition-emphasis);
 
   --diffs-bg-deletion-override: light-dark(
     color-mix(in srgb, var(--code-background) 50%, var(--diff-deletion)),
@@ -355,13 +367,19 @@ export const DIFF_SURFACE_THEME_UNSAFE_CSS = `
     var(--code-background) 85%,
     var(--diff-deletion)
   );
-  --diffs-bg-deletion-emphasis-override: color-mix(
-    in srgb,
-    var(--code-background) 80%,
-    var(--diff-deletion)
-  );
+  --diffs-bg-deletion-emphasis-override: var(--diff-deletion-emphasis);
 
   background-color: var(--diffs-bg) !important;
   color: var(--code-foreground) !important;
+}
+
+/* Invert the changed word's text to the editor background color. Shiki paints
+   the token color as an inline style on a child element, so the child (\`*\`)
+   must be targeted too, with !important, to win over that inline color. */
+[data-line-type="change-addition"] [data-diff-span],
+[data-line-type="change-addition"] [data-diff-span] *,
+[data-line-type="change-deletion"] [data-diff-span],
+[data-line-type="change-deletion"] [data-diff-span] * {
+  color: var(--code-background) !important;
 }
 `;
