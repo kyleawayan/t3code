@@ -75,6 +75,7 @@ import {
   DialogTitle,
 } from "~/components/ui/dialog";
 import { Input } from "~/components/ui/input";
+import { Group, GroupSeparator } from "~/components/ui/group";
 import { Menu, MenuItem, MenuItemLabel, MenuPopup, MenuTrigger } from "~/components/ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { ScrollArea } from "~/components/ui/scroll-area";
@@ -119,6 +120,8 @@ interface GitActionsControlProps {
   compact?: boolean;
   showActions?: boolean;
   showChanges?: boolean;
+  /** Fork: the chat header's compact icon-and-chevron split instead of the details card row. */
+  toolbar?: boolean;
   onOpenChanges?: () => void;
   /**
    * When set, Git actions ask the thread's agent to do the work instead of running
@@ -945,6 +948,7 @@ export default function GitActionsControl({
   compact = false,
   showActions = true,
   showChanges = true,
+  toolbar = false,
   onOpenChanges,
   onRequestAgentAction,
 }: GitActionsControlProps) {
@@ -1520,6 +1524,13 @@ export default function GitActionsControl({
     </>
   );
 
+  const toolbarQuickActionDisabled =
+    !canWriteSourceControl ||
+    isGitActionRunning ||
+    quickAction.disabled ||
+    Boolean(quickActionDisabledReason) ||
+    gitActionProgress !== null;
+
   if (!gitCwd) return null;
 
   return (
@@ -1538,7 +1549,57 @@ export default function GitActionsControl({
             {initAction.isPending ? "Initializing..." : "Initialize Git"}
           </span>
         </ThreadDetailsControl>
-      ) : quietEmptyDraft || (compact && !gitActionProgress && !visibleInlineSuccess) ? null : (
+      ) : quietEmptyDraft ||
+        (compact && !gitActionProgress && !visibleInlineSuccess) ? null : toolbar ? (
+        <Group role="group" aria-label="Git actions" className="shrink-0">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <ThreadDetailsControl
+                  size="xs"
+                  variant="outline"
+                  part="primary"
+                  panel={false}
+                  className="w-7 sm:w-6"
+                  aria-label={quickAction.label}
+                  data-toolbar-control=""
+                  aria-disabled={toolbarQuickActionDisabled || undefined}
+                  {...(toolbarQuickActionDisabled ? {} : { onClick: runQuickAction })}
+                />
+              }
+            >
+              <GitQuickActionIcon quickAction={quickAction} SourceControlIcon={SourceControlIcon} />
+            </TooltipTrigger>
+            <TooltipPopup side="top">
+              {gitActionProgress?.status ?? quickActionDisabledReason ?? quickAction.label}
+            </TooltipPopup>
+          </Tooltip>
+          <GroupSeparator className="hidden @3xl/header-actions:block" />
+          <Menu
+            onOpenChange={(open) => {
+              if (open) {
+                requestVcsStatusRefresh(refreshVcsStatus, activeEnvironmentId, gitCwd);
+              }
+            }}
+          >
+            <MenuTrigger
+              render={
+                <ThreadDetailsControl
+                  aria-label="Git action options"
+                  size="icon-xs"
+                  variant="outline"
+                  part="secondary"
+                  panel={false}
+                />
+              }
+              disabled={isGitActionRunning}
+            >
+              <ChevronDownIcon aria-hidden="true" className="size-4" />
+            </MenuTrigger>
+            <MenuPopup align="end">{gitItems}</MenuPopup>
+          </Menu>
+        </Group>
+      ) : (
         <div
           role="group"
           aria-label="Git actions"
