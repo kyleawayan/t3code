@@ -192,6 +192,7 @@ import {
   useThreadPreviewCanvasSource,
 } from "./preview/ThreadPreviewMiniPlayer";
 import { createChatCanvasStore, resolveChatCanvasModel } from "./chat/canvasStore";
+import { turnMascotForDriver } from "./chat/TurnMascot";
 import { usePreviewSession } from "./preview/usePreviewSession";
 import { getConfiguredPreviewUrls } from "./preview/previewEmptyStateLogic";
 
@@ -3549,6 +3550,7 @@ export default function ChatView(props: ChatViewProps) {
                     : {})}
                   {...(onOpenWorktreeSetupTerminal ? { onOpenWorktreeSetupTerminal } : {})}
                   isPreparingWorktree={isPreparingWorktree}
+                  mascot={turnMascotForDriver(selectedProvider)}
                   footer={timelineFooter}
                   listRef={legendListRef}
                   runs={serverProjection?.runs ?? []}

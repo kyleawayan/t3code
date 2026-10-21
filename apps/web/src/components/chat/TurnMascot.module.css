@@ -1,0 +1,102 @@
+/* Fixed to the taller astronaut so switching states never shifts the row; both
+   Claude sources render the art at the same pixel size. */
+.slot {
+  pointer-events: none;
+  display: flex;
+  flex-shrink: 0;
+  align-self: center;
+  align-items: flex-end;
+  height: 30px;
+}
+
+.picture {
+  display: flex;
+}
+
+.claude {
+  width: auto;
+  height: 24px;
+  image-rendering: pixelated;
+}
+
+.claude[data-state="thinking"] {
+  height: 30px;
+}
+
+/* Codey: https://learn.chatgpt.com/images/codex/app/pets/codex-spritesheet.webp
+   The sheet has 8 columns and 9 rows, with 192 × 208 px cells. */
+.codey {
+  width: 28px;
+  aspect-ratio: 192 / 208;
+  background-repeat: no-repeat;
+  background-size: 800% 900%;
+  background-position: 0 0;
+  image-rendering: pixelated;
+}
+
+/* Row 7 types: five 120 ms frames and a final 220 ms frame. */
+.codey[data-state="typing"] {
+  background-position-y: 87.5%;
+  animation: codey-typing 820ms step-end infinite;
+}
+
+/* Row 6: five 150 ms frames followed by a 260 ms hold. */
+.codey[data-state="thinking"] {
+  background-position-y: 75%;
+  animation: codey-thinking 1010ms step-end infinite;
+}
+
+@keyframes codey-typing {
+  0% {
+    background-position-x: 0%;
+  }
+  14.634146% {
+    background-position-x: 14.285714%;
+  }
+  29.268293% {
+    background-position-x: 28.571429%;
+  }
+  43.902439% {
+    background-position-x: 42.857143%;
+  }
+  58.536585% {
+    background-position-x: 57.142857%;
+  }
+  73.170732%,
+  100% {
+    background-position-x: 71.428571%;
+  }
+}
+
+@keyframes codey-thinking {
+  0% {
+    background-position-x: 0%;
+  }
+  14.851485% {
+    background-position-x: 14.285714%;
+  }
+  29.70297% {
+    background-position-x: 28.571429%;
+  }
+  44.554455% {
+    background-position-x: 42.857143%;
+  }
+  59.405941% {
+    background-position-x: 57.142857%;
+  }
+  74.257426%,
+  100% {
+    background-position-x: 71.428571%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .claude[data-state="thinking"] {
+    height: 24px;
+  }
+
+  .codey[data-state="typing"],
+  .codey[data-state="thinking"] {
+    animation: none;
+  }
+}
