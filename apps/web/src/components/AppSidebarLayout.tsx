@@ -372,10 +372,13 @@ function SidebarControl() {
   );
 
   return (
+    // Anchored to the window edge rather than the layout-control anchor, which
+    // is pushed inboard of the open sidebar: the trigger belongs on the sidebar
+    // it toggles, and stays put when the sidebar collapses out from under it.
     <div
       ref={appShellCommandsRef}
       className={cn(
-        "pointer-events-none fixed left-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-50 ml-px flex h-[var(--workspace-topbar-height)] items-center",
+        "pointer-events-none fixed right-[var(--workspace-window-edge-right)] top-[var(--workspace-controls-top)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center",
         isMobile && mobileSheetMounted && "hidden",
       )}
       data-sidebar-control=""
@@ -451,8 +454,11 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         style={sidebarProviderStyle}
       >
         <SidebarBrandWidthProbe isElectron={isElectron} onWidthChange={setBrandWidth} />
+        {/* The in-flow gap that reserves the sidebar's width follows DOM order,
+            so a right-docked sidebar comes after the main content. */}
+        {children}
         <Sidebar
-          side="left"
+          side="right"
           collapsible="offcanvas"
           data-app-sidebar=""
           {...sidebarArea}
@@ -472,7 +478,6 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           <ThreadSidebar routeReveal={sidebarRouteReveal} />
           <SidebarRail onDoubleClick={resetSidebarWidth} />
         </Sidebar>
-        {children}
         <BackgroundThreadAnnouncer />
         <SidebarControl />
         {isElectron ? <HistorySwipeNavigation /> : null}
