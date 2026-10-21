@@ -1,6 +1,6 @@
 import { m } from "../i18n/messages";
 import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
-import { useGT, useMessages } from "gt-react";
+import { msg, useGT, useMessages } from "gt-react";
 import { ChildThreadApprovals } from "./chat/ChildThreadApprovals";
 import { workspaceAreaProps } from "../lib/workspaceFocus";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
@@ -1945,6 +1945,18 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
   const sendAppMessageStable = useStableCallback(sendAppMessage);
+  // Header Git actions go to the agent as a queued message, so they wait behind a
+  // running turn and leave the composer draft alone.
+  const requestGitAgentAction = (prompt: string) => {
+    void sendAppMessage(prompt).catch((error: unknown) => {
+      toastManager.add({
+        type: "error",
+        title: m(msg("Could not ask the agent")),
+        description: thrownErrorMessage(error, m) ?? m(msg("An error occurred.")),
+      });
+    });
+  };
+  const requestGitAgentActionStable = useStableCallback(requestGitAgentAction);
   const queuedRunsControlRef = useRef<QueuedRunsControlHandle>(null);
 
   const {
@@ -3970,6 +3982,9 @@ export default function ChatView(props: ChatViewProps) {
                   projectId={activeThread.projectId}
                   worktreePath={activeThread.worktreePath}
                   isServerThread={isServerThread}
+                  {...(isServerThread
+                    ? { onRequestGitAgentAction: requestGitAgentActionStable }
+                    : {})}
                   {...(draftId ? { draftId } : {})}
                   composerDraftTarget={composerDraftTarget}
                   activeProjectName={activeProject?.title}
