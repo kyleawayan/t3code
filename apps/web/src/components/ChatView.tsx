@@ -252,6 +252,7 @@ import { previewRuntimeTabId } from "../browser/previewRuntimeTabId";
 import { addBrowserSurface } from "./preview/addBrowserSurface";
 import { ThreadPreviewMiniPlayer } from "./preview/ThreadPreviewMiniPlayer";
 import { turnMascotForDriver } from "./chat/TurnMascot";
+import { ChatHeaderQuickActions } from "./chat/ChatHeaderQuickActions";
 import { usePreviewSession } from "./preview/usePreviewSession";
 import { subscribePreviewAction } from "./preview/previewActionBus";
 import { getConfiguredPreviewUrls } from "./preview/previewEmptyStateLogic";
@@ -8036,6 +8037,14 @@ export default function ChatView(props: ChatViewProps) {
       }}
     />
   ) : null;
+  const openInShortcutEnabled = !(
+    rightPanelOpen &&
+    renderedRightPanelSurface?.kind === "file" &&
+    renderedRightPanelSurface.attachment === undefined
+  );
+  // The details card holds the same controls, so the header carries them only while the card is
+  // not open beside the chat, and only one of the two owns the Open in shortcut.
+  const showHeaderQuickActions = !(threadPanelPresentation === "inline" && threadPanelOpen);
   const panelToggleControlProps = {
     terminalAvailable: activeProject !== null,
     terminalOpen: terminalUiState.terminalOpen,
@@ -8160,6 +8169,32 @@ export default function ChatView(props: ChatViewProps) {
             {...(activeDraftLogicalProjectKey
               ? { onOpenProjectSettings: handleOpenDraftProjectSettingsStable }
               : {})}
+            actions={
+              showHeaderQuickActions ? (
+                <ChatHeaderQuickActions
+                  environmentId={activeThread.environmentId}
+                  threadId={activeThread.id}
+                  {...(draftId ? { draftId } : {})}
+                  {...(isServerThread
+                    ? { onRequestGitAgentAction: requestGitAgentActionStable }
+                    : {})}
+                  activeProjectName={activeProject?.title}
+                  activeProjectScripts={activeProject ? activeProjectScripts : undefined}
+                  preferredScriptId={
+                    activeProject ? (lastInvokedScriptByProjectId[activeProject.id] ?? null) : null
+                  }
+                  keybindings={keybindings}
+                  availableEditors={availableEditors}
+                  showOpenInPicker={showOpenInPicker}
+                  openInShortcutEnabled={openInShortcutEnabled}
+                  gitCwd={gitCwd}
+                  onRunProjectScript={runProjectScriptStable}
+                  onAddProjectScript={saveProjectScriptStable}
+                  onUpdateProjectScript={updateProjectScriptStable}
+                  onDeleteProjectScript={deleteProjectScriptStable}
+                />
+              ) : null
+            }
           />
         </header>
 
@@ -8735,13 +8770,7 @@ export default function ChatView(props: ChatViewProps) {
               keybindings={keybindings}
               availableEditors={availableEditors}
               showOpenInPicker={showOpenInPicker}
-              openInShortcutEnabled={
-                !(
-                  rightPanelOpen &&
-                  renderedRightPanelSurface?.kind === "file" &&
-                  renderedRightPanelSurface.attachment === undefined
-                )
-              }
+              openInShortcutEnabled={openInShortcutEnabled && !showHeaderQuickActions}
               gitCwd={gitCwd}
               isGitRepo={isGitRepo}
               envLocked={envLocked}
