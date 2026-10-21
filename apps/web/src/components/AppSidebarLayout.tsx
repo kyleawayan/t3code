@@ -374,10 +374,13 @@ function SidebarControl({ showSidebar }: { readonly showSidebar: boolean }) {
   );
 
   return (
+    // Anchored to the window edge rather than the layout-control anchor, which
+    // is pushed inboard of the open sidebar: the trigger belongs on the sidebar
+    // it toggles, and stays put when the sidebar collapses out from under it.
     <div
       ref={appShellCommandsRef}
       className={cn(
-        "pointer-events-none fixed left-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-50 ml-px flex h-[var(--workspace-topbar-height)] items-center",
+        "pointer-events-none fixed right-[var(--workspace-window-edge-right)] top-[var(--workspace-controls-top)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center",
         isMobile && mobileSheetMounted && "hidden",
       )}
       data-sidebar-control=""
@@ -461,32 +464,34 @@ export function AppSidebarLayout({
         style={sidebarProviderStyle}
       >
         {showSidebar ? (
-          <>
-            <SidebarBrandWidthProbe isElectron={isElectron} onWidthChange={setBrandWidth} />
-            <Sidebar
-              side="left"
-              collapsible="offcanvas"
-              data-app-sidebar=""
-              {...sidebarArea}
-              role="navigation"
-              aria-label="Threads"
-              resizable={{
-                maxWidth: sidebarMaximumWidth,
-                minWidth: sidebarMinimumWidth,
-                shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
-                  nextWidth <= currentWidth ||
-                  wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
-                storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
-                onResize: setSidebarWidth,
-              }}
-              style={windowControlsInsetStyle}
-            >
-              <ThreadSidebar routeReveal={sidebarRouteReveal} />
-              <SidebarRail onDoubleClick={resetSidebarWidth} />
-            </Sidebar>
-          </>
+          <SidebarBrandWidthProbe isElectron={isElectron} onWidthChange={setBrandWidth} />
         ) : null}
+        {/* The in-flow gap that reserves the sidebar's width follows DOM order,
+            so a right-docked sidebar comes after the main content. */}
         {children}
+        {showSidebar ? (
+          <Sidebar
+            side="right"
+            collapsible="offcanvas"
+            data-app-sidebar=""
+            {...sidebarArea}
+            role="navigation"
+            aria-label="Threads"
+            resizable={{
+              maxWidth: sidebarMaximumWidth,
+              minWidth: sidebarMinimumWidth,
+              shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
+                nextWidth <= currentWidth ||
+                wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
+              storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
+              onResize: setSidebarWidth,
+            }}
+            style={windowControlsInsetStyle}
+          >
+            <ThreadSidebar routeReveal={sidebarRouteReveal} />
+            <SidebarRail onDoubleClick={resetSidebarWidth} />
+          </Sidebar>
+        ) : null}
         <BackgroundThreadAnnouncer />
         <SidebarControl showSidebar={showSidebar} />
         {isElectron ? <HistorySwipeNavigation /> : null}

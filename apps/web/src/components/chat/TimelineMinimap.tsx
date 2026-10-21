@@ -105,7 +105,7 @@ export function TimelineMinimap({
   return (
     <div
       className={cn(
-        "group/minimap pointer-events-none absolute inset-y-0 left-0 z-40 w-18",
+        "group/minimap pointer-events-none absolute inset-y-0 right-0 z-40 w-18",
         hasPersistentGutter
           ? "opacity-100"
           : "hidden opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100 [@media(pointer:fine)]:block",
@@ -117,7 +117,7 @@ export function TimelineMinimap({
       <div className="relative h-full w-full select-none">
         <div
           className={cn(
-            "absolute top-1/2 left-3 -translate-y-1/2",
+            "absolute top-1/2 right-3 -translate-y-1/2",
             hitStripWidth > 0 && !passThrough ? "pointer-events-auto" : "pointer-events-none",
           )}
           onMouseDown={() => {
@@ -147,7 +147,7 @@ export function TimelineMinimap({
           />
           <button
             aria-label={`Jump to message: ${activeItem?.userText ?? "User message"}`}
-            className="absolute inset-y-0 left-0 w-full cursor-pointer bg-transparent before:absolute before:inset-x-0 before:-inset-y-1 before:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+            className="absolute inset-y-0 right-0 w-full cursor-pointer bg-transparent before:absolute before:inset-x-0 before:-inset-y-1 before:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
             onBlur={() => setActiveIndex(null)}
             onClick={(event) => {
               const nextIndex = resolveActiveIndexFromPointer(event);
@@ -186,7 +186,7 @@ export function TimelineMinimap({
             onMouseDown={(event) => event.preventDefault()}
             type="button"
           >
-            <div className="absolute top-0 left-3 h-full w-px bg-border/15" />
+            <div className="absolute top-0 right-3 h-full w-px bg-border/15" />
             {items.map((item, index) => {
               const top = `${resolveTimelineMinimapTopPercent(index, items.length)}%`;
               const activeDistance =
@@ -199,7 +199,7 @@ export function TimelineMinimap({
                 <span
                   aria-hidden="true"
                   className={cn(
-                    "pointer-events-none absolute left-0 h-0.5 w-6 origin-left -translate-y-1/2 rounded-full transition-transform duration-150 after:absolute after:inset-0 after:rounded-full after:bg-foreground/55 after:opacity-0 after:transition-opacity after:duration-150 data-[in-view=true]:after:opacity-100",
+                    "pointer-events-none absolute right-0 h-0.5 w-6 origin-right -translate-y-1/2 rounded-full transition-transform duration-150 after:absolute after:inset-0 after:rounded-full after:bg-foreground/55 after:opacity-0 after:transition-opacity after:duration-150 data-[in-view=true]:after:opacity-100",
                     activeDistance === 0 ? "bg-muted-foreground/60" : "bg-muted-foreground/25",
                     activeDistance === 0
                       ? "scale-x-100"
@@ -226,7 +226,7 @@ export function TimelineMinimap({
             {activeItem ? (
               // Display-only: it overlaps the message column, and the strip keeps tracking beneath it.
               <span
-                className="pointer-events-none absolute left-8 w-80 -translate-y-1/2"
+                className="pointer-events-none absolute right-8 w-80 -translate-y-1/2"
                 style={{ top: `${activeTopPercent}%` }}
               >
                 <span className="dropdown-glass block rounded-xl p-3 text-left text-popover-foreground shadow-xl shadow-black/25">
@@ -284,7 +284,7 @@ function TimelineMinimapNavigationButton({
         render={
           <span
             className={cn(
-              "absolute left-1 z-10 inline-flex -translate-x-1/2 opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100",
+              "absolute right-1 z-10 inline-flex translate-x-1/2 opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100",
               interactive ? "pointer-events-auto" : "pointer-events-none",
               previous ? "bottom-[calc(100%+6px)]" : "top-[calc(100%+6px)]",
             )}

@@ -242,7 +242,7 @@ export function QueuedRunsControl({
       aria-label={`${items.length} queued message${items.length === 1 ? "" : "s"}`}
       data-thread-queue="true"
       // Anchors the sr-only live region; unanchored, it escapes the timeline scroller and makes the chat column scroll.
-      className="relative mx-auto flex w-full max-w-(--chat-content-max-width) flex-col gap-2 pb-4"
+      className="relative me-auto flex w-full max-w-(--chat-content-max-width) flex-col gap-2 pb-4"
     >
       <span className="sr-only" aria-live="polite">
         {items.length} queued
