@@ -1,5 +1,5 @@
 import { ProviderInteractionMode, RuntimeMode } from "@t3tools/contracts";
-import { memo, type ReactNode } from "react";
+import { type ComponentType, memo, type ReactNode, type SVGProps } from "react";
 import { EllipsisIcon } from "lucide-react";
 import {
   Menu,
@@ -22,6 +22,8 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
   }>;
   showInteractionModeToggle: boolean;
   traitsMenuContent?: ReactNode;
+  /** Replaces the ellipsis when the menu holds only the mode, so the trigger still shows it. */
+  triggerIcon?: ComponentType<SVGProps<SVGSVGElement>> | undefined;
   size?: "sm" | "xs";
   /** Close the portaled popup when its trigger hides. */
   hidden?: boolean;
@@ -46,7 +48,7 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
           />
         }
       >
-        <ComposerControlIcon icon={EllipsisIcon} size={size} />
+        <ComposerControlIcon icon={props.triggerIcon ?? EllipsisIcon} size={size} />
       </MenuTrigger>
       <MenuPopup align="start" {...composerFloatingLayerProps}>
         {props.traitsMenuContent ? (

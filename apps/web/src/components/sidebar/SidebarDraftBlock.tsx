@@ -20,6 +20,7 @@ import {
   type DraftSessionState,
 } from "../../composerDraftStore";
 import { draftPenClassName, draftSurfaceClassName } from "./SidebarThreadRow";
+import { SquishText, THREAD_TITLE_SQUISH_SCALE } from "../SquishText";
 
 const SidebarDraftRow = memo(function SidebarDraftRow(props: {
   draftId: DraftId;
@@ -122,8 +123,13 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
               </Tooltip>
             </span>
           </div>
-          <div aria-hidden className="mt-0.5 truncate text-sm font-medium text-foreground/90">
-            {preview}
+          <div aria-hidden className="mt-0.5 flex min-w-0">
+            <SquishText
+              ellipsisScale={THREAD_TITLE_SQUISH_SCALE}
+              className="flex-1 text-sm font-medium text-foreground/90"
+            >
+              {preview}
+            </SquishText>
           </div>
         </div>
       </div>

@@ -1261,11 +1261,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     iconOnlyBlockCount: restingControlsIconOnlyBlockCount,
     controlsVisible: restingControlsVisible,
   } = useRestingComposerControlsLayout(restingControlsHost ?? inlineRestingControlsHost);
+  const [restingActionsElement, setRestingActionsElement] = useState<HTMLDivElement | null>(null);
   const {
     attachControls: attachExpandedComposerControls,
     hiddenBlockCount: expandedControlsHiddenBlockCount,
     iconOnlyBlockCount: expandedControlsIconOnlyBlockCount,
-  } = useRestingComposerControlsLayout(null, true);
+    actionsCrowded: expandedActionsCrowded,
+  } = useRestingComposerControlsLayout(null, true, restingActionsElement);
   const pendingPrimaryAction = activePendingProgress
     ? {
         questionIndex: activePendingProgress.questionIndex,
@@ -2319,6 +2321,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     hasMultilinePrompt,
     timelineOverflows,
   });
+  // Pasting and dropping still attach files, so the model and effort keep the room.
+  const attachActionHidden = expandedActionsCrowded && !isComposerResting;
   const expandedComposerImages = isComposerResting
     ? standaloneComposerImages.filter((image) => pendingSnapShotIdSet.has(image.id))
     : standaloneComposerImages;
@@ -2336,7 +2340,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   useLayoutEffect(() => {
     onRestingChange(isComposerResting);
   }, [isComposerResting, onRestingChange]);
-  const [restingActionsElement, setRestingActionsElement] = useState<HTMLDivElement | null>(null);
   const [restingActionsWidth, setRestingActionsWidth] = useState<number | null>(null);
   useLayoutEffect(() => {
     if (!isComposerResting || !restingActionsElement) return;
@@ -3304,10 +3307,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       />
     ) : null;
   const composerAttachButton = showComposerAttachAction ? (
-    <ComposerAttachButton
-      addComposerAttachments={addComposerAttachments}
-      focusComposer={focusComposer}
-    />
+    <span
+      data-composer-attach-action=""
+      aria-hidden={attachActionHidden || undefined}
+      inert={attachActionHidden || undefined}
+      className={cn("flex", attachActionHidden && "pointer-events-none invisible absolute")}
+    >
+      <ComposerAttachButton
+        addComposerAttachments={addComposerAttachments}
+        focusComposer={focusComposer}
+      />
+    </span>
   ) : null;
   return (
     <form

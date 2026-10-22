@@ -45,6 +45,7 @@ import {
   ComposerControlIcon,
   type ComposerControlSize,
 } from "./ComposerControl";
+import { SQUISH_TEXT_TIGHT_MIN_SCALE, SquishText } from "../SquishText";
 import { useComposerMenuProps } from "./composerEventScope";
 import { useComposerMenuState } from "./useComposerMenuState";
 
@@ -506,6 +507,24 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   );
 });
 
+const TRAIT_LABEL_ABBREVIATIONS = {
+  short: { "Extra High": "XHigh", Medium: "Med", Minimal: "Min" },
+  tight: { "Extra High": "XH", High: "Hi", Medium: "Med", Low: "Lo", Minimal: "Min" },
+} satisfies Record<string, Record<string, string>>;
+
+/**
+ * The traits label for a tight footer: effort names abbreviate and the separators close up
+ * ("Extra High · 1M" → "XHigh·1M", tighter "XH·1M"). Every trait keeps its own token, so the
+ * context window still reads in full.
+ */
+export function compactTraitsTriggerLabel(label: string, size: "short" | "tight"): string {
+  const abbreviations: Record<string, string> = TRAIT_LABEL_ABBREVIATIONS[size];
+  return label
+    .split(" · ")
+    .map((part) => abbreviations[part] ?? part)
+    .join("·");
+}
+
 export const TraitsPicker = memo(function TraitsPicker({
   provider,
   instanceId,
@@ -563,7 +582,6 @@ export const TraitsPicker = memo(function TraitsPicker({
     modelSelection: instanceId && model ? { instanceId, model, options: modelOptions ?? [] } : null,
     reportedModelSelection,
   });
-  const isCodexStyle = provider === "codex";
 
   return (
     <Menu
@@ -583,9 +601,7 @@ export const TraitsPicker = memo(function TraitsPicker({
                   data-composer-shortcut={isComposerOwned ? "composer.effort" : undefined}
                   size={size}
                   className={cn(
-                    isCodexStyle
-                      ? "min-w-0 max-w-40 shrink justify-start overflow-hidden whitespace-nowrap sm:max-w-48"
-                      : "shrink-0 whitespace-nowrap",
+                    "min-w-0 max-w-40 shrink justify-start overflow-hidden whitespace-nowrap sm:max-w-48",
                     triggerClassName,
                   )}
                 />
@@ -593,28 +609,23 @@ export const TraitsPicker = memo(function TraitsPicker({
             />
           }
         >
-          {isCodexStyle ? (
-            <span
-              className={cn(
-                "flex min-w-0 w-full items-center",
-                size === "xs" ? "gap-1" : "gap-1.5",
-              )}
+          <span
+            className={cn("flex min-w-0 w-full items-center", size === "xs" ? "gap-1" : "gap-1.5")}
+          >
+            <ComposerControlIcon icon={BrainIcon} size={size} className="redesign:hidden" />
+            <ComposerControlIcon icon={GaugeIcon} size={size} className="hidden redesign:block" />
+            <SquishText
+              data-composer-control-label=""
+              minScale={SQUISH_TEXT_TIGHT_MIN_SCALE}
+              variants={[
+                compactTraitsTriggerLabel(triggerLabel, "short"),
+                compactTraitsTriggerLabel(triggerLabel, "tight"),
+              ]}
             >
-              <ComposerControlIcon icon={BrainIcon} size={size} className="redesign:hidden" />
-              <ComposerControlIcon icon={GaugeIcon} size={size} className="hidden redesign:block" />
-              <span data-composer-control-label className="min-w-0 truncate">
-                {triggerLabel}
-              </span>
-              <ComposerControlChevron size={size} />
-            </span>
-          ) : (
-            <>
-              <ComposerControlIcon icon={BrainIcon} size={size} className="redesign:hidden" />
-              <ComposerControlIcon icon={GaugeIcon} size={size} className="hidden redesign:block" />
-              <span data-composer-control-label>{triggerLabel}</span>
-              <ComposerControlChevron size={size} />
-            </>
-          )}
+              {triggerLabel}
+            </SquishText>
+            <ComposerControlChevron size={size} />
+          </span>
         </TooltipTrigger>
         <TooltipPopup side="top">{triggerLabel}</TooltipPopup>
       </Tooltip>
