@@ -23,6 +23,25 @@ import {
   ULTRATHINK_IN_BODY_NOTE,
   useTraitsSelection,
 } from "./TraitsPicker";
+import { SQUISH_TEXT_TIGHT_MIN_SCALE, SquishText } from "../SquishText";
+
+const EFFORT_LABEL_ABBREVIATIONS = {
+  short: { "Extra High": "XHigh", Medium: "Med", Minimal: "Min" },
+  tight: { "Extra High": "XH", High: "Hi", Medium: "Med", Low: "Lo", Minimal: "Min" },
+} satisfies Record<string, Record<string, string>>;
+
+/**
+ * The effort label for a tight footer: effort names abbreviate and the separators close up
+ * ("Extra High · 1M" → "XHigh·1M", tighter "XH·1M"). Every trait keeps its own token, so the
+ * context window still reads in full.
+ */
+function compactEffortLabel(label: string, size: "short" | "tight"): string {
+  const abbreviations: Record<string, string> = EFFORT_LABEL_ABBREVIATIONS[size];
+  return label
+    .split(" · ")
+    .map((part) => abbreviations[part] ?? part)
+    .join("·");
+}
 
 type SelectDescriptor = Extract<ProviderOptionDescriptor, { type: "select" }>;
 type BooleanDescriptor = Extract<ProviderOptionDescriptor, { type: "boolean" }>;
@@ -113,13 +132,19 @@ export function describeComposerEffort(
     suffix: (
       <span
         className={cn(
-          "flex shrink-0 items-center gap-1.5 text-muted-foreground group-hover/model-trigger:text-foreground group-data-pressed/model-trigger:text-foreground group-data-popup-open/model-trigger:text-foreground",
+          "flex min-w-min shrink items-center gap-1.5 text-muted-foreground group-hover/model-trigger:text-foreground group-data-pressed/model-trigger:text-foreground group-data-popup-open/model-trigger:text-foreground",
           // A word space after the model name: the regular trigger's gap is wider than one.
           size === "sm" && "-ms-0.5",
         )}
       >
         {word !== null ? (
-          <span data-composer-control-label>{word}</span>
+          <SquishText
+            data-composer-control-label=""
+            minScale={SQUISH_TEXT_TIGHT_MIN_SCALE}
+            variants={[compactEffortLabel(word, "short"), compactEffortLabel(word, "tight")]}
+          >
+            {word}
+          </SquishText>
         ) : glyph ? (
           <EffortGlyph count={glyph.count} filled={glyph.filled} size={size} />
         ) : null}

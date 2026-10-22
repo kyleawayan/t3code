@@ -13,7 +13,14 @@ import { cn } from "~/lib/utils";
 import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { ChatGptSharingControl } from "./ChatGptSharingControl";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
-import { ModelEsque, getDisplayModelName, getTriggerDisplayModelName } from "./providerIconUtils";
+import {
+  ModelEsque,
+  getDisplayModelName,
+  getShortTriggerModelLabel,
+  getTightTriggerModelLabel,
+  getTriggerDisplayModelName,
+} from "./providerIconUtils";
+import { SQUISH_TEXT_TIGHT_MIN_SCALE, SquishText } from "../SquishText";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
 import { ComposerControl, type ComposerControlSize } from "./ComposerControl";
 import { takeOpenTarget, useComposerMenuProps } from "./composerEventScope";
@@ -229,9 +236,25 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
 
   const triggerText = props.triggerLabel ?? multipleLabel ?? triggerTitle;
   const triggerTextProps = {
-    className: "min-w-0 flex-1 overflow-hidden truncate",
+    // Holds the name at its tightest squish, so it never shrinks away beside the effort.
+    className: "flex min-w-min flex-1",
     "data-chat-provider-model-picker-label": "true",
   } as const;
+  const triggerTextContent = (
+    <SquishText
+      minScale={SQUISH_TEXT_TIGHT_MIN_SCALE}
+      variants={
+        props.triggerLabel === undefined && !multipleLabel && activeEntry
+          ? [
+              getShortTriggerModelLabel(triggerTitle, activeEntry.driverKind),
+              getTightTriggerModelLabel(triggerTitle, activeEntry.driverKind),
+            ]
+          : undefined
+      }
+    >
+      {triggerText}
+    </SquishText>
+  );
 
   const picker = (
     <ModelPickerContent
@@ -366,10 +389,12 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             </span>
           ) : null}
           {props.isComposerOwned ? (
-            <span {...triggerTextProps}>{triggerText}</span>
+            <span {...triggerTextProps}>{triggerTextContent}</span>
           ) : (
             <Tooltip>
-              <TooltipTrigger render={<span {...triggerTextProps} />}>{triggerText}</TooltipTrigger>
+              <TooltipTrigger render={<span {...triggerTextProps} />}>
+                {triggerTextContent}
+              </TooltipTrigger>
               <TooltipPopup side="top">{triggerTooltipContent}</TooltipPopup>
             </Tooltip>
           )}
