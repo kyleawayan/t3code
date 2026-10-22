@@ -129,6 +129,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import { ActivityShimmerOverlay } from "../chat/TimelineRowParts";
 import { observeVisibleAnimation } from "~/lib/visibleAnimation";
+import { SquishText, THREAD_TITLE_SQUISH_SCALE } from "../SquishText";
 import { useThreadHasUnsentDraft } from "../../composerDraftStore";
 import { ThreadDetailsIssueRows } from "../chat/ThreadDetailsIssueRows";
 import { IssueGlyph, issueStatePresentation } from "../issue/issuePresentation";
@@ -1075,41 +1076,47 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       onCommit={() => onCommitRename(threadRef, renamingTitle)}
       onCancel={onCancelRename}
     />
-  ) : (
+  ) : isRegeneratingTitle ? (
     <span
-      ref={isRegeneratingTitle ? observeVisibleAnimation : undefined}
+      ref={observeVisibleAnimation}
       className={cn(
-        "min-w-0 flex-1 text-start text-sm transition-opacity motion-reduce:transition-none",
+        "relative min-w-0 flex-1 truncate text-start text-sm text-muted-foreground transition-opacity motion-reduce:transition-none",
         shouldRecede ? "font-normal" : "font-medium",
-        isRegeneratingTitle
-          ? "relative truncate text-muted-foreground"
-          : variant !== "slim"
-            ? cn(
-                "truncate",
-                shouldRecede
-                  ? "text-foreground/75 group-hover/sidebar-row:text-foreground group-focus-visible/sidebar-row:text-foreground"
-                  : status === "failed" && !isUnread && !isWoke
-                    ? "text-foreground/95"
-                    : "text-foreground",
-              )
-            : cn(
-                "truncate group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
-                shouldRecede
-                  ? "text-secondary-label"
-                  : props.isActive || isWoke || status === "input" || status === "request"
-                    ? "text-foreground"
-                    : isUnread
-                      ? "text-muted-foreground"
-                      : "text-secondary-label/70",
-              ),
       )}
       dir={textDirection(thread.title)}
     >
       {thread.title}
-      {isRegeneratingTitle ? (
-        <ActivityShimmerOverlay className="truncate">{thread.title}</ActivityShimmerOverlay>
-      ) : null}
+      <ActivityShimmerOverlay className="truncate">{thread.title}</ActivityShimmerOverlay>
     </span>
+  ) : (
+    <SquishText
+      ellipsisScale={THREAD_TITLE_SQUISH_SCALE}
+      className={cn(
+        "flex-1 text-start text-sm transition-opacity motion-reduce:transition-none",
+        shouldRecede ? "font-normal" : "font-medium",
+        variant !== "slim"
+          ? cn(
+              shouldRecede
+                ? "text-foreground/75 group-hover/sidebar-row:text-foreground group-focus-visible/sidebar-row:text-foreground"
+                : status === "failed" && !isUnread && !isWoke
+                  ? "text-foreground/95"
+                  : "text-foreground",
+            )
+          : cn(
+              "group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
+              shouldRecede
+                ? "text-secondary-label"
+                : props.isActive || isWoke || status === "input" || status === "request"
+                  ? "text-foreground"
+                  : isUnread
+                    ? "text-muted-foreground"
+                    : "text-secondary-label/70",
+            ),
+      )}
+      dir={textDirection(thread.title)}
+    >
+      {thread.title}
+    </SquishText>
   );
 
   const prBadgeShape = supportsMultiplePullRequests

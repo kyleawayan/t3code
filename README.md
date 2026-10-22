@@ -6,6 +6,22 @@
 
 <h1 align="center">T3 Code</h1>
 
+## Build this fork locally
+
+Run from the repo root. Needs Node 26, pnpm, and Rust; on macOS also the Xcode command-line tools, on Windows the Visual Studio C++ build tools. The installer is unsigned.
+
+macOS (Apple Silicon), builds and opens the DMG:
+
+```sh
+fnm use 26 && source ~/.cargo/env && export PATH="$PWD/node_modules/.bin:$PATH" && pnpm install && T3CODE_DESKTOP_VERSION=0.1.3 pnpm dist:desktop:dmg:arm64 && open "$(ls -t release/*.dmg | head -1)"
+```
+
+Windows (PowerShell), builds and runs the installer:
+
+```powershell
+$env:PATH="$PWD\node_modules\.bin;$env:PATH"; $env:T3CODE_DESKTOP_VERSION="0.1.3"; pnpm install; if ($?) { pnpm dist:desktop:win:x64 }; if ($?) { Start-Process (Get-ChildItem release\*.exe | Sort-Object LastWriteTime | Select-Object -Last 1).FullName }
+```
+
 <p align="center">The open-source control plane for coding agents.</p>
 
 <p align="center">
