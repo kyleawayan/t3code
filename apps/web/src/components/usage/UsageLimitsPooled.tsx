@@ -31,6 +31,7 @@ import {
 import { ensureLocalApi } from "../../localApi";
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { cn } from "../../lib/utils";
+import { SquishText } from "../SquishText";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { providerClients } from "../settings/providerDriverMeta";
@@ -561,10 +562,10 @@ function PoolWindowCard({
     const nextReset = nextRefill ?? pool.resets[0];
     return (
       <div className="grid gap-1.5 rounded-lg border border-border/60 p-2">
-        <div className="flex items-center justify-between gap-1">
-          <span className="min-w-0 truncate text-xs font-medium text-foreground">
+        <div className="flex items-center justify-between gap-2">
+          <SquishText ellipsisScale={0.8} className="flex-1 text-xs font-medium text-foreground">
             {label ?? pool.label}
-          </span>
+          </SquishText>
           <span className="flex shrink-0 items-baseline gap-1 text-xs">
             <span className="font-semibold text-foreground tabular-nums">
               {pool.remainingPercent}%

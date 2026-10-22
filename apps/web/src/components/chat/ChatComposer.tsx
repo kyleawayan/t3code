@@ -214,6 +214,7 @@ import {
   getRestingComposerImagePreviewCounts,
   resolveRestingComposerControlsLayout,
   shouldAnimateComposerRestingTransition,
+  resolveRestingComposerControlsNaturalWidth,
   shouldUseCompactComposerPrimaryActions,
   shouldUseCompactComposerFooter,
   shouldUseRestingComposerLayout,
@@ -1147,7 +1148,27 @@ const extendReplacementRangeForTrailingSpace = (
   return text[rangeEnd] === " " ? rangeEnd + 1 : rangeEnd;
 };
 
-function useRestingComposerControlsLayout(host: HTMLDivElement | null, useControlsAsHost = false) {
+/**
+ * `actions` sits beside the controls in one footer row. When the controls cannot fit there even
+ * with every label at its shortest, the attach button gives up its room. A hidden attach button
+ * keeps its size out of flow and is counted either way, so the footer does not bounce.
+ */
+function actionsWidthWithAttach(actions: HTMLElement): number {
+  const width = actions.getBoundingClientRect().width;
+  const attach = actions.querySelector<HTMLElement>("[data-composer-attach-action]");
+  if (!attach || getComputedStyle(attach).position !== "absolute") return width;
+  return (
+    width +
+    attach.getBoundingClientRect().width +
+    (Number.parseFloat(getComputedStyle(actions).columnGap) || 0)
+  );
+}
+
+function useRestingComposerControlsLayout(
+  host: HTMLDivElement | null,
+  useControlsAsHost = false,
+  actions: HTMLElement | null = null,
+) {
   const [controls, setControls] = useState<HTMLDivElement | null>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
   const attachControls = (element: HTMLDivElement | null) => {
@@ -1159,6 +1180,7 @@ function useRestingComposerControlsLayout(host: HTMLDivElement | null, useContro
     iconOnlyCount?: number;
     visible: boolean;
   }>({ hiddenCount: 0, visible: true });
+  const [actionsCrowded, setActionsCrowded] = useState(false);
 
   const measure = () => {
     const currentHost = useControlsAsHost ? controls : host;
@@ -1166,6 +1188,17 @@ function useRestingComposerControlsLayout(host: HTMLDivElement | null, useContro
 
     const measurement = measureRestingComposerControls(controls);
     if (!measurement) return;
+    const row = controls.parentElement;
+    if (actions && row) {
+      const rowStyle = getComputedStyle(row);
+      const besideActions =
+        row.clientWidth -
+        (Number.parseFloat(rowStyle.paddingInlineStart) || 0) -
+        (Number.parseFloat(rowStyle.paddingInlineEnd) || 0) -
+        actionsWidthWithAttach(actions) -
+        (Number.parseFloat(rowStyle.columnGap) || 0);
+      setActionsCrowded(resolveRestingComposerControlsNaturalWidth(measurement) > besideActions);
+    }
     const style = getComputedStyle(currentHost);
     const hostWidth =
       currentHost.clientWidth -
@@ -1196,6 +1229,7 @@ function useRestingComposerControlsLayout(host: HTMLDivElement | null, useContro
         [
           currentHost,
           controls,
+          ...(actions ? [actions] : []),
           ...controls.querySelectorAll<HTMLElement>(
             "[data-resting-block], [data-composer-control-label], [data-chat-provider-model-picker-label]",
           ),
@@ -1213,11 +1247,12 @@ function useRestingComposerControlsLayout(host: HTMLDivElement | null, useContro
       mutations.disconnect();
       document.fonts.removeEventListener("loadingdone", measure);
     };
-  }, [host, controls, useControlsAsHost, measure]);
+  }, [host, controls, useControlsAsHost, actions, measure]);
 
   return {
     controlsRef,
     attachControls,
+    actionsCrowded: actions !== null && actionsCrowded,
     hiddenBlockCount: layout.hiddenCount,
     iconOnlyBlockCount: layout.iconOnlyCount ?? 0,
     controlsVisible: layout.visible,
@@ -2929,11 +2964,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     iconOnlyBlockCount: restingControlsIconOnlyBlockCount,
     controlsVisible: restingControlsVisible,
   } = useRestingComposerControlsLayout(restingControlsHost ?? inlineRestingControlsHost);
+  const [restingActionsElement, setRestingActionsElement] = useState<HTMLDivElement | null>(null);
   const {
     attachControls: attachExpandedComposerControls,
     hiddenBlockCount: expandedControlsHiddenBlockCount,
     iconOnlyBlockCount: expandedControlsIconOnlyBlockCount,
-  } = useRestingComposerControlsLayout(null, true);
+    actionsCrowded: expandedActionsCrowded,
+  } = useRestingComposerControlsLayout(null, true, restingActionsElement);
   const pendingPrimaryAction = activePendingProgress
     ? {
         questionIndex: activePendingProgress.questionIndex,
@@ -4874,6 +4911,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     ? standaloneComposerImages.filter((image) => pendingSnapShotIdSet.has(image.id))
     : standaloneComposerImages;
   const composerControlsCollapsed = isComposerResting || isComposerCollapsedMobile;
+  // Pasting and dropping still attach files, so the model and effort keep the room.
+  const attachActionHidden = expandedActionsCrowded && !isComposerResting;
   const showInlineRestingControls = composerControlsCollapsed && restingControlsHost === null;
   const composerControlsVisibleInStrip =
     composerControlsCollapsed && restingControlsHost !== null && restingControlsVisible;
@@ -4887,7 +4926,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   useLayoutEffect(() => {
     onRestingChange(isComposerResting);
   }, [isComposerResting, onRestingChange]);
-  const [restingActionsElement, setRestingActionsElement] = useState<HTMLDivElement | null>(null);
   const [restingActionsWidth, setRestingActionsWidth] = useState<number | null>(null);
   useLayoutEffect(() => {
     if (!isComposerResting || !restingActionsElement) return;
@@ -5138,6 +5176,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ),
     },
   ];
+  const modeTriggerIcon =
+    planModeUiEnabled && interactionMode === "plan"
+      ? PencilRulerIcon
+      : (
+          compatibleRuntimeModeOptions.find((option) => option.mode === compatibleRuntimeMode) ??
+          supervisedRuntimeModeOption
+        ).icon;
   const hiddenRestingBlockIds = restingBlockDefs
     .slice(restingBlockDefs.length - restingHiddenBlockCount)
     .map((def) => def.id);
@@ -5270,10 +5315,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               aria-hidden={hidden || undefined}
               inert={hidden || undefined}
               className={cn(
-                "flex w-max min-w-max shrink-0 items-center gap-1",
+                // Blocks shrink only as far as their content allows, which lets a squishing
+                // label (the effort) shorten before the block goes icon-only.
+                "flex min-w-min shrink items-center gap-1",
                 hidden && "pointer-events-none invisible absolute",
                 index >= restingBlockDefs.length - iconOnlyBlockCount &&
-                  "[&_[data-composer-control-label]]:pointer-events-none [&_[data-composer-control-label]]:invisible [&_[data-composer-control-label]]:absolute [&_[data-composer-control-label]]:w-max [&_[data-composer-control-label]]:max-w-none [&_[data-composer-control-compact-icon]]:[visibility:inherit] [&_[data-composer-control-compact-icon]]:relative",
+                  "[&_[data-composer-control-label]:not([data-squish-text])]:pointer-events-none [&_[data-composer-control-label]:not([data-squish-text])]:invisible [&_[data-composer-control-label]:not([data-squish-text])]:absolute [&_[data-composer-control-label]:not([data-squish-text])]:w-max [&_[data-composer-control-label]:not([data-squish-text])]:max-w-none [&_[data-composer-control-compact-icon]]:[visibility:inherit] [&_[data-composer-control-compact-icon]]:relative",
               )}
             >
               {def.content}
@@ -5299,6 +5346,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             traitsMenuContent={
               hiddenRestingBlockIds.includes("traits") ? providerTraitsMenuContent : undefined
             }
+            triggerIcon={hiddenRestingBlockIds.includes("traits") ? undefined : modeTriggerIcon}
             onToggleInteractionMode={toggleInteractionMode}
             onRuntimeModeChange={handleRuntimeModeChange}
           />
@@ -7303,23 +7351,33 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                           });
                         }}
                       />
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              onPointerDown={(event) => event.preventDefault()}
-                              onClick={() => attachmentInputRef.current?.click()}
-                              aria-label="Attach files"
-                            />
-                          }
-                        >
-                          <PaperclipIcon />
-                        </TooltipTrigger>
-                        <TooltipPopup>Attach files</TooltipPopup>
-                      </Tooltip>
+                      <span
+                        data-composer-attach-action=""
+                        aria-hidden={attachActionHidden || undefined}
+                        inert={attachActionHidden || undefined}
+                        className={cn(
+                          "flex",
+                          attachActionHidden && "pointer-events-none invisible absolute",
+                        )}
+                      >
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                onPointerDown={(event) => event.preventDefault()}
+                                onClick={() => attachmentInputRef.current?.click()}
+                                aria-label="Attach files"
+                              />
+                            }
+                          >
+                            <PaperclipIcon />
+                          </TooltipTrigger>
+                          <TooltipPopup>Attach files</TooltipPopup>
+                        </Tooltip>
+                      </span>
                     </>
                   ) : null}
                   <ComposerFooterPrimaryActions
