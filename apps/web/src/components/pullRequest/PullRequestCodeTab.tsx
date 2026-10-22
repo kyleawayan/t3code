@@ -1476,7 +1476,6 @@ function PullRequestCodeTab({
           <FileTreePane
             storageKey={PULL_REQUEST_FILE_TREE_WIDTH_STORAGE_KEY}
             defaultWidth={320}
-            minWidth={192}
             className="border-l border-border/60"
           >
             <DiffFileTree

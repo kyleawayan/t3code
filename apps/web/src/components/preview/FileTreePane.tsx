@@ -7,11 +7,12 @@ import { RightPanelResizeHandle } from "./RightPanelResizeHandle";
 
 /** Room kept for the diff or preview column beside the tree. */
 const SIBLING_COLUMN_MIN_WIDTH = 240;
+/** Above zero so a drag can never leave the tree open but invisible. */
+const MIN_WIDTH = 48;
 
 interface Props {
   storageKey: string;
   defaultWidth: number;
-  minWidth: number;
   /** Off leaves sizing to `className`, e.g. a tree that fills its row. */
   resizable?: boolean;
   className?: string;
@@ -21,7 +22,6 @@ interface Props {
 export function FileTreePane({
   storageKey,
   defaultWidth,
-  minWidth,
   resizable = true,
   className,
   children,
@@ -33,15 +33,15 @@ export function FileTreePane({
     const row = resizable ? hostRef.current?.parentElement : null;
     if (!row) return;
     const measure = () => {
-      setMaxWidth(Math.max(minWidth, row.clientWidth - SIBLING_COLUMN_MIN_WIDTH));
+      setMaxWidth(Math.max(MIN_WIDTH, row.clientWidth - SIBLING_COLUMN_MIN_WIDTH));
     };
     measure();
     return observeResize(row, measure);
-  }, [minWidth, resizable]);
+  }, [resizable]);
   const { width, handlers } = useResizableWidth({
     storageKey,
     defaultWidth,
-    minWidth,
+    minWidth: MIN_WIDTH,
     maxWidth,
     edge: "left",
   });
@@ -61,7 +61,8 @@ export function FileTreePane({
     >
       {/* A fixed slot, so toggling `resizable` keeps the tree mounted with its expanded folders. */}
       {resizable ? <RightPanelResizeHandle handlers={handlers} /> : null}
-      {children}
+      {/* Clips here rather than on the aside, which would cut off the handle's outer half. */}
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden *:min-w-0">{children}</div>
     </aside>
   );
 }
