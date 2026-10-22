@@ -414,6 +414,55 @@ describe("Default branch prompt", () => {
   });
 });
 
+describe("Git actions handed to the agent", () => {
+  function agentControl(prompts: string[]) {
+    return (
+      <MemoGitActionsControl
+        gitCwd="/repo"
+        activeThreadRef={{
+          environmentId: EnvironmentId.make("environment"),
+          threadId: ThreadId.make("thread"),
+        }}
+        onRequestAgentAction={(prompt) => prompts.push(prompt)}
+      />
+    );
+  }
+
+  it("asks the agent after the default-branch confirmation instead of running Git", async () => {
+    setup();
+    state.isDefaultRef = true;
+    state.scopes.add(AuthOrchestrationOperateScope);
+    const prompts: string[] = [];
+    await using _screen = await render(agentControl(prompts));
+    await userEvent.click(button(/^Commit & push/));
+    await expect
+      .element(page.getByRole("dialog", { name: "Commit & push to default ref?" }))
+      .toBeVisible();
+    expect(prompts).toEqual([]);
+
+    await userEvent.click(button("Check out feature branch & continue"));
+
+    await vi.waitFor(() =>
+      expect(prompts).toEqual(["Create and check out a new feature branch. Commit and push."]),
+    );
+    expect(commits()).toBe(0);
+  });
+
+  it("sends a menu commit to the agent without opening the commit dialog", async () => {
+    setup();
+    const prompts: string[] = [];
+    await using _screen = await render(agentControl(prompts));
+    await userEvent.click(button("Git action options"));
+    await userEvent.click(page.getByRole("menuitem", { name: "Commit" }));
+
+    await vi.waitFor(() => expect(prompts).toEqual(["Commit."]));
+    await expect
+      .element(page.getByRole("dialog", { name: "Commit changes" }))
+      .not.toBeInTheDocument();
+    expect(commits()).toBe(0);
+  });
+});
+
 describe("Git action targets across thread navigation", () => {
   const quickAction = () => button(/^Commit, push & /);
 

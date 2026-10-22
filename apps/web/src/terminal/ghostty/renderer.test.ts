@@ -39,7 +39,7 @@ describe("terminalGridSize", () => {
 });
 
 describe("measureGhosttyCell", () => {
-  it("uses descender-aware metrics and the mobile terminal line-height", () => {
+  it("uses descender-aware metrics and a 1.2 line-height", () => {
     const measureText = (text: string) =>
       text === "M"
         ? { width: 7.2, actualBoundingBoxAscent: 9, actualBoundingBoxDescent: 0 }
@@ -51,8 +51,8 @@ describe("measureGhosttyCell", () => {
 
     expect(measureGhosttyCell(context, 12, "monospace")).toEqual({
       width: 7.2,
-      height: 16,
-      baseline: 11,
+      height: 14,
+      baseline: 10,
     });
   });
 });

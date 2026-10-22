@@ -177,7 +177,7 @@ import {
 import { AsyncResult } from "effect/reactivity";
 import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";
-import { useDiffPanelStore } from "../diffPanelStore";
+import { selectThreadDiffPanelSelection, useDiffPanelStore } from "../diffPanelStore";
 import { useActiveThreadRef } from "../hooks/useActiveThreadRef";
 import {
   type ComposerSubmissionIntent,
@@ -251,6 +251,8 @@ import { resolveDiscoveredServerUrl } from "../browser/browserTargetResolver";
 import { previewRuntimeTabId } from "../browser/previewRuntimeTabId";
 import { addBrowserSurface } from "./preview/addBrowserSurface";
 import { ThreadPreviewMiniPlayer } from "./preview/ThreadPreviewMiniPlayer";
+import { turnMascotForDriver } from "./chat/TurnMascot";
+import { ChatHeaderQuickActions } from "./chat/ChatHeaderQuickActions";
 import { usePreviewSession } from "./preview/usePreviewSession";
 import { subscribePreviewAction } from "./preview/previewActionBus";
 import { getConfiguredPreviewUrls } from "./preview/previewEmptyStateLogic";
@@ -284,7 +286,7 @@ import {
   WifiOffIcon,
 } from "lucide-react";
 import { cn, randomUUID } from "~/lib/utils";
-import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
+import { TITLEBAR_CONTROLS_INSET_CLASS } from "~/workspaceTitlebar";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { projectScriptIdFromCommand } from "~/projectScripts";
 import { newDraftId, newMessageId, newThreadId } from "~/lib/utils";
@@ -1665,9 +1667,9 @@ export default function ChatView(props: ChatViewProps) {
     activeThreadRef?.environmentId ?? null,
   );
   const browserAvailable = isPreviewSupportedInRuntime() || activeEnvironmentServerBrowser;
+  // One panel width for every thread, so switching threads keeps the layout.
   const previewPanelInlineSize = usePreviewPanelInlineSize(undefined, {
     container: workspaceLayoutElement,
-    widthStorageKey: `t3code:preview-panel-width:${activeThreadKey}`,
   });
   const activeThreadShell = serverThread;
   const timelineThreadError =
@@ -3514,6 +3516,18 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
   const sendAppMessageStable = useStableCallback(sendAppMessage);
+  // Header Git actions go to the agent as a queued message, so they wait behind a
+  // running turn and leave the composer draft alone.
+  const requestGitAgentAction = (prompt: string) => {
+    void sendAppMessage(prompt).catch((error: unknown) => {
+      toastManager.add({
+        type: "error",
+        title: "Could not ask the agent",
+        description: error instanceof Error ? error.message : "An error occurred.",
+      });
+    });
+  };
+  const requestGitAgentActionStable = useStableCallback(requestGitAgentAction);
   const queuedRunsControlRef = useRef<QueuedRunsControlHandle>(null);
   const addTerminalContextToDraft = (selection: TerminalContextSelection) => {
     composerRef.current?.addTerminalContext(selection);
@@ -3783,6 +3797,24 @@ export default function ChatView(props: ChatViewProps) {
     onDiffPanelOpen?.();
   };
   const addDiffSurfaceStable = useStableCallback(addDiffSurface);
+  const onOpenUncommittedDiff = () => {
+    if (!activeThreadRef || !isServerThread || !isGitRepo) return;
+    const rightPanels = useRightPanelStore.getState();
+    const diffOpen = selectActiveRightPanel(rightPanels.byThreadKey, activeThreadRef) === "diff";
+    const diffPanel = useDiffPanelStore.getState();
+    if (
+      diffOpen &&
+      selectThreadDiffPanelSelection(diffPanel.byThreadKey, activeThreadRef).kind === "unstaged"
+    ) {
+      rightPanels.toggle(activeThreadRef, "diff");
+      return;
+    }
+    explicitDiffOpenRef.current = diffOpen ? null : activeThreadRef;
+    diffPanel.selectGitScope(activeThreadRef, "unstaged");
+    rightPanels.open(activeThreadRef, "diff");
+    onDiffPanelOpen?.();
+  };
+  const onOpenUncommittedDiffStable = useStableCallback(onOpenUncommittedDiff);
   const openChangesFromThreadPanel = () => {
     addDiffSurface();
   };
@@ -5856,6 +5888,7 @@ export default function ChatView(props: ChatViewProps) {
         createNewTerminalStable();
       },
       "diff.toggle": () => onToggleDiffStable(),
+      "diff.openUncommitted": () => onOpenUncommittedDiffStable(),
       "modelPicker.toggle": ({ event }) => {
         if (!event.repeat) composerRef.current?.toggleModelPicker();
       },
@@ -8023,6 +8056,14 @@ export default function ChatView(props: ChatViewProps) {
       }}
     />
   ) : null;
+  const openInShortcutEnabled = !(
+    rightPanelOpen &&
+    renderedRightPanelSurface?.kind === "file" &&
+    renderedRightPanelSurface.attachment === undefined
+  );
+  // The details card holds the same controls, so the header carries them only while the card is
+  // not open beside the chat, and only one of the two owns the Open in shortcut.
+  const showHeaderQuickActions = !(threadPanelPresentation === "inline" && threadPanelOpen);
   const panelToggleControlProps = {
     terminalAvailable: activeProject !== null,
     terminalOpen: terminalUiState.terminalOpen,
@@ -8123,7 +8164,7 @@ export default function ChatView(props: ChatViewProps) {
                     "wco:pr-(--workspace-native-controls-inset)",
                 )
               : "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center pl-(--workspace-gutter-start) pr-(--workspace-gutter-end)",
-            COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
+            TITLEBAR_CONTROLS_INSET_CLASS,
           )}
         >
           {isElectron && rightPanelControlsAtRoot ? (
@@ -8147,6 +8188,32 @@ export default function ChatView(props: ChatViewProps) {
             {...(activeDraftLogicalProjectKey
               ? { onOpenProjectSettings: handleOpenDraftProjectSettingsStable }
               : {})}
+            actions={
+              showHeaderQuickActions ? (
+                <ChatHeaderQuickActions
+                  environmentId={activeThread.environmentId}
+                  threadId={activeThread.id}
+                  {...(draftId ? { draftId } : {})}
+                  {...(isServerThread
+                    ? { onRequestGitAgentAction: requestGitAgentActionStable }
+                    : {})}
+                  activeProjectName={activeProject?.title}
+                  activeProjectScripts={activeProject ? activeProjectScripts : undefined}
+                  preferredScriptId={
+                    activeProject ? (lastInvokedScriptByProjectId[activeProject.id] ?? null) : null
+                  }
+                  keybindings={keybindings}
+                  availableEditors={availableEditors}
+                  showOpenInPicker={showOpenInPicker}
+                  openInShortcutEnabled={openInShortcutEnabled}
+                  gitCwd={gitCwd}
+                  onRunProjectScript={runProjectScriptStable}
+                  onAddProjectScript={saveProjectScriptStable}
+                  onUpdateProjectScript={updateProjectScriptStable}
+                  onDeleteProjectScript={deleteProjectScriptStable}
+                />
+              ) : null
+            }
           />
         </header>
 
@@ -8221,6 +8288,7 @@ export default function ChatView(props: ChatViewProps) {
                   !paintOnlyDisplayedTimeline && (isWorking || !latestRunSettled)
                 }
                 isCompacting={!paintOnlyDisplayedTimeline && isCompacting}
+                mascot={turnMascotForDriver(selectedProvider)}
                 awaitingUser={
                   !paintOnlyDisplayedTimeline &&
                   (activePendingApproval !== null ||
@@ -8370,7 +8438,7 @@ export default function ChatView(props: ChatViewProps) {
               <div ref={draftHeroTransitionGroupRef} className="chat-composer-lane w-full">
                 <div
                   data-chat-composer-stack="true"
-                  className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-(--chat-content-max-width)"
+                  className="group/composer-stack pointer-events-auto relative z-10 me-auto w-full max-w-(--chat-content-max-width)"
                 >
                   {isDraftHeroState ? (
                     <div className="absolute inset-x-0 bottom-full">
@@ -8712,6 +8780,7 @@ export default function ChatView(props: ChatViewProps) {
               worktreePath={activeThread.worktreePath}
               isServerThread={isServerThread}
               {...(draftId ? { draftId } : {})}
+              {...(isServerThread ? { onRequestGitAgentAction: requestGitAgentActionStable } : {})}
               activeProjectName={activeProject?.title}
               activeProjectScripts={activeProject ? activeProjectScripts : undefined}
               preferredScriptId={
@@ -8720,13 +8789,7 @@ export default function ChatView(props: ChatViewProps) {
               keybindings={keybindings}
               availableEditors={availableEditors}
               showOpenInPicker={showOpenInPicker}
-              openInShortcutEnabled={
-                !(
-                  rightPanelOpen &&
-                  renderedRightPanelSurface?.kind === "file" &&
-                  renderedRightPanelSurface.attachment === undefined
-                )
-              }
+              openInShortcutEnabled={openInShortcutEnabled && !showHeaderQuickActions}
               gitCwd={gitCwd}
               isGitRepo={isGitRepo}
               envLocked={envLocked}

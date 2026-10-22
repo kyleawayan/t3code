@@ -78,6 +78,7 @@ import { AudioPreview } from "./AudioPreview";
 import { BrowserDocumentFrame, isPdfPreviewFile } from "./BrowserDocumentFrame";
 import { DelimitedTablePreview } from "./DelimitedTablePreview";
 import FileBrowserPanel from "./FileBrowserPanel";
+import { FileTreePane } from "../preview/FileTreePane";
 import { FileBreadcrumbs } from "./FileBreadcrumbs";
 import { breadcrumbPathOf, retainedBreadcrumbTrail, trailChildOf } from "./filePath";
 import { FileMarkdownPreview } from "./FileMarkdownPreview";
@@ -143,6 +144,7 @@ interface FilePreviewPanelProps {
 }
 
 const FILE_EXPLORER_STORAGE_KEY = "t3code.fileExplorerOpen";
+const FILE_EXPLORER_WIDTH_STORAGE_KEY = "t3code.fileExplorerWidth";
 const RENDER_MARKDOWN_STORAGE_KEY = "t3code.renderMarkdown";
 const RENDER_BROWSER_FILE_STORAGE_KEY = "t3code.renderBrowserFile";
 const RENDER_TABLE_STORAGE_KEY = "t3code.renderTable";
@@ -1445,12 +1447,13 @@ export default function FilePreviewPanel({
           ) : null}
         </div>
         {showExplorer ? (
-          <aside
+          <FileTreePane
+            storageKey={FILE_EXPLORER_WIDTH_STORAGE_KEY}
+            defaultWidth={352}
+            resizable={Boolean(previewPath)}
             className={cn(
-              "flex min-h-0 shrink-0 bg-background",
-              previewPath
-                ? "w-[min(22rem,46%)] min-w-64 border-l border-border/60"
-                : "min-w-0 flex-1",
+              "bg-background",
+              previewPath ? "border-l border-border/60" : "min-w-0 flex-1",
             )}
           >
             <FileBrowserPanel
@@ -1471,7 +1474,7 @@ export default function FilePreviewPanel({
                 ? { onRefreshSelectedFile: file.refresh }
                 : {})}
             />
-          </aside>
+          </FileTreePane>
         ) : null}
       </div>
     </div>

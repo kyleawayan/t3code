@@ -122,6 +122,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --workspace-controls-top: 0px;
   --workspace-controls-left: calc(env(safe-area-inset-left) + 0.75rem);
   --workspace-controls-right: calc(env(safe-area-inset-right) + 0.75rem);
+  --workspace-window-edge-right: calc(env(safe-area-inset-right) + 0.75rem);
   --workspace-native-controls-inset: 0px;
   --workspace-titlebar-control-size: 1.75rem;
   --workspace-titlebar-control-gap: 0.75rem;
@@ -157,9 +158,27 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --workspace-controls-right: calc(
     100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px) + 0.75rem
   );
+  --workspace-window-edge-right: calc(
+    100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px) + 0.75rem
+  );
   --workspace-native-controls-inset: calc(
     100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px) + 0.75rem
   );
+}
+
+/* The main sidebar docks on the right, and the titlebar control cluster is
+   viewport-anchored so it holds still while the header shrinks behind the right
+   panel. Push that anchor inboard of the open sidebar, otherwise the controls
+   land on top of it and the space the header reserves for them reads as a gap. */
+[data-slot="sidebar-wrapper"]:not([data-sidebar-mobile])[data-sidebar-state="expanded"] {
+  --workspace-controls-right: calc(var(--workspace-window-edge-right) + var(--sidebar-width));
+}
+
+/* In a narrow window the sidebar is an overlay sheet on the same side as that cluster,
+   which would sit on top of the sheet's header. */
+[data-slot="sidebar-wrapper"][data-sidebar-mobile][data-sidebar-state="expanded"]
+  [data-workspace-titlebar-controls] {
+  visibility: hidden;
 }
 
 /* The font tokens are declared outside the inline theme so utilities reference
@@ -927,8 +946,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     border-bottom-color: transparent;
   }
 
+  /* The chat column hugs the start edge; the main sidebar docks on the right. */
   .chat-content-lane {
-    margin-inline: auto;
+    margin-inline-end: auto;
     width: 100%;
     min-width: 0;
     max-width: var(--chat-content-max-width);
@@ -1926,9 +1946,76 @@ code {
   list-style-type: none;
 }
 
+/* Drawn like the app's Checkbox because chat renders tasks disabled, and the browser's disabled
+   checkbox washes out the checked state, which is the clearest sign a task is done. */
 .chat-markdown li.task-list-item input[type="checkbox"] {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  width: 1em;
+  height: 1em;
   margin: 0 0.35em 0.15em calc(-1 * var(--list-gutter, 1.25rem));
+  border: 1px solid color-mix(in srgb, currentColor 55%, transparent);
+  border-radius: 0.25rem;
   vertical-align: middle;
+}
+
+.chat-markdown li.task-list-item input[type="checkbox"]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.chat-markdown li.task-list-item input[type="checkbox"]:checked::after {
+  content: "";
+  width: 0.7em;
+  height: 0.7em;
+  background-color: var(--primary-foreground);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+.chat-markdown li.task-list-item input[type="checkbox"]:enabled {
+  cursor: pointer;
+}
+
+.chat-markdown li.task-list-item input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* A checked task reads as done. Loose lists wrap the checkbox in a paragraph. Text decoration
+   reaches every in-flow descendant, so nested lists become atomic inline boxes, which it skips,
+   and their items keep their own state. The text dims relative to its surroundings so it still
+   stands apart in already-muted blocks and follows the contrast setting; opacity would also
+   fade the checkbox. Done text deliberately falls below 4.5:1: at the 80% that keeps it, done
+   and open text sit under 2:1 apart and read as the same state. */
+.chat-markdown
+  li.task-list-item:is(
+    :has(> input[type="checkbox"]:checked),
+    :has(> p:first-child > input[type="checkbox"]:checked)
+  ) {
+  color: color-mix(in srgb, currentColor 50%, transparent);
+  text-decoration-line: line-through;
+}
+
+/* Inline code dims with its task, and a nested checked task must not dim a second time. */
+.chat-markdown
+  li.task-list-item:is(
+    :has(> input[type="checkbox"]:checked),
+    :has(> p:first-child > input[type="checkbox"]:checked)
+  )
+  :is(li, :not(pre) > code) {
+  color: inherit;
+}
+
+.chat-markdown
+  li.task-list-item:is(
+    :has(> input[type="checkbox"]:checked),
+    :has(> p:first-child > input[type="checkbox"]:checked)
+  )
+  > :is(ul, ol) {
+  display: inline-block;
+  width: 100%;
 }
 
 /* Markdown assumes inline images — GitHub comments lay button images out in a row — and the
@@ -2164,6 +2251,10 @@ code {
   --diff-deletion: var(--destructive);
   --diff-addition-foreground: light-dark(var(--color-emerald-600), var(--color-emerald-400));
   --diff-deletion-foreground: light-dark(var(--color-red-600), var(--color-red-400));
+  /* Changed-word chips in diffs: solid fills whose lightness flips per mode so
+     the word, recolored to the code background, keeps WCAG AAA contrast. */
+  --diff-addition-emphasis: light-dark(#1d652a, #52c062);
+  --diff-deletion-emphasis: light-dark(#9e3235, #ff8787);
 }
 
 /* Chat width setting. Comfortable keeps the default --chat-content-max-width,
@@ -2181,6 +2272,8 @@ code {
   --diff-deletion: light-dark(var(--color-orange-600), var(--color-orange-400));
   --diff-addition-foreground: var(--diff-addition);
   --diff-deletion-foreground: var(--diff-deletion);
+  --diff-addition-emphasis: light-dark(var(--color-blue-800), var(--color-blue-300));
+  --diff-deletion-emphasis: light-dark(var(--color-orange-800), var(--color-orange-300));
   --diffs-addition-color-override: var(--diff-addition);
   --diffs-deletion-color-override: var(--diff-deletion);
   --trees-status-added-override: var(--diff-addition);
@@ -2435,19 +2528,22 @@ code {
     inset-inline-start: var(--chat-lane-inset-start, 0px);
     inset-inline-end: var(--chat-lane-inset-end, 0px);
   }
+  /* The fork keeps the chat gutter at 1.25rem, as before v0.1.1; keep ChatCanvas's width probe in step. */
   @media (min-width: 640px) {
     .chat-composer-lane {
       padding-inline-start: calc(
-        env(safe-area-inset-left) + 3rem + var(--chat-lane-inset-start, 0px)
+        env(safe-area-inset-left) + 1.25rem + var(--chat-lane-inset-start, 0px)
       );
-      padding-inline-end: calc(env(safe-area-inset-right) + 3rem + var(--chat-lane-inset-end, 0px));
+      padding-inline-end: calc(
+        env(safe-area-inset-right) + 1.25rem + var(--chat-lane-inset-end, 0px)
+      );
     }
     [data-chat-canvas] .messages-timeline-scroll {
       padding-inline-start: calc(
-        3rem + var(--chat-lane-inset-start, 0px) - var(--chat-timeline-gutter, 0px)
+        1.25rem + var(--chat-lane-inset-start, 0px) - var(--chat-timeline-gutter, 0px)
       );
       padding-inline-end: calc(
-        3rem + var(--chat-lane-inset-end, 0px) - var(--chat-timeline-gutter, 0px)
+        1.25rem + var(--chat-lane-inset-end, 0px) - var(--chat-timeline-gutter, 0px)
       );
     }
   }

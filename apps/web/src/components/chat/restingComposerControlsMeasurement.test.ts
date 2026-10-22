@@ -7,7 +7,12 @@ import {
 import { measureRestingComposerControls } from "./restingComposerControlsMeasurement";
 
 function measurePicker(input: { clientWidth: number; flexGrow: string; maxWidth?: string }) {
-  const label = { clientWidth: input.clientWidth, scrollWidth: 160 };
+  const label = {
+    clientWidth: input.clientWidth,
+    scrollWidth: 160,
+    matches: () => false,
+    querySelector: () => null,
+  };
   const picker = {
     getBoundingClientRect: () => ({ width: 52 }),
     querySelector: () => label,

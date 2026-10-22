@@ -29,9 +29,17 @@ function startTimer(): void {
   );
 }
 
+// Timers stall while the machine sleeps, so catch up as soon as the window is
+// back instead of showing a stale minute until the next tick.
+function onVisibilityChange(): void {
+  if (document.visibilityState === "visible") tick();
+}
+
 function subscribe(listener: () => void): () => void {
   if (listeners.size === 0) {
     startTimer();
+    window.addEventListener("focus", tick);
+    document.addEventListener("visibilitychange", onVisibilityChange);
   }
   listeners.add(listener);
   return () => {
@@ -40,6 +48,8 @@ function subscribe(listener: () => void): () => void {
       if (timerIsInterval) window.clearInterval(timerId);
       else window.clearTimeout(timerId);
       timerId = null;
+      window.removeEventListener("focus", tick);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     }
   };
 }

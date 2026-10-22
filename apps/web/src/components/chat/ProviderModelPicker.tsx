@@ -16,6 +16,8 @@ import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import {
   ModelEsque,
   getTriggerDisplayModelLabel,
+  getShortTriggerModelLabel,
+  getTightTriggerModelLabel,
   getTriggerDisplayModelName,
 } from "./providerIconUtils";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
@@ -24,6 +26,7 @@ import {
   ComposerControlChevron,
   type ComposerControlSize,
 } from "./ComposerControl";
+import { SQUISH_TEXT_TIGHT_MIN_SCALE, SquishText } from "../SquishText";
 import { useComposerMenuProps } from "./composerEventScope";
 import { shortcutLabelForCommand } from "../../keybindings";
 
@@ -254,12 +257,24 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             <TooltipTrigger
               render={
                 <span
-                  className="min-w-0 flex-1 overflow-hidden truncate"
+                  className="flex min-w-0 flex-1"
                   data-chat-provider-model-picker-label="true"
                 />
               }
             >
-              {props.triggerLabel ?? multipleLabel ?? triggerTitle}
+              <SquishText
+                minScale={SQUISH_TEXT_TIGHT_MIN_SCALE}
+                variants={
+                  props.triggerLabel === undefined && !multipleLabel && activeEntry
+                    ? [
+                        getShortTriggerModelLabel(triggerTitle, activeEntry.driverKind),
+                        getTightTriggerModelLabel(triggerTitle, activeEntry.driverKind),
+                      ]
+                    : undefined
+                }
+              >
+                {props.triggerLabel ?? multipleLabel ?? triggerTitle}
+              </SquishText>
             </TooltipTrigger>
             <TooltipPopup side="top">{triggerTooltipContent}</TooltipPopup>
           </Tooltip>

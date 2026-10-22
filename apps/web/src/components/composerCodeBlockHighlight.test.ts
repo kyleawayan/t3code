@@ -17,7 +17,7 @@ import {
 
 vi.mock("~/lib/syntaxHighlighting", () => ({ getSyntaxHighlighterPromise: vi.fn() }));
 
-const THEME = "pierre-dark" as DiffThemeName;
+const THEME = "xcode-hc-dark" as DiffThemeName;
 
 function fakeHighlighter(colorFor: (content: string) => string | undefined) {
   return {
@@ -266,7 +266,7 @@ describe("highlighting edited fences", () => {
     const fence = await mountFence(`x ${"y".repeat(1_999)}`, () => theme);
     await fence.edit((tr) => tr.insertText("x ", 1));
 
-    theme = "pierre-light";
+    theme = "xcode-hc-light";
     await fence.edit((tr) => tr.setMeta("theme", true));
 
     expect(fence.tokenize).toHaveBeenCalledTimes(2);

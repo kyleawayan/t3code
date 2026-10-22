@@ -1,3 +1,4 @@
+import "../../lib/diffRendering";
 import { getSharedHighlighter } from "@pierre/diffs";
 import { toHtml } from "hast-util-to-html";
 import { expect, it } from "vite-plus/test";
@@ -23,12 +24,12 @@ function normalizedHtml(html: string) {
 it("streams Shiki HTML into the DOM, keeping finished lines mounted", async () => {
   const highlighter = await getSharedHighlighter({
     langs: ["typescript"],
-    themes: ["pierre-dark", "pierre-light"],
+    themes: ["xcode-hc-dark", "xcode-hc-light"],
     preferredHighlighter: "shiki-wasm",
   });
   const code =
     'const html = "<img src=x onerror=alert(1)>";\n\n/* multi\nline */\n\tconst x = 1;\n';
-  for (const theme of ["pierre-dark", "pierre-light"] as const) {
+  for (const theme of ["xcode-hc-dark", "xcode-hc-light"] as const) {
     const highlight = createIncrementalHighlightedDocument(highlighter, "typescript", theme);
     await using screen = await renderUi(null);
     const { container } = screen;
