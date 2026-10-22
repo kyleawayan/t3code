@@ -1,4 +1,5 @@
 import type { RestingComposerControlsMeasurement } from "../composerFooterLayout";
+import { measureSquishTextMinimumWidth } from "../SquishText";
 
 function elementOuterWidth(element: HTMLElement): number {
   const width = element.getBoundingClientRect().width;
@@ -25,17 +26,23 @@ function providerModelPickerNaturalWidth(picker: HTMLElement): number {
   const style = getComputedStyle(picker);
   const label = picker.querySelector<HTMLElement>('[data-chat-provider-model-picker-label="true"]');
   const labelIsCollapsed = label?.clientWidth === 0 && getComputedStyle(label).flexGrow === "0";
+  // A squishing model label fits itself into whatever room is left, so the picker counts only
+  // its shortest form at the minimum scale. The other controls keep their room first, and the
+  // model name gives way to them.
+  const squishMinimum = label ? measureSquishTextMinimumWidth(label) : null;
   // A label with its own max width, such as a long model name, never grows past it.
   const labelMaxWidth = label ? Number.parseFloat(getComputedStyle(label).maxWidth) : Number.NaN;
   const hiddenLabelWidth =
     label && !labelIsCollapsed
-      ? Math.max(
-          0,
-          Math.min(
-            label.scrollWidth,
-            Number.isFinite(labelMaxWidth) ? labelMaxWidth : Number.POSITIVE_INFINITY,
-          ) - label.clientWidth,
-        )
+      ? squishMinimum === null
+        ? Math.max(
+            0,
+            Math.min(
+              label.scrollWidth,
+              Number.isFinite(labelMaxWidth) ? labelMaxWidth : Number.POSITIVE_INFINITY,
+            ) - label.clientWidth,
+          )
+        : squishMinimum - label.clientWidth
       : 0;
   const maxWidth = Number.parseFloat(style.maxWidth);
   const naturalWidth = Math.min(
@@ -59,8 +66,15 @@ function controlBlockWidths(block: HTMLElement): { natural: number; iconOnly: nu
     const inFlow = labelStyle.position !== "absolute";
     // Phone sr-only clipping survives compact styles overriding the label width.
     if (!inFlow && (!compact || labelStyle.clip !== "auto")) continue;
-    const labelWidth = label.scrollWidth;
     const renderedWidth = inFlow ? label.getBoundingClientRect().width : 0;
+    const squishMinimum = measureSquishTextMinimumWidth(label);
+    if (squishMinimum !== null) {
+      // A squishing label (the effort) shortens itself and stays visible when its block goes
+      // icon-only, so it needs only its shortest form, shown or hidden, and saves nothing there.
+      natural += squishMinimum - renderedWidth;
+      continue;
+    }
+    const labelWidth = label.scrollWidth;
     const gap = Number.parseFloat(getComputedStyle(label.parentElement!).columnGap) || 0;
     natural += labelWidth - renderedWidth + (inFlow ? 0 : gap);
     iconOnly -= renderedWidth + (inFlow ? gap : 0);
