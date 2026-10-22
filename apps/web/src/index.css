@@ -2068,14 +2068,27 @@ code {
 
 /* A checked task reads as done. Loose lists wrap the checkbox in a paragraph. Text decoration
    reaches every in-flow descendant, so nested lists become atomic inline boxes, which it skips,
-   and their items keep their own state. */
+   and their items keep their own state. The text dims relative to its surroundings so it still
+   stands apart in already-muted blocks and follows the contrast setting; opacity would also
+   fade the checkbox. Message text already carries alpha; below 80% light mode drops under
+   4.5:1. */
 .chat-markdown
   li.task-list-item:is(
     :has(> input[type="checkbox"]:checked),
     :has(> p:first-child > input[type="checkbox"]:checked)
   ) {
+  color: color-mix(in srgb, currentColor 80%, transparent);
   text-decoration-line: line-through;
-  text-decoration-color: color-mix(in srgb, currentColor 55%, transparent);
+}
+
+/* Inline code dims with its task, and a nested checked task must not dim a second time. */
+.chat-markdown
+  li.task-list-item:is(
+    :has(> input[type="checkbox"]:checked),
+    :has(> p:first-child > input[type="checkbox"]:checked)
+  )
+  :is(li, :not(pre) > code) {
+  color: inherit;
 }
 
 .chat-markdown
