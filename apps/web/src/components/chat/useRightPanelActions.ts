@@ -11,7 +11,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { useDiffPanelStore } from "../../diffPanelStore";
+import { selectThreadDiffPanelSelection, useDiffPanelStore } from "../../diffPanelStore";
 import { type ThreadPanelPresentation } from "../../rightPanelLayout";
 import {
   selectActiveRightPanel,
@@ -132,6 +132,23 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     onDiffPanelOpen?.();
   };
   const addDiffSurfaceStable = useStableCallback(addDiffSurface);
+  const onOpenUncommittedDiff = () => {
+    if (!activeThreadRef || !isServerThread || !isGitRepo) return;
+    const rightPanels = useRightPanelStore.getState();
+    const diffOpen = selectActiveRightPanel(rightPanels.byThreadKey, activeThreadRef) === "diff";
+    const diffPanel = useDiffPanelStore.getState();
+    if (
+      diffOpen &&
+      selectThreadDiffPanelSelection(diffPanel.byThreadKey, activeThreadRef).kind === "unstaged"
+    ) {
+      rightPanels.toggle(activeThreadRef, "diff");
+      return;
+    }
+    explicitDiffOpenRef.current = diffOpen ? null : activeThreadRef;
+    diffPanel.selectGitScope(activeThreadRef, "unstaged");
+    rightPanels.open(activeThreadRef, "diff");
+    onDiffPanelOpen?.();
+  };
   const openChangesFromThreadPanel = () => {
     addDiffSurface();
   };
@@ -308,6 +325,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
       if (!event.repeat) closeRightPanelSurface(activeRightPanelSurface);
     },
     "diff.toggle": () => onToggleDiff(),
+    "diff.openUncommitted": () => onOpenUncommittedDiff(),
   } satisfies ChatShortcutCommands;
 
   return {
