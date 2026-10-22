@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { cn } from "../lib/utils";
 import { THREAD_DETAILS_PANEL_LABEL_CLASS } from "./chat/threadDetailsPanelStyles";
+import { SquishText } from "./SquishText";
 
 export function ComposerContextLabel({
   children,
@@ -29,7 +30,12 @@ export function ComposerContextLabel({
             "max-w-[240px] transition-opacity duration-180 ease-drawer group-data-[compact]/composer-context:opacity-0 motion-reduce:transition-none",
         )}
       >
-        {children}
+        {/* In the toolbar, a long name squishes to fit before it clips. */}
+        {displayMode === "toolbar" && typeof children === "string" ? (
+          <SquishText className="w-full">{children}</SquishText>
+        ) : (
+          children
+        )}
       </span>
     </span>
   );
