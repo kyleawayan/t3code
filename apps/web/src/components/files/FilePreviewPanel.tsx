@@ -1519,7 +1519,6 @@ export default function FilePreviewPanel({
           <FileTreePane
             storageKey={FILE_EXPLORER_WIDTH_STORAGE_KEY}
             defaultWidth={352}
-            minWidth={256}
             resizable={Boolean(previewPath)}
             className={cn(
               "bg-background",

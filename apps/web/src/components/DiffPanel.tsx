@@ -1150,7 +1150,6 @@ export default function DiffPanel({
                   <FileTreePane
                     storageKey={DIFF_FILE_TREE_WIDTH_STORAGE_KEY}
                     defaultWidth={256}
-                    minWidth={160}
                     className="border-l border-border/60"
                   >
                     <DiffFileTree
