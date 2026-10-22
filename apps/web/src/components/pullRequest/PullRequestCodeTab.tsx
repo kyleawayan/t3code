@@ -1992,7 +1992,6 @@ function PullRequestCodeTab({
             storageKey="t3code:diff-file-tree-width"
             defaultWidth={320}
             defaultWidthFraction={0.4}
-            minWidth={192}
             resizeLabel={gt("Resize PR Code files")}
           >
             <DiffFileTree
