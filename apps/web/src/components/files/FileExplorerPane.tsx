@@ -5,7 +5,8 @@ import { RESIZABLE_WIDTH_PROPERTY, useResizableWidth } from "~/hooks/useResizabl
 import { observeResize } from "~/lib/observeResize";
 import { cn } from "~/lib/utils";
 
-const MIN_WIDTH = 160;
+/** Above zero so a drag can never leave the tree open but invisible. */
+const MIN_WIDTH = 48;
 const MAX_WIDTH = 560;
 const FILE_CONTENT_MIN_WIDTH = 256;
 
@@ -84,7 +85,8 @@ export function FileExplorerPane({
           }}
         />
       ) : null}
-      {children}
+      {/* Clips here rather than on the aside, which would cut off the handle's outer half. */}
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden *:min-w-0">{children}</div>
     </aside>
   );
 }
