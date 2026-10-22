@@ -177,7 +177,7 @@ import {
 import { AsyncResult } from "effect/reactivity";
 import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";
-import { useDiffPanelStore } from "../diffPanelStore";
+import { selectThreadDiffPanelSelection, useDiffPanelStore } from "../diffPanelStore";
 import { useActiveThreadRef } from "../hooks/useActiveThreadRef";
 import {
   type ComposerSubmissionIntent,
@@ -3797,6 +3797,24 @@ export default function ChatView(props: ChatViewProps) {
     onDiffPanelOpen?.();
   };
   const addDiffSurfaceStable = useStableCallback(addDiffSurface);
+  const onOpenUncommittedDiff = () => {
+    if (!activeThreadRef || !isServerThread || !isGitRepo) return;
+    const rightPanels = useRightPanelStore.getState();
+    const diffOpen = selectActiveRightPanel(rightPanels.byThreadKey, activeThreadRef) === "diff";
+    const diffPanel = useDiffPanelStore.getState();
+    if (
+      diffOpen &&
+      selectThreadDiffPanelSelection(diffPanel.byThreadKey, activeThreadRef).kind === "unstaged"
+    ) {
+      rightPanels.toggle(activeThreadRef, "diff");
+      return;
+    }
+    explicitDiffOpenRef.current = diffOpen ? null : activeThreadRef;
+    diffPanel.selectGitScope(activeThreadRef, "unstaged");
+    rightPanels.open(activeThreadRef, "diff");
+    onDiffPanelOpen?.();
+  };
+  const onOpenUncommittedDiffStable = useStableCallback(onOpenUncommittedDiff);
   const openChangesFromThreadPanel = () => {
     addDiffSurface();
   };
@@ -5870,6 +5888,7 @@ export default function ChatView(props: ChatViewProps) {
         createNewTerminalStable();
       },
       "diff.toggle": () => onToggleDiffStable(),
+      "diff.openUncommitted": () => onOpenUncommittedDiffStable(),
       "modelPicker.toggle": ({ event }) => {
         if (!event.repeat) composerRef.current?.toggleModelPicker();
       },

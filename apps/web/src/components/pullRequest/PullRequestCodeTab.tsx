@@ -69,6 +69,7 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { DiffPanelLoadingState } from "../DiffPanelShell";
 import { DiffCommentAnnotation } from "../diffs/DiffCommentAnnotation";
 import { DiffFileTree } from "../diffs/DiffFileTree";
+import { FileTreePane } from "../preview/FileTreePane";
 import { useCodeViewFileReveal } from "../diffs/useCodeViewFileReveal";
 import { diffFileTreeEntries } from "../diffs/diffFileTree.logic";
 import { StyledDiffCodeView } from "../diffs/StyledDiffCodeView";
@@ -123,6 +124,7 @@ type ReviewAnnotation = DiffLineAnnotation<ReviewAnnotationGroup>;
 const COMMIT_PAGE_SIZE = 10;
 
 const PULL_REQUEST_FILE_TREE_STORAGE_KEY = "t3code.pullRequestFileTreeOpen";
+const PULL_REQUEST_FILE_TREE_WIDTH_STORAGE_KEY = "t3code.pullRequestFileTreeWidth";
 
 interface DiffSlice {
   readonly cursor: string | null;
@@ -1471,7 +1473,12 @@ function PullRequestCodeTab({
           </FileViewedToggleContext>
         </div>
         {fileTreeOpen ? (
-          <aside className="flex w-[min(20rem,40%)] min-w-48 shrink-0 border-l border-border/60">
+          <FileTreePane
+            storageKey={PULL_REQUEST_FILE_TREE_WIDTH_STORAGE_KEY}
+            defaultWidth={320}
+            minWidth={192}
+            className="border-l border-border/60"
+          >
             <DiffFileTree
               ariaLabel={`Pull request #${detail.number} files`}
               entries={fileTreeEntries}
@@ -1497,7 +1504,7 @@ function PullRequestCodeTab({
                 )
               }
             />
-          </aside>
+          </FileTreePane>
         ) : null}
       </div>
       {unstructured}
