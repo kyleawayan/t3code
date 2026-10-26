@@ -152,9 +152,12 @@ export function resolveRestingComposerControlsLayout(
   input: RestingComposerControlsMeasurement & {
     hostWidth: number;
     previous?: { hiddenCount: number; iconOnlyCount?: number; visible: boolean };
+    /** Fork: how many blocks may move into the overflow menu. */
+    maxHiddenCount?: number;
   },
 ): { hiddenCount: number; iconOnlyCount?: number; visible: boolean } {
   const { blockWidths, hostWidth, previous } = input;
+  const hideSteps = Math.min(blockWidths.length, input.maxHiddenCount ?? blockWidths.length);
   const iconSteps = input.iconOnlyBlockWidths ? blockWidths.length : 0;
   const previousStep = previous
     ? previous.hiddenCount > 0
@@ -173,7 +176,7 @@ export function resolveRestingComposerControlsLayout(
   // width can jitter by a fraction of a pixel across renders. Demotions are
   // immediate so a threshold cannot clip or flip React between layouts.
   while (
-    step < iconSteps + blockWidths.length &&
+    step < iconSteps + hideSteps &&
     widthAtStep(step) > hostWidth - (step < previousStep ? RESTING_CONTROLS_SLACK_PX : 0)
   ) {
     step += 1;

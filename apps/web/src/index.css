@@ -229,6 +229,64 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   );
 }
 
+/* A chat column at its minimum beside the right panel has no room for padded controls, even
+   icon-only. Keyed to the form's width rather than the footer layout's choice, the footer
+   measures these tighter widths before it picks which controls go icon-only, so the choice
+   can't flip back and forth. In rem so the threshold scales with the interface font size. */
+@container composer (max-width: 25rem) {
+  [data-chat-composer-footer-controls="true"] button {
+    padding-inline: 0.25rem;
+  }
+  [data-chat-composer-footer-controls="true"]
+    :is([data-composer-control-chevron], [data-slot="separator"]) {
+    display: none;
+  }
+}
+/* Narrower still, spacing gives way so every control keeps its icon and label at the chat
+   column's minimum instead of moving into a menu. */
+@container composer (max-width: 17.5rem) {
+  [data-chat-composer-footer="true"] {
+    padding-inline: 0.5rem;
+  }
+  [data-chat-composer-footer-controls="true"],
+  [data-chat-composer-footer-controls="true"] :is([data-resting-block], button, button > span) {
+    column-gap: 0.125rem;
+  }
+  [data-chat-composer-footer-controls="true"] button {
+    padding-inline: 1px;
+  }
+  [data-chat-composer-actions="right"] {
+    column-gap: 0.125rem;
+  }
+  [data-chat-composer-actions="right"] > button {
+    width: 1.5rem;
+  }
+  [data-chat-composer-actions="right"] > span:last-child > button {
+    width: 1.875rem;
+    height: 1.875rem;
+  }
+}
+
+/* A chat column this narrow drops the composer's floating-card gutter and gives the width to the
+   controls. Keyed to the lane, whose width the composer doesn't affect. */
+.chat-composer-lane {
+  container: composer-lane / inline-size;
+}
+@container composer-lane (max-width: 20rem) {
+  [data-chat-composer-stack] {
+    width: auto;
+    max-width: none;
+    margin-inline: -0.5rem;
+  }
+}
+@media (min-width: 640px) {
+  @container composer-lane (max-width: 20rem) {
+    [data-chat-composer-stack] {
+      margin-inline: -1rem;
+    }
+  }
+}
+
 /* In a narrow window the sidebar is an overlay sheet on the same side as that cluster,
    which would sit on top of the sheet's header. */
 [data-slot="sidebar-wrapper"][data-sidebar-mobile][data-sidebar-state="expanded"]

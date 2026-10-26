@@ -1210,6 +1210,9 @@ function useRestingComposerControlsLayout(
         ...measurement,
         hostWidth,
         previous: current,
+        // Fork: controls never move into the overflow menu. Past the icon-only steps they
+        // squish further in CSS (see the composer container queries in index.css).
+        maxHiddenCount: 0,
       });
       return next.hiddenCount === current.hiddenCount &&
         next.iconOnlyCount === current.iconOnlyCount &&
@@ -6514,7 +6517,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         if (isInsideRestingComposerControlScope(event.target)) return;
         composerMentionDragHandlers.onDrop(event);
       }}
-      className="me-auto w-full min-w-0 max-w-(--chat-content-max-width)"
+      className="@container/composer me-auto w-full min-w-0 max-w-(--chat-content-max-width)"
       data-chat-composer-form="true"
       {...threadContextDropTargetProps()}
     >
