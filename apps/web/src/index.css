@@ -287,6 +287,14 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 }
 
+/* Electron ignores stacking when it builds drag regions, so the chat's draggable top bar keeps
+   claiming the mouse under the floating sidebar, which reads that as the pointer leaving and
+   ends a peek. The open sheet opts out of window dragging. */
+[data-slot="sidebar"][data-mobile="true"],
+[data-slot="sidebar"][data-mobile="true"] .drag-region {
+  -webkit-app-region: no-drag;
+}
+
 /* In a narrow window the sidebar is an overlay sheet on the same side as that cluster,
    which would sit on top of the sheet's header. */
 [data-slot="sidebar-wrapper"][data-sidebar-mobile][data-sidebar-state="expanded"]

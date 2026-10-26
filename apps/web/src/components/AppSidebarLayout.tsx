@@ -17,6 +17,7 @@ import {
   shortcutLabelForCommand,
 } from "../keybindings";
 import { isEditableFocused } from "../lib/editableFocus";
+import { useStableCallback } from "../hooks/useStableCallback";
 import { THREAD_SIDEBAR_FLOATING_MEDIA_QUERY } from "../rightPanelLayout";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
@@ -41,10 +42,11 @@ import { useSidebarStageBackdropVariant } from "./SidebarStageBackdrop";
 import { useProjects } from "../state/entities";
 import {
   clampThreadSidebarWidth,
-  resolveInitialThreadSidebarWidth,
+  resolvePreferredThreadSidebarWidth,
   resolveThreadSidebarMaximumWidth,
   resolveThreadSidebarMinimumWidth,
   THREAD_MAIN_CONTENT_MIN_WIDTH,
+  THREAD_SIDEBAR_DEFAULT_WIDTH,
   THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
 } from "./threadSidebarWidth";
 import {
@@ -107,22 +109,23 @@ function readWindowFullscreen(): boolean {
   return windowFullscreenSnapshot;
 }
 
-function readInitialThreadSidebarWidth(): number {
+function readPreferredThreadSidebarWidth(): number {
   try {
-    return resolveInitialThreadSidebarWidth(
+    return resolvePreferredThreadSidebarWidth(
       getLocalStorageItem(THREAD_SIDEBAR_WIDTH_STORAGE_KEY, Schema.Finite),
-      window.innerWidth,
     );
   } catch (error) {
     console.error("Could not read persisted thread sidebar width.", error);
-    return resolveInitialThreadSidebarWidth(null, window.innerWidth);
+    return THREAD_SIDEBAR_DEFAULT_WIDTH;
   }
 }
 
 function SidebarControl() {
   const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const { toggleSidebar, isMobile, mobileSheetShown } = useSidebar();
+  const { isMobile, mobileSheetShown, mobilePeek } = useSidebar();
+  // Stable so the shortcut and menu listeners below aren't re-attached on every render.
+  const toggleFromKeyboard = useStableCallback(mobilePeek.toggleFromKeyboard);
   const isSidebarVisible = useSidebarVisibility();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
   const stageBackdropVariant = useSidebarStageBackdropVariant(
@@ -158,18 +161,18 @@ function SidebarControl() {
 
       event.preventDefault();
       event.stopPropagation();
-      toggleSidebar();
+      toggleFromKeyboard();
     };
 
     window.addEventListener("keydown", onKeyDown, true);
     const unsubscribe = window.desktopBridge?.onMenuAction((action) => {
-      if (action === "sidebar.toggle") toggleSidebar();
+      if (action === "sidebar.toggle") toggleFromKeyboard();
     });
     return () => {
       window.removeEventListener("keydown", onKeyDown, true);
       unsubscribe?.();
     };
-  }, [keybindings, toggleSidebar, usagePageOpen]);
+  }, [keybindings, toggleFromKeyboard, usagePageOpen]);
 
   return (
     // Anchored to the window edge rather than the layout-control anchor, which
@@ -192,6 +195,12 @@ function SidebarControl() {
                 isSidebarVisible && stageBackdropVariant && "relative top-auto translate-y-0",
               )}
               aria-label="Toggle main sidebar"
+              onPointerEnter={(event) => {
+                if (event.pointerType === "mouse") mobilePeek.start();
+              }}
+              onPointerLeave={(event) => {
+                if (event.pointerType === "mouse") mobilePeek.end();
+              }}
             />
           }
         />
@@ -268,7 +277,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const routePanelAnimationsActive = panelAnimationsActive && !panelAnimationsSuppressed;
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
-  const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
+  const [sidebarWidth, setSidebarWidth] = useState(readPreferredThreadSidebarWidth);
   // Subscribed rather than read once: the clamp must track live window size,
   // and a clamped drag ends with an unchanged width, which skips the re-render
   // that would otherwise refresh a render-time snapshot.
@@ -282,7 +291,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("Could not clear persisted thread sidebar width.", error);
     }
-    setSidebarWidth(resolveInitialThreadSidebarWidth(null, viewportWidth));
+    setSidebarWidth(THREAD_SIDEBAR_DEFAULT_WIDTH);
   };
   const isWindowFullscreen = useSyncExternalStore(
     subscribeToWindowFullscreen,
@@ -339,6 +348,9 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           // The thread list owns Mod+1-9 thread jumps, a desktop-only shortcut that must work
           // while the floating sidebar is closed.
           keepMobileSheetMounted={isElectron}
+          // Fixed like the docked sidebar; without a definite width the drawer grows to fit its
+          // longest thread title.
+          mobileWidth={`min(${Math.max(sidebarMinimumWidth, sidebarWidth)}px, 100vw - 0.75rem)`}
           data-app-sidebar=""
           role="navigation"
           aria-label={isOnSettings ? "Settings" : "Threads"}

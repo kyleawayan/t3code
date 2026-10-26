@@ -22,13 +22,12 @@ export function clampThreadSidebarWidth(
   return Math.min(maximumWidth, Math.max(minimumWidth, width));
 }
 
-export function resolveInitialThreadSidebarWidth(
-  storedWidth: number | null,
-  viewportWidth: number,
-): number {
-  const preferredWidth =
-    storedWidth === null
-      ? THREAD_SIDEBAR_DEFAULT_WIDTH
-      : Math.max(THREAD_SIDEBAR_MIN_WIDTH, storedWidth);
-  return Math.min(preferredWidth, resolveThreadSidebarMaximumWidth(viewportWidth));
+/**
+ * Not clamped to the viewport: the docked sidebar clamps at render against the live window, and
+ * the floating one keeps this width, so a window that opens narrow doesn't shrink either.
+ */
+export function resolvePreferredThreadSidebarWidth(storedWidth: number | null): number {
+  return storedWidth === null
+    ? THREAD_SIDEBAR_DEFAULT_WIDTH
+    : Math.max(THREAD_SIDEBAR_MIN_WIDTH, storedWidth);
 }
