@@ -12,7 +12,7 @@ describe("getPreviewPanelMaxWidth", () => {
   });
 
   it("reserves the sibling column minimum when the flex row is known", () => {
-    expect(getPreviewPanelMaxWidth(1_512, 1_256)).toBe(896);
+    expect(getPreviewPanelMaxWidth(1_512, 1_100)).toBe(950);
   });
 
   it("keeps the fraction cap when the row is wide enough for both columns", () => {
@@ -20,11 +20,11 @@ describe("getPreviewPanelMaxWidth", () => {
   });
 
   it("rounds fractional row widths down", () => {
-    expect(getPreviewPanelMaxWidth(1_512, 1_256.6)).toBe(896);
+    expect(getPreviewPanelMaxWidth(1_512, 1_100.6)).toBe(950);
   });
 
   it("never drops below the panel minimum when the row cannot fit both columns", () => {
-    expect(getPreviewPanelMaxWidth(1_000, 700)).toBe(360);
+    expect(getPreviewPanelMaxWidth(1_000, 400)).toBe(360);
   });
 
   it("stays at the panel minimum even when the row is narrower than the reservation", () => {
