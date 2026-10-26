@@ -4,7 +4,7 @@ import type {
   ContextMenuOpenContext as TreeContextMenuOpenContext,
 } from "@pierre/trees";
 import type { EnvironmentId, ProjectEntry } from "@t3tools/contracts";
-import { FileTree, useFileTree, useFileTreeSearch, useFileTreeSelector } from "@pierre/trees/react";
+import { useFileTree, useFileTreeSearch, useFileTreeSelector } from "@pierre/trees/react";
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
@@ -32,6 +32,7 @@ import { createFileTreeDragMentionController } from "./fileTreeDragMention";
 import { areAllDirectoriesExpanded, setAllDirectoriesExpanded } from "./fileTreeExpansion";
 import { buildFileTreePathUpdates } from "./fileTreePathReconciliation";
 import { loadFileAncestors } from "./loadFileAncestors";
+import { SquishedFileTree } from "./SquishedFileTree";
 import { useDirectoryEntries } from "./useDirectoryEntries";
 import { useProjectPathSearch } from "~/state/queries";
 
@@ -567,7 +568,7 @@ export default function FileBrowserPanel({
           </div>
         ) : null
       ) : (
-        <FileTree
+        <SquishedFileTree
           model={model}
           aria-label={`${projectName} files`}
           className="min-h-0 flex-1 overflow-hidden"

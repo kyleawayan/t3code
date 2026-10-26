@@ -1,5 +1,5 @@
 import type { GitStatusEntry } from "@pierre/trees";
-import { FileTree, useFileTree, useFileTreeSelector } from "@pierre/trees/react";
+import { useFileTree, useFileTreeSelector } from "@pierre/trees/react";
 import { ChevronsDownUp, ChevronsUpDown } from "lucide";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
@@ -9,6 +9,7 @@ import { cn } from "~/lib/utils";
 import { PIERRE_TREE_UNSAFE_CSS, pierreTreeStyle } from "~/pierre-tree-theme";
 
 import { areAllDirectoriesExpanded, setAllDirectoriesExpanded } from "../files/fileTreeExpansion";
+import { SquishedFileTree } from "../files/SquishedFileTree";
 import { Button } from "../ui/button";
 import { MorphIcon } from "~/components/MorphIcon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -214,7 +215,7 @@ export function DiffFileTree({
           </Tooltip>
         ) : null}
       </div>
-      <FileTree
+      <SquishedFileTree
         model={model}
         aria-label={ariaLabel}
         onClickCapture={(event) => {
