@@ -213,7 +213,7 @@ describe.each([
   ],
 ])("useNewThreadHandler with a %s draft", (_, draft) => {
   it.each(["approval-required", "auto-accept-edits", "auto", "full-access"] as const)(
-    "uses the target environment's %s permissions for new threads",
+    "uses the target environment's %s permissions and plan mode for new threads",
     async (runtimeMode) => {
       testState.reset(draft);
       testState.targetSettings.defaultRuntimeMode = runtimeMode;
@@ -229,7 +229,7 @@ describe.each([
         "remote-project",
         projectRef,
         opened!.draftId,
-        expect.objectContaining({ runtimeMode }),
+        expect.objectContaining({ runtimeMode, interactionMode: "plan" }),
       );
     },
   );

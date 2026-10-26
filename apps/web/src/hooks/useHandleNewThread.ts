@@ -38,6 +38,7 @@ import { readT3ProjectFile } from "../lib/t3ProjectFileDefaults";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentServerConfigsAtom } from "../state/server";
 import { resolveThreadRouteTarget } from "../threadRoutes";
+import { NEW_THREAD_INTERACTION_MODE } from "../types";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
 import { useClientSettings } from "./useSettings";
 import { useThreadRouteTarget } from "./useThreadRouteTarget";
@@ -97,8 +98,6 @@ export function useNewThreadHandler() {
     const currentRouteTarget = getCurrentRouteTarget();
     const carrySourceShell =
       currentRouteTarget?.kind === "server" ? readThreadShell(currentRouteTarget.threadRef) : null;
-    const carrySourceDraft =
-      currentRouteTarget?.kind === "draft" ? getDraftSession(currentRouteTarget.draftId) : null;
     const carrySourceComposer = currentRouteTarget
       ? getComposerDraft(
           currentRouteTarget.kind === "server"
@@ -111,11 +110,6 @@ export function useNewThreadHandler() {
       ? (carrySourceComposer?.modelSelectionByProvider[composerActiveProvider] ?? null)
       : null;
     const carryModelSelection = composerModelSelection ?? carrySourceShell?.modelSelection ?? null;
-    const carryInteractionMode =
-      carrySourceComposer?.interactionMode ??
-      carrySourceShell?.interactionMode ??
-      carrySourceDraft?.interactionMode ??
-      null;
     const project = projects.find(
       (candidate) =>
         candidate.id === projectRef.projectId &&
@@ -241,8 +235,9 @@ export function useNewThreadHandler() {
         if (workspaceContext) {
           setDraftThreadContext(emptyStoredDraftThread.draftId, {
             ...workspaceContext,
-            ...(!isDraftAlreadyOpen ? { runtimeMode: defaultRuntimeMode } : {}),
-            ...(carryInteractionMode ? { interactionMode: carryInteractionMode } : {}),
+            ...(!isDraftAlreadyOpen
+              ? { runtimeMode: defaultRuntimeMode, interactionMode: NEW_THREAD_INTERACTION_MODE }
+              : {}),
           });
         }
         const storedDraft = getComposerDraft(emptyStoredDraftThread.draftId);
@@ -269,8 +264,9 @@ export function useNewThreadHandler() {
           {
             threadId: emptyStoredDraftThread.threadId,
             ...workspaceContext,
-            ...(!isDraftAlreadyOpen ? { runtimeMode: defaultRuntimeMode } : {}),
-            ...(carryInteractionMode ? { interactionMode: carryInteractionMode } : {}),
+            ...(!isDraftAlreadyOpen
+              ? { runtimeMode: defaultRuntimeMode, interactionMode: NEW_THREAD_INTERACTION_MODE }
+              : {}),
           },
         );
         const opened = {
@@ -366,7 +362,7 @@ export function useNewThreadHandler() {
             newWorktreesStartFromOrigin: projectSettings.settings.newWorktreesStartFromOrigin,
           }),
         runtimeMode: defaultRuntimeMode,
-        ...(carryInteractionMode ? { interactionMode: carryInteractionMode } : {}),
+        interactionMode: NEW_THREAD_INTERACTION_MODE,
       });
       applyStickyState(draftId);
       const modelSelectionOverride = resolveModelSelectionOverride(draftId);

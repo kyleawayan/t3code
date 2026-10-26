@@ -216,6 +216,7 @@ import {
 import {
   DEFAULT_INTERACTION_MODE,
   MAX_TERMINALS_PER_GROUP,
+  NEW_THREAD_INTERACTION_MODE,
   type ChatMessage,
   type SessionPhase,
   type Thread,
@@ -2210,7 +2211,7 @@ export default function ChatView(props: ChatViewProps) {
       createdAt: new Date().toISOString(),
       runtimeMode: resolveProjectSettings(settings, activeProject.id, activeProject).settings
         .defaultRuntimeMode,
-      interactionMode: DEFAULT_INTERACTION_MODE,
+      interactionMode: NEW_THREAD_INTERACTION_MODE,
       ...input,
     });
     await navigate({

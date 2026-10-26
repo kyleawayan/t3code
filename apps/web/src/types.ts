@@ -31,6 +31,10 @@ export type SessionPhase = "disconnected" | "connecting" | "ready" | "running";
 export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
 
 export const DEFAULT_INTERACTION_MODE: ProviderInteractionMode = "default";
+// Fork default for threads a user starts: new-thread actions pass it explicitly, while
+// other drafts and rehydrated ones keep DEFAULT_INTERACTION_MODE. Agent-, MCP-, and
+// schedule-launched threads are created server-side and start working right away.
+export const NEW_THREAD_INTERACTION_MODE: ProviderInteractionMode = "plan";
 export const DEFAULT_THREAD_TERMINAL_HEIGHT = 280;
 export const DEFAULT_THREAD_TERMINAL_ID = "term-1";
 export const MAX_TERMINALS_PER_GROUP = 4;
