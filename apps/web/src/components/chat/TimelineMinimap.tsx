@@ -108,20 +108,16 @@ export function TimelineMinimap({
     });
   };
 
-  if (items.length < TIMELINE_MINIMAP_MIN_ITEMS) {
+  // Fork: without its own gutter the minimap would sit over the messages, and a pointer crossing
+  // into a narrow chat lands on its hit strip, which widens and holds the preview open.
+  if (items.length < TIMELINE_MINIMAP_MIN_ITEMS || !hasPersistentGutter) {
     return null;
   }
 
   return (
     <div
-      className={cn(
-        "group/minimap pointer-events-none absolute inset-y-0 right-0 z-40 hidden w-18 [@media(pointer:fine)]:block",
-        hasPersistentGutter
-          ? "opacity-100"
-          : "opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100",
-      )}
+      className="group/minimap pointer-events-none absolute inset-y-0 right-0 z-40 hidden w-18 [@media(pointer:fine)]:block"
       data-testid="timeline-minimap"
-      data-persistent-gutter={hasPersistentGutter ? "true" : "false"}
       ref={wheelTargetRef}
     >
       <div className="relative h-full w-full select-none">
