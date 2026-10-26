@@ -47,6 +47,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
   type RefObject,
 } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
@@ -158,6 +159,8 @@ export interface ComposerPromptEditorProps {
   skills: ReadonlyArray<ServerProviderSkill>;
   disabled: boolean;
   placeholder: string;
+  /** Fork: shown in place of `placeholder`, which stays the accessible text. */
+  placeholderContent?: ReactNode;
   ariaLabel?: string | undefined;
   suggestionListId?: string | undefined;
   activeSuggestionId?: string | undefined;
@@ -939,6 +942,7 @@ function ComposerPromptEditorTiptapInner(
     skills,
     disabled,
     placeholder,
+    placeholderContent,
     ariaLabel,
     suggestionListId,
     activeSuggestionId,
@@ -1825,7 +1829,7 @@ function ComposerPromptEditorTiptapInner(
                   placeholderClassName,
                 )}
               >
-                {placeholder}
+                {placeholderContent ?? placeholder}
               </div>
             ) : null}
           </div>
