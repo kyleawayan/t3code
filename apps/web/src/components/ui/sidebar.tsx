@@ -25,7 +25,8 @@ import * as Schema from "effect/Schema";
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH = "16rem";
-const SIDEBAR_WIDTH_MOBILE = "calc(100vw - var(--spacing(3)))";
+// Inline styles get no Tailwind functions, so this cannot use --spacing(3).
+const SIDEBAR_WIDTH_MOBILE = "calc(100vw - 0.75rem)";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_RESIZE_DEFAULT_MIN_WIDTH = 16 * 16;
 const SIDEBAR_TITLEBAR_CONTROL_SIZE = "max-sm:[--workspace-titlebar-control-size:--spacing(8)]";
@@ -43,7 +44,19 @@ type SidebarContextProps = {
   toggleSidebar: () => void;
   /** Runs before the desktop sidebar collapses. */
   onCollapse: (listener: () => void) => () => void;
+  /** Hovering the trigger opens the mobile sheet; leaving it and the sheet closes it again. */
+  mobilePeek: {
+    start: () => void;
+    /** In sheet mode, opens until toggled again or until the pointer visits it and leaves. */
+    toggleFromKeyboard: () => void;
+    end: () => void;
+    hold: () => void;
+    pin: () => void;
+    isPeeking: () => boolean;
+  };
 };
+
+const MOBILE_PEEK_CLOSE_DELAY_MS = 300;
 
 type SidebarResizableOptions = {
   maxWidth?: number;
@@ -132,7 +145,7 @@ interface SidebarOpenState {
 }
 
 /** Per-provider open state, kept outside React so shortcuts can toggle it at event time. */
-function createSidebarOpenStore(defaultOpen: boolean, isMobileNow: () => boolean) {
+function createSidebarOpenStore(defaultOpen: boolean, mobileMediaQuery: string) {
   let state: SidebarOpenState = { open: defaultOpen, openMobile: false };
   const listeners = new Set<() => void>();
   const collapseListeners = new Set<() => void>();
@@ -161,7 +174,8 @@ function createSidebarOpenStore(defaultOpen: boolean, isMobileNow: () => boolean
     getSnapshot: () => state,
     setOpen,
     setOpenMobile,
-    toggle: () => (isMobileNow() ? setOpenMobile(!state.openMobile) : setOpen(!state.open)),
+    toggle: () =>
+      isMobileViewport(mobileMediaQuery) ? setOpenMobile(!state.openMobile) : setOpen(!state.open),
     onCollapse: (listener: () => void) => {
       collapseListeners.add(listener);
       return () => {
@@ -184,12 +198,9 @@ function SidebarProvider({
   mobileMediaQuery?: string;
 }) {
   const isMobile = useMediaQuery(mobileMediaQuery);
-  // Shortcuts read the breakpoint at event time, before a render could catch up.
-  const mobileMediaQueryRef = React.useRef(mobileMediaQuery);
-  mobileMediaQueryRef.current = mobileMediaQuery;
-  const [store] = React.useState(() =>
-    createSidebarOpenStore(defaultOpen, () => isMobileViewport(mobileMediaQueryRef.current)),
-  );
+  // Shortcuts read the breakpoint at event time, before a render could catch up. The store keeps
+  // the first query; every caller passes a constant.
+  const [store] = React.useState(() => createSidebarOpenStore(defaultOpen, mobileMediaQuery));
   const { open, openMobile } = React.useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -198,10 +209,72 @@ function SidebarProvider({
   const [mobileSheetShown, setMobileSheetShown] = React.useState(false);
   if (isMobile && openMobile && !mobileSheetShown) setMobileSheetShown(true);
   if (!isMobile && mobileSheetShown) setMobileSheetShown(false);
+  const peekingRef = React.useRef(false);
+  const peekArmedRef = React.useRef(false);
+  const peekTimerRef = React.useRef<number | undefined>(undefined);
+  const clearPeekTimer = () => window.clearTimeout(peekTimerRef.current);
+  const endPeek = () => {
+    clearPeekTimer();
+    peekingRef.current = false;
+    peekArmedRef.current = false;
+  };
+  const setOpenMobileAndEndPeek = (value: boolean) => {
+    endPeek();
+    store.setOpenMobile(value);
+  };
+  const toggleSidebar = () => {
+    if (isMobileViewport(mobileMediaQuery)) endPeek();
+    store.toggle();
+  };
+  // Reads the store and breakpoint at event time, like the toggle, so a shortcut fired before
+  // a render catches up still acts on the current state.
+  const mobilePeek: SidebarContextProps["mobilePeek"] = {
+    start: () => {
+      if (!isMobileViewport(mobileMediaQuery) || store.getSnapshot().openMobile) return;
+      clearPeekTimer();
+      peekingRef.current = true;
+      store.setOpenMobile(true);
+    },
+    toggleFromKeyboard: () => {
+      if (!isMobileViewport(mobileMediaQuery) || store.getSnapshot().openMobile) {
+        toggleSidebar();
+        return;
+      }
+      setOpenMobileAndEndPeek(true);
+      peekArmedRef.current = true;
+    },
+    end: () => {
+      clearPeekTimer();
+      if (!peekingRef.current) return;
+      peekTimerRef.current = window.setTimeout(
+        () => setOpenMobileAndEndPeek(false),
+        MOBILE_PEEK_CLOSE_DELAY_MS,
+      );
+    },
+    hold: () => {
+      if (peekArmedRef.current) {
+        peekArmedRef.current = false;
+        peekingRef.current = true;
+      }
+      if (peekingRef.current) clearPeekTimer();
+    },
+    pin: () => {
+      clearPeekTimer();
+      peekingRef.current = false;
+      peekArmedRef.current = false;
+    },
+    isPeeking: () => peekingRef.current,
+  };
+  React.useEffect(() => () => window.clearTimeout(peekTimerRef.current), []);
   // Leaving sheet mode unmounts the sheet mid-flight, so its close never completes; a
-  // still-open sheet would also pop back open when the window narrows again.
+  // still-open sheet would also pop back open when the window narrows again. A peek in
+  // flight is dropped with it.
   React.useLayoutEffect(() => {
-    if (!isMobile) store.setOpenMobile(false);
+    if (isMobile) return;
+    store.setOpenMobile(false);
+    window.clearTimeout(peekTimerRef.current);
+    peekingRef.current = false;
+    peekArmedRef.current = false;
   }, [isMobile, store]);
 
   const state = resolveSidebarState({ isMobile, open, openMobile });
@@ -215,10 +288,11 @@ function SidebarProvider({
       if (!open) setMobileSheetShown(false);
     },
     setOpen: store.setOpen,
-    setOpenMobile: store.setOpenMobile,
+    setOpenMobile: setOpenMobileAndEndPeek,
     state,
-    toggleSidebar: store.toggle,
+    toggleSidebar,
     onCollapse: store.onCollapse,
+    mobilePeek,
   };
 
   return (
@@ -280,6 +354,7 @@ function Sidebar({
   collapsible = "offcanvas",
   resizable = false,
   keepMobileSheetMounted = false,
+  mobileWidth = SIDEBAR_WIDTH_MOBILE,
   className,
   children,
   ...props
@@ -290,9 +365,17 @@ function Sidebar({
   resizable?: boolean | SidebarResizableOptions;
   /** Keep the content mounted while the mobile sheet is closed, for effects it must keep running. */
   keepMobileSheetMounted?: boolean;
+  /** Sheet width as a CSS length. Without one, the sheet spans nearly the whole window. */
+  mobileWidth?: string;
 }) {
-  const { isMobile, state, openMobile, setOpenMobile, onMobileSheetOpenChangeComplete } =
-    useSidebar();
+  const {
+    isMobile,
+    state,
+    openMobile,
+    setOpenMobile,
+    onMobileSheetOpenChangeComplete,
+    mobilePeek,
+  } = useSidebar();
   const offcanvasCollapsed = !isMobile && collapsible === "offcanvas" && state === "collapsed";
 
   const resolvedResizable = resolveSidebarResizable({ collapsible, isMobile, resizable });
@@ -325,6 +408,13 @@ function Sidebar({
         >
           <SheetPopup
             keepMounted={keepMobileSheetMounted}
+            // A peek is a glance: focus stays where the user was typing.
+            initialFocus={() => !mobilePeek.isPeeking()}
+            onPointerEnter={mobilePeek.hold}
+            onPointerLeave={(event) => {
+              if (event.pointerType === "mouse") mobilePeek.end();
+            }}
+            onPointerDownCapture={mobilePeek.pin}
             className={cn(
               "w-(--sidebar-width) max-w-none bg-sidebar surface-grain p-0 text-sidebar-foreground",
               className,
@@ -336,7 +426,7 @@ function Sidebar({
             side={side}
             style={
               {
-                "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
+                "--sidebar-width": mobileWidth,
               } as React.CSSProperties
             }
           >
