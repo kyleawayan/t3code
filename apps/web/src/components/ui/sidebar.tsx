@@ -36,8 +36,9 @@ type SidebarContextProps = {
   open: boolean;
   setOpen: (open: boolean) => void;
   openMobile: boolean;
-  mobileSheetMounted: boolean;
-  setMobileSheetElement: (element: HTMLDivElement | null) => void;
+  /** The mobile sheet is open or still animating closed. */
+  mobileSheetShown: boolean;
+  onMobileSheetOpenChangeComplete: (open: boolean) => void;
   setOpenMobile: (open: boolean) => void;
   isMobile: boolean;
   toggleSidebar: () => void;
@@ -100,8 +101,8 @@ function useSidebarVisibility() {
 // The `max-md` breakpoint, also read when a shortcut fires.
 const SIDEBAR_MOBILE_QUERY = "(max-width: 767px)";
 
-function isMobileViewport(): boolean {
-  return typeof window !== "undefined" && window.matchMedia(SIDEBAR_MOBILE_QUERY).matches;
+function isMobileViewport(query: string): boolean {
+  return typeof window !== "undefined" && window.matchMedia(query).matches;
 }
 
 async function persistSidebarOpen(open: boolean) {
@@ -132,7 +133,7 @@ interface SidebarOpenState {
 }
 
 /** Per-provider open state, kept outside React so shortcuts can toggle it at event time. */
-function createSidebarOpenStore(defaultOpen: boolean) {
+function createSidebarOpenStore(defaultOpen: boolean, isMobileNow: () => boolean) {
   let state: SidebarOpenState = { open: defaultOpen, openMobile: false };
   const listeners = new Set<() => void>();
   const collapseListeners = new Set<() => void>();
@@ -146,7 +147,7 @@ function createSidebarOpenStore(defaultOpen: boolean) {
       moveFocusOutOfCollapsingSidebar();
     }
     if (open !== state.open) {
-      if (!isMobileViewport()) announceSidebarVisibility(open);
+      if (!isMobileViewport(mobileMediaQuery)) announceSidebarVisibility(open);
       publish({ ...state, open });
     }
     void persistSidebarOpen(open);
@@ -164,7 +165,7 @@ function createSidebarOpenStore(defaultOpen: boolean) {
     getSnapshot: () => state,
     setOpen,
     setOpenMobile,
-    toggle: () => (isMobileViewport() ? setOpenMobile(!state.openMobile) : setOpen(!state.open)),
+    toggle: () => (isMobileNow() ? setOpenMobile(!state.openMobile) : setOpen(!state.open)),
     onCollapse: (listener: () => void) => {
       collapseListeners.add(listener);
       return () => {
@@ -176,24 +177,36 @@ function createSidebarOpenStore(defaultOpen: boolean) {
 
 function SidebarProvider({
   defaultOpen = true,
+  mobileMediaQuery = SIDEBAR_MOBILE_QUERY,
   className,
   style,
   children,
   ...props
 }: React.ComponentProps<"div"> & {
   defaultOpen?: boolean;
+  /** Below this the sidebar is a sheet over the content instead of docking beside it. */
+  mobileMediaQuery?: string;
 }) {
-  const isMobile = useMediaQuery(SIDEBAR_MOBILE_QUERY);
-  const [store] = React.useState(() => createSidebarOpenStore(defaultOpen));
+  const isMobile = useMediaQuery(mobileMediaQuery);
+  // Shortcuts read the breakpoint at event time, before a render could catch up.
+  const mobileMediaQueryRef = React.useRef(mobileMediaQuery);
+  mobileMediaQueryRef.current = mobileMediaQuery;
+  const [store] = React.useState(() =>
+    createSidebarOpenStore(defaultOpen, () => isMobileViewport(mobileMediaQueryRef.current)),
+  );
   const { open, openMobile } = React.useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
     store.getSnapshot,
   );
-  const [mobileSheetMounted, setMobileSheetMounted] = React.useState(false);
-  const setMobileSheetElement = (element: HTMLDivElement | null) => {
-    setMobileSheetMounted(element !== null);
-  };
+  const [mobileSheetShown, setMobileSheetShown] = React.useState(false);
+  if (isMobile && openMobile && !mobileSheetShown) setMobileSheetShown(true);
+  if (!isMobile && mobileSheetShown) setMobileSheetShown(false);
+  // Leaving sheet mode unmounts the sheet mid-flight, so its close never completes; a
+  // still-open sheet would also pop back open when the window narrows again.
+  React.useLayoutEffect(() => {
+    if (!isMobile) store.setOpenMobile(false);
+  }, [isMobile, store]);
 
   const state = resolveSidebarState({ isMobile, open, openMobile });
 
@@ -201,8 +214,10 @@ function SidebarProvider({
     isMobile,
     open,
     openMobile,
-    mobileSheetMounted,
-    setMobileSheetElement,
+    mobileSheetShown,
+    onMobileSheetOpenChangeComplete: (open) => {
+      if (!open) setMobileSheetShown(false);
+    },
     setOpen: store.setOpen,
     setOpenMobile: store.setOpenMobile,
     state,
@@ -268,6 +283,7 @@ function Sidebar({
   variant = "sidebar",
   collapsible = "offcanvas",
   resizable = false,
+  keepMobileSheetMounted = false,
   className,
   children,
   ...props
@@ -276,8 +292,11 @@ function Sidebar({
   variant?: "sidebar" | "floating" | "inset";
   collapsible?: "offcanvas" | "icon" | "none";
   resizable?: boolean | SidebarResizableOptions;
+  /** Keep the content mounted while the mobile sheet is closed, for effects it must keep running. */
+  keepMobileSheetMounted?: boolean;
 }) {
-  const { isMobile, state, openMobile, setOpenMobile, setMobileSheetElement } = useSidebar();
+  const { isMobile, state, openMobile, setOpenMobile, onMobileSheetOpenChangeComplete } =
+    useSidebar();
   const offcanvasCollapsed = !isMobile && collapsible === "offcanvas" && state === "collapsed";
 
   const resolvedResizable = resolveSidebarResizable({ collapsible, isMobile, resizable });
@@ -303,9 +322,13 @@ function Sidebar({
   if (isMobile) {
     return (
       <SidebarInstanceContext value={instanceContextValue}>
-        <Sheet onOpenChange={setOpenMobile} open={openMobile}>
+        <Sheet
+          onOpenChange={setOpenMobile}
+          onOpenChangeComplete={onMobileSheetOpenChangeComplete}
+          open={openMobile}
+        >
           <SheetPopup
-            ref={setMobileSheetElement}
+            keepMounted={keepMobileSheetMounted}
             className={cn(
               "w-(--sidebar-width) max-w-none bg-sidebar surface-grain p-0 text-sidebar-foreground",
               className,
