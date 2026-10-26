@@ -229,6 +229,28 @@ describe.each([
     },
   ],
 ])("useNewThreadHandler with a %s draft", (_, draft) => {
+  it.each(["approval-required", "auto-accept-edits", "auto", "full-access"] as const)(
+    "uses the target environment's %s permissions and plan mode for new threads",
+    async (runtimeMode) => {
+      testState.reset(draft);
+      testState.targetSettings.defaultRuntimeMode = runtimeMode;
+      const projectRef = {
+        environmentId: "environment-ssh",
+        projectId: "project-remote",
+      } as never;
+      const pendingOpen = useNewThreadHandler()(projectRef);
+      testState.completeProjectFileRead(null);
+      const opened = await pendingOpen;
+
+      expect(testState.draftStore.setLogicalProjectDraftThreadId).toHaveBeenCalledWith(
+        "remote-project",
+        projectRef,
+        opened!.draftId,
+        expect.objectContaining({ runtimeMode, interactionMode: "plan" }),
+      );
+    },
+  );
+
   it("abandons a delayed draft open when the user navigates elsewhere", async () => {
     testState.reset(draft);
     const openThread = useNewThreadHandler();
