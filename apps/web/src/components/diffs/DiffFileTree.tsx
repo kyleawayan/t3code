@@ -1,5 +1,5 @@
 import type { GitStatusEntry } from "@pierre/trees";
-import { FileTree, useFileTree } from "@pierre/trees/react";
+import { useFileTree } from "@pierre/trees/react";
 import { T, useGT } from "gt-react";
 import { ChevronsDownUpIcon, ChevronsUpDownIcon } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -14,6 +14,7 @@ import {
   setAllDirectoriesExpanded,
   subscribeOncePerTask,
 } from "../files/fileTreeExpansion";
+import { SquishedFileTree } from "../files/SquishedFileTree";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -226,7 +227,7 @@ export function DiffFileTree({
           </Tooltip>
         ) : null}
       </div>
-      <FileTree
+      <SquishedFileTree
         model={model}
         aria-label={ariaLabel}
         onClickCapture={(event) => {
