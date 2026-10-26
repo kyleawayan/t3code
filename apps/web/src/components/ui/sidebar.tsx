@@ -17,7 +17,7 @@ import {
 } from "~/components/ui/sheet";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useResizeDrag } from "~/hooks/useResizeDrag";
-import { useIsMobile } from "~/hooks/useMediaQuery";
+import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { resolveSidebarState, type ResponsiveSidebarState } from "./sidebarState";
 import * as Schema from "effect/Schema";
@@ -35,8 +35,9 @@ type SidebarContextProps = {
   open: boolean;
   setOpen: (open: boolean) => void;
   openMobile: boolean;
-  mobileSheetMounted: boolean;
-  setMobileSheetElement: (element: HTMLDivElement | null) => void;
+  /** The mobile sheet is open or still animating closed. */
+  mobileSheetShown: boolean;
+  onMobileSheetOpenChangeComplete: (open: boolean) => void;
   setOpenMobile: (open: boolean) => void;
   isMobile: boolean;
   toggleSidebar: () => void;
@@ -96,6 +97,7 @@ function useSidebarVisibility() {
 
 function SidebarProvider({
   defaultOpen = true,
+  mobileMediaQuery = "max-md",
   open: openProp,
   onOpenChange: setOpenProp,
   className,
@@ -104,15 +106,21 @@ function SidebarProvider({
   ...props
 }: React.ComponentProps<"div"> & {
   defaultOpen?: boolean;
+  /** Below this the sidebar is a sheet over the content instead of docking beside it. */
+  mobileMediaQuery?: string;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
-  const isMobile = useIsMobile();
+  const isMobile = useMediaQuery(mobileMediaQuery);
   const [openMobile, setOpenMobile] = React.useState(false);
-  const [mobileSheetMounted, setMobileSheetMounted] = React.useState(false);
-  const setMobileSheetElement = (element: HTMLDivElement | null) => {
-    setMobileSheetMounted(element !== null);
-  };
+  const [mobileSheetShown, setMobileSheetShown] = React.useState(false);
+  if (isMobile && openMobile && !mobileSheetShown) setMobileSheetShown(true);
+  // Leaving sheet mode unmounts the sheet mid-flight, so its close never completes; a
+  // still-open sheet would also pop back open when the window narrows again.
+  if (!isMobile && (openMobile || mobileSheetShown)) {
+    setOpenMobile(false);
+    setMobileSheetShown(false);
+  }
 
   const [_open, _setOpen] = React.useState(defaultOpen);
   const open = openProp ?? _open;
@@ -142,8 +150,10 @@ function SidebarProvider({
     isMobile,
     open,
     openMobile,
-    mobileSheetMounted,
-    setMobileSheetElement,
+    mobileSheetShown,
+    onMobileSheetOpenChangeComplete: (open) => {
+      if (!open) setMobileSheetShown(false);
+    },
     setOpen,
     setOpenMobile,
     state,
@@ -208,6 +218,7 @@ function Sidebar({
   variant = "sidebar",
   collapsible = "offcanvas",
   resizable = false,
+  keepMobileSheetMounted = false,
   className,
   children,
   ...props
@@ -216,8 +227,11 @@ function Sidebar({
   variant?: "sidebar" | "floating" | "inset";
   collapsible?: "offcanvas" | "icon" | "none";
   resizable?: boolean | SidebarResizableOptions;
+  /** Keep the content mounted while the mobile sheet is closed, for effects it must keep running. */
+  keepMobileSheetMounted?: boolean;
 }) {
-  const { isMobile, state, openMobile, setOpenMobile, setMobileSheetElement } = useSidebar();
+  const { isMobile, state, openMobile, setOpenMobile, onMobileSheetOpenChangeComplete } =
+    useSidebar();
   const desktopSidebarRef = React.useRef<HTMLDivElement>(null);
   const offcanvasCollapsed = !isMobile && collapsible === "offcanvas" && state === "collapsed";
 
@@ -259,9 +273,13 @@ function Sidebar({
   if (isMobile) {
     return (
       <SidebarInstanceContext value={instanceContextValue}>
-        <Sheet onOpenChange={setOpenMobile} open={openMobile}>
+        <Sheet
+          onOpenChange={setOpenMobile}
+          onOpenChangeComplete={onMobileSheetOpenChangeComplete}
+          open={openMobile}
+        >
           <SheetPopup
-            ref={setMobileSheetElement}
+            keepMounted={keepMobileSheetMounted}
             className={cn(
               "w-(--sidebar-width) max-w-none bg-sidebar surface-grain p-0 text-sidebar-foreground",
               className,

@@ -9,13 +9,13 @@ export interface PreviewPanelInlineSize {
 }
 
 const PREVIEW_PANEL_WIDTH_STORAGE_KEY = "t3code:preview-panel-width";
-const PREVIEW_PANEL_MIN_WIDTH = 360;
+export const PREVIEW_PANEL_MIN_WIDTH = 360;
 const PREVIEW_PANEL_MAX_WIDTH_FRACTION = 0.7;
 /**
  * Floor for the column beside the panel: below this the chat column's
  * composer overflows, so the panel yields instead.
  */
-const SIBLING_COLUMN_MIN_WIDTH = 360;
+export const SIBLING_COLUMN_MIN_WIDTH = 360;
 const PREVIEW_PANEL_DEFAULT_WIDTH = 540;
 
 export function usePreviewPanelInlineSize(

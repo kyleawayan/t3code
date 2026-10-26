@@ -17,6 +17,7 @@ import {
   shortcutLabelForCommand,
 } from "../keybindings";
 import { isEditableFocused } from "../lib/editableFocus";
+import { THREAD_SIDEBAR_FLOATING_MEDIA_QUERY } from "../rightPanelLayout";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
@@ -121,7 +122,7 @@ function readInitialThreadSidebarWidth(): number {
 function SidebarControl() {
   const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const { toggleSidebar, isMobile, mobileSheetMounted } = useSidebar();
+  const { toggleSidebar, isMobile, mobileSheetShown } = useSidebar();
   const isSidebarVisible = useSidebarVisibility();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
   const stageBackdropVariant = useSidebarStageBackdropVariant(
@@ -177,7 +178,7 @@ function SidebarControl() {
     <div
       className={cn(
         "pointer-events-none fixed right-[var(--workspace-window-edge-right)] top-[var(--workspace-controls-top)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center",
-        isMobile && mobileSheetMounted && "hidden",
+        isMobile && mobileSheetShown && "hidden",
       )}
       data-sidebar-control=""
     >
@@ -324,6 +325,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         className="h-dvh! min-h-0!"
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
         defaultOpen
+        mobileMediaQuery={THREAD_SIDEBAR_FLOATING_MEDIA_QUERY}
         style={sidebarProviderStyle}
       >
         <SidebarBrandWidthProbe onWidthChange={setBrandWidth} />
@@ -334,6 +336,9 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         <Sidebar
           side="right"
           collapsible="offcanvas"
+          // The thread list owns Mod+1-9 thread jumps, a desktop-only shortcut that must work
+          // while the floating sidebar is closed.
+          keepMobileSheetMounted={isElectron}
           data-app-sidebar=""
           role="navigation"
           aria-label={isOnSettings ? "Settings" : "Threads"}
