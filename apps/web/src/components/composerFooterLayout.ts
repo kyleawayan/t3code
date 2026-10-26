@@ -89,9 +89,12 @@ export function resolveRestingComposerControlsLayout(
   input: RestingComposerControlsMeasurement & {
     hostWidth: number;
     previous?: { hiddenCount: number; iconOnlyCount?: number; visible: boolean };
+    /** Fork: how many blocks may move into the overflow menu. */
+    maxHiddenCount?: number;
   },
 ): { hiddenCount: number; iconOnlyCount?: number; visible: boolean } {
   const { blockWidths, hostWidth, previous } = input;
+  const hideSteps = Math.min(blockWidths.length, input.maxHiddenCount ?? blockWidths.length);
   const iconSteps = input.iconOnlyBlockWidths ? blockWidths.length : 0;
   const previousStep = previous
     ? previous.hiddenCount > 0
@@ -109,7 +112,7 @@ export function resolveRestingComposerControlsLayout(
   // Use 1px slack for natural-width jitter on promotion; demote immediately to avoid clipping or layout
   // flapping.
   while (
-    step < iconSteps + blockWidths.length &&
+    step < iconSteps + hideSteps &&
     widthAtStep(step) > hostWidth - (step < previousStep ? RESTING_CONTROLS_SLACK_PX : 0)
   ) {
     step += 1;
