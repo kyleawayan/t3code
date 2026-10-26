@@ -11,6 +11,34 @@ export const PIERRE_TREE_UNSAFE_CSS = `
   }
   [data-truncate-content='visible'] { overflow: hidden; text-overflow: ellipsis; }
   [data-truncate-marker] { display: none; }
+  /* The head's ellipsis already marks the cut; a second one on the tail read "p……he". */
+  [data-truncate-group-container='middle'] [data-truncate-container='fruncate']
+    [data-truncate-content='visible'] {
+    text-overflow: clip;
+  }
+  [data-item-section='content'] > * { transform-origin: left center; }
+  /* The name cell takes the row's free space, so its width is the room a name has; the
+     squish fit reads it without first undoing an earlier fit. */
+  [data-item-section='content'] { flex: 1 1 0; }
+  [data-item-section='decoration'] { flex: 0 1 auto; }
+  /* Pierre shows indent guides only while the tree is hovered. */
+  [data-item-section='spacing-item'] { opacity: 0.75; }
+  :host { container-type: inline-size; }
+  /* A narrow tree gives names the room: tight gutters, no empty git lane, and about 6px
+     of indent a level, which the always-on guides keep readable. */
+  @container (max-width: 240px) {
+    [data-file-tree-virtualized-scroll='true'] {
+      --trees-padding-inline: 2px;
+      --trees-item-padding-x: 3px;
+      --trees-item-margin-x: 0px;
+      --trees-item-row-gap: 3px;
+      --trees-level-gap: 2px;
+      scrollbar-gutter: auto;
+    }
+    [data-item-section='spacing'] { padding-left: 3px; }
+    [data-item-section='spacing-item'] + [data-item-section='spacing-item'] { margin-left: 4px; }
+    [data-item-section='git']:empty { display: none; }
+  }
   button[data-type='item'], button[data-type='item']::before { border-radius: var(--radius-md); }
   svg[data-icon-name='t3-tree-icon-loading'] { opacity: 0.6; }
   @media (prefers-reduced-motion: no-preference) {
