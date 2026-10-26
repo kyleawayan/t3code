@@ -68,6 +68,9 @@ export function useRestingComposerControlsLayout(
         ...measurement,
         hostWidth,
         previous: current,
+        // Fork: controls never move into the overflow menu. Past the icon-only steps they
+        // squish further in CSS (see the composer container queries in index.css).
+        maxHiddenCount: 0,
       });
       return next.hiddenCount === current.hiddenCount &&
         next.iconOnlyCount === current.iconOnlyCount &&
