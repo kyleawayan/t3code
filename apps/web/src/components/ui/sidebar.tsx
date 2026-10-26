@@ -108,8 +108,8 @@ function useMobileSidebarSheetMounted() {
 // The `max-md` breakpoint, also read when a shortcut fires.
 const SIDEBAR_MOBILE_QUERY = "(max-width: 767px)";
 
-function isMobileViewport(): boolean {
-  return typeof window !== "undefined" && window.matchMedia(SIDEBAR_MOBILE_QUERY).matches;
+function isMobileViewport(query: string): boolean {
+  return typeof window !== "undefined" && window.matchMedia(query).matches;
 }
 
 function readStoredSidebarOpen(storageKey: string | undefined): boolean | null {
@@ -141,7 +141,11 @@ interface SidebarOpenState {
 }
 
 /** Per-provider open state, kept outside React so shortcuts can toggle it at event time. */
-function createSidebarOpenStore(defaultOpen: boolean, storageKey: string | undefined) {
+function createSidebarOpenStore(
+  defaultOpen: boolean,
+  isMobileNow: () => boolean,
+  storageKey: string | undefined,
+) {
   let state: SidebarOpenState = {
     open: readStoredSidebarOpen(storageKey) ?? defaultOpen,
     openMobile: false,
@@ -158,7 +162,7 @@ function createSidebarOpenStore(defaultOpen: boolean, storageKey: string | undef
       moveFocusOutOfCollapsingSidebar();
     }
     if (open !== state.open) {
-      if (!isMobileViewport()) announceSidebarVisibility(open);
+      if (!isMobileNow()) announceSidebarVisibility(open);
       publish({ ...state, open });
     }
     if (storageKey) writeLocalStorageValue(storageKey, open, defaultOpen, Schema.Boolean);
@@ -176,7 +180,7 @@ function createSidebarOpenStore(defaultOpen: boolean, storageKey: string | undef
     getSnapshot: () => state,
     setOpen,
     setOpenMobile,
-    toggle: () => (isMobileViewport() ? setOpenMobile(!state.openMobile) : setOpen(!state.open)),
+    toggle: () => (isMobileNow() ? setOpenMobile(!state.openMobile) : setOpen(!state.open)),
     onCollapse: (listener: () => void) => {
       collapseListeners.add(listener);
       return () => {
@@ -188,6 +192,7 @@ function createSidebarOpenStore(defaultOpen: boolean, storageKey: string | undef
 
 function SidebarProvider({
   defaultOpen = true,
+  mobileMediaQuery = SIDEBAR_MOBILE_QUERY,
   storageKey,
   className,
   style,
@@ -195,10 +200,21 @@ function SidebarProvider({
   ...props
 }: React.ComponentProps<"div"> & {
   defaultOpen?: boolean;
+  /** Below this the sidebar is a sheet over the content instead of docking beside it. */
+  mobileMediaQuery?: string;
   storageKey?: string;
 }) {
-  const isMobile = useMediaQuery(SIDEBAR_MOBILE_QUERY);
-  const [store] = React.useState(() => createSidebarOpenStore(defaultOpen, storageKey));
+  const isMobile = useMediaQuery(mobileMediaQuery);
+  // Shortcuts read the breakpoint at event time, before a render could catch up.
+  const mobileMediaQueryRef = React.useRef(mobileMediaQuery);
+  mobileMediaQueryRef.current = mobileMediaQuery;
+  const [store] = React.useState(() =>
+    createSidebarOpenStore(
+      defaultOpen,
+      () => isMobileViewport(mobileMediaQueryRef.current),
+      storageKey,
+    ),
+  );
   const { open, openMobile } = React.useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -212,6 +228,11 @@ function SidebarProvider({
   if (!isMobile && !openMobile && mobileSheetMounted) {
     setMobileSheetMounted(false);
   }
+  // Leaving sheet mode unmounts the sheet mid-flight, so its close never completes; a
+  // still-open sheet would also pop back open when the window narrows again.
+  React.useLayoutEffect(() => {
+    if (!isMobile) store.setOpenMobile(false);
+  }, [isMobile, store]);
 
   const state = resolveSidebarState({ isMobile, open, openMobile });
 

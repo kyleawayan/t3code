@@ -24,6 +24,7 @@ import {
   shortcutLabelForCommand,
 } from "../keybindings";
 import { isEditableFocused } from "../lib/editableFocus";
+import { THREAD_SIDEBAR_FLOATING_MEDIA_QUERY } from "../rightPanelLayout";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
@@ -467,6 +468,7 @@ export function AppSidebarLayout({
         className="h-dvh! min-h-0!"
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
         storageKey="chat_thread_sidebar_open"
+        mobileMediaQuery={THREAD_SIDEBAR_FLOATING_MEDIA_QUERY}
         style={sidebarProviderStyle}
       >
         {showSidebar ? (
