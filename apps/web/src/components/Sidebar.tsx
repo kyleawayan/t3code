@@ -96,6 +96,7 @@ import {
   threadJumpIndexFromCommand,
   threadTraversalDirectionFromCommand,
 } from "../keybindings";
+import { copyDesktopThreadLink, desktopThreadLink } from "../lib/desktopThreadLink";
 import { isModelPickerOpen } from "../modelPickerVisibility";
 import { isMacPlatform } from "~/lib/utils";
 import { readLocalApi } from "../localApi";
@@ -2824,6 +2825,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             return;
           case "copy-thread-id":
             copyThreadIdToClipboard(thread.id, { threadId: thread.id });
+            return;
+          case "copy-thread-link":
+            void copyDesktopThreadLink(desktopThreadLink(threadRef));
             return;
           case "archive": {
             if (confirmThreadArchive) {

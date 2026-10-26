@@ -102,6 +102,7 @@ import {
   queueWorkspaceFocusFromPalette,
   restoreWorkspaceFocusFromPalette,
 } from "../lib/workspaceFocus";
+import { copyDesktopThreadLink, desktopThreadLink } from "../lib/desktopThreadLink";
 import {
   composerPromptLink,
   copyPromptLink,
@@ -1406,6 +1407,21 @@ function OpenCommandPaletteDialog(props: {
       icon: <LinkIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "thread.copyReference",
       run: copyActiveThreadReference,
+    });
+  }
+
+  if (activeThread !== null) {
+    const activeThreadLink = desktopThreadLink(
+      scopeThreadRef(activeThread.environmentId, activeThread.id),
+    );
+    actionItems.push({
+      kind: "action",
+      value: "action:copy-thread-link",
+      searchTerms: ["copy", "share", "thread", "link", "deep link"],
+      title: "Copy thread link",
+      description: activeThreadLink,
+      icon: <LinkIcon className={ITEM_ICON_CLASS} />,
+      run: () => copyDesktopThreadLink(activeThreadLink),
     });
   }
 
