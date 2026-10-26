@@ -186,6 +186,14 @@ describe("buildThreadActionMenuItems", () => {
     expect(item).toMatchObject({ label: "Regenerating…", disabled: true });
   });
 
+  it("keeps the thread link copyable for read-only clients", () => {
+    const readOnly = buildThreadActionMenuItems({ ...baseState, canOperate: false });
+    const copyLink = readOnly
+      .find((item) => item.id === "copy")
+      ?.children?.find((item) => item.id === "copy-thread-link");
+    expect(copyLink?.disabled).toBeFalsy();
+  });
+
   it("marks delete as destructive and keeps it last", () => {
     const items = buildThreadActionMenuItems({ ...baseState, branch: "main" });
     expect(items.at(-1)).toMatchObject({ id: "delete", destructive: true });

@@ -34,6 +34,7 @@ import {
   useProjects,
 } from "../state/entities";
 import { usePrimaryEnvironmentId } from "../state/environments";
+import { copyDesktopThreadLink, desktopThreadLink } from "../lib/desktopThreadLink";
 import { readLocalApi } from "../localApi";
 import {
   deriveLogicalProjectKeyFromSettings,
@@ -265,6 +266,9 @@ export function useThreadActionMenu(input: {
           return;
         case "copy-thread-id":
           copyThreadIdToClipboard(thread.id, { threadId: thread.id });
+          return;
+        case "copy-thread-link":
+          void copyDesktopThreadLink(desktopThreadLink(threadRef));
           return;
         case "archive": {
           if (confirmThreadArchive) {
