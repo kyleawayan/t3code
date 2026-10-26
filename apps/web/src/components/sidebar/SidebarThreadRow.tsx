@@ -56,6 +56,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 
@@ -934,6 +935,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   if (snoozeMenuOpenRaw && !showSnoozeButton) setSnoozeMenuOpen(false);
   const snoozeMenuOpen = snoozeMenuOpenRaw && showSnoozeButton;
   const jumpHintLabel = snoozeMenuOpen ? null : props.jumpLabel;
+  // Width the card's hover controls overlay on the top line, so the project name fades
+  // out just beneath them. A Woke badge keeps them beside it, and a sweep hides them.
+  const hoverControlsRem =
+    isWokeStatus || props.sweepAction !== null
+      ? 0
+      : (hasUnsentDraft ? 1.625 : 0) +
+        (showSnoozeButton ? 1.75 : 0) +
+        (props.settlementSupported ? 3.5 : 0);
   const handlePrClick = (event: ReactMouseEvent<HTMLElement>, targetUrl?: string) => {
     const url = targetUrl ?? pr?.url ?? currentLinkedPr?.url;
     if (!url) return;
@@ -1438,6 +1447,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               {pinIndicator}
               {props.projectDisplayName ? (
                 <span
+                  data-sidebar-row-project=""
+                  data-fade-under-controls={hoverControlsRem > 0 ? "" : undefined}
+                  style={
+                    hoverControlsRem > 0
+                      ? ({
+                          "--sidebar-row-controls-width": `${hoverControlsRem}rem`,
+                        } as CSSProperties)
+                      : undefined
+                  }
                   className={cn("min-w-0 flex-1 truncate font-normal text-secondary-label text-xs")}
                 >
                   {props.projectDisplayName}
@@ -1449,6 +1467,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 dragDestination
               ) : (
                 <span
+                  data-sidebar-status-slot=""
+                  data-controls-open={snoozeMenuOpen ? "true" : undefined}
                   className={cn(
                     "group/sidebar-status-slot relative ml-auto flex h-5 min-w-8 shrink-0 items-stretch justify-end text-xs",
                     props.sweepAction !== null && "hidden",
@@ -1459,9 +1479,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     className={cn(
                       isWokeStatus
                         ? "pointer-events-auto"
-                        : "pointer-events-none group-has-[:focus-visible]/sidebar-status-slot:absolute group-has-[:focus-visible]/sidebar-status-slot:right-0 group-has-[:focus-visible]/sidebar-status-slot:opacity-0 group-any-hover/sidebar-row:absolute group-any-hover/sidebar-row:right-0 group-any-hover/sidebar-row:opacity-0",
+                        : // Fades in place so the slot keeps its width: the controls overlay it
+                          // instead of reflowing the top line.
+                          "pointer-events-none group-has-[:focus-visible]/sidebar-status-slot:opacity-0 group-any-hover/sidebar-row:opacity-0",
                       "flex items-center self-center justify-self-end tabular-nums text-secondary-label",
-                      snoozeMenuOpen && "pointer-events-none absolute right-0 opacity-0",
+                      snoozeMenuOpen && "pointer-events-none opacity-0",
                     )}
                   >
                     {topStatus ? (
@@ -1517,8 +1539,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       className={cn(
                         // Mouse clicks leave Settle focused; focus-within would pin controls over
                         // the status label after the pointer leaves. Use focus-visible instead.
-                        "pointer-events-none absolute inset-y-0 right-0 flex items-stretch opacity-0 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:static has-[:focus-visible]:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:static group-any-hover/sidebar-row:opacity-100",
-                        snoozeMenuOpen && "pointer-events-auto static opacity-100",
+                        "pointer-events-none absolute inset-y-0 right-0 flex items-stretch opacity-0 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100 group-any-hover/sidebar-row:pointer-events-auto group-any-hover/sidebar-row:opacity-100",
+                        // A Woke badge stays clickable, so the controls sit beside it.
+                        isWokeStatus &&
+                          "has-[:focus-visible]:static group-any-hover/sidebar-row:static",
+                        snoozeMenuOpen && "pointer-events-auto opacity-100",
+                        snoozeMenuOpen && isWokeStatus && "static",
                       )}
                     >
                       {hasUnsentDraft ? (
