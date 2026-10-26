@@ -88,6 +88,7 @@ import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstra
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
+import { copyDesktopThreadLink, desktopThreadLink } from "../lib/desktopThreadLink";
 import {
   composerPromptLink,
   copyPromptLink,
@@ -1275,6 +1276,21 @@ function OpenCommandPaletteDialog(props: {
       icon: <LinkIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "thread.copyReference",
       run: copyActiveThreadReference,
+    });
+  }
+
+  if (activeThread !== null) {
+    const activeThreadLink = desktopThreadLink(
+      scopeThreadRef(activeThread.environmentId, activeThread.id),
+    );
+    actionItems.push({
+      kind: "action",
+      value: "action:copy-thread-link",
+      searchTerms: ["copy", "share", "thread", "link", "deep link"],
+      title: "Copy thread link",
+      description: activeThreadLink,
+      icon: <LinkIcon className={ITEM_ICON_CLASS} />,
+      run: () => copyDesktopThreadLink(activeThreadLink),
     });
   }
 

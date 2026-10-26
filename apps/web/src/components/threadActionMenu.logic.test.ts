@@ -65,6 +65,14 @@ describe("buildThreadActionMenuItems", () => {
     },
   );
 
+  it("keeps the thread link copyable for read-only clients", () => {
+    const readOnly = buildThreadActionMenuItems({ ...baseState, canOperate: false });
+    const copyLink = readOnly
+      .find((item) => item.id === "copy")
+      ?.children?.find((item) => item.id === "copy-thread-link");
+    expect(copyLink?.disabled).toBeFalsy();
+  });
+
   it("disables archive while the thread is running", () => {
     const archiveItem = buildThreadActionMenuItems({ ...baseState, isRunning: true }).find(
       (item) => item.id === "archive",
