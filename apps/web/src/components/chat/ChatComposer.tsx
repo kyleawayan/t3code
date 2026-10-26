@@ -96,6 +96,7 @@ import {
   replaceTextRange,
 } from "../../composer-logic";
 import { DISCONNECTED_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
+import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
 import { listContinuationForEnter, listIndentForTab } from "../../composer-list-continuation";
 import {
   deriveComposerSendState,
@@ -1556,6 +1557,8 @@ export interface ChatComposerProps {
   promptHistoryMessages: ReadonlyArray<ChatMessage>;
   isServerThread: boolean;
   isLocalDraftThread: boolean;
+  /** Fork: names the thread's project in the resting placeholder. */
+  placeholderProject: ProjectFaviconProject | null;
   forceExpandedOnMobile: boolean;
   projectSelectionRequired: boolean;
 
@@ -1950,8 +1953,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeThreadEnvironmentId: _activeThreadEnvironmentId,
     activeThread,
     promptHistoryMessages,
-    isServerThread: _isServerThread,
+    isServerThread,
     isLocalDraftThread: _isLocalDraftThread,
+    placeholderProject,
     forceExpandedOnMobile,
     projectSelectionRequired,
     phase,
@@ -4910,6 +4914,33 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     hasMultilinePrompt,
     timelineOverflows,
   });
+  // Fork: the resting placeholder names where a message goes, "{project}: {thread}". Drafts have
+  // no title yet, and the branch is already in the bottom bar.
+  const placeholderThreadTitle = isServerThread
+    ? (activeThread ?? props.activeThreadShell)?.title
+    : null;
+  const contextPlaceholder =
+    placeholderProject === null
+      ? null
+      : placeholderThreadTitle
+        ? `${placeholderProject.title}: ${placeholderThreadTitle}`
+        : placeholderProject.title;
+  const composerPlaceholder = isComposerApprovalState
+    ? "Resolve this approval request to continue"
+    : activePendingProgress
+      ? isChoiceOnlyPendingQuestion
+        ? "Choose an option above"
+        : "Type your own answer, or leave this blank to use the selected option"
+      : showPlanFollowUpPrompt && activeProposedPlan
+        ? "Add feedback to refine the plan, or leave this blank to implement it"
+        : projectSelectionRequired
+          ? "Choose a project above to start a thread"
+          : showProviderUnavailable
+            ? "Enable a provider in Settings to send a message"
+            : (contextPlaceholder ??
+              (phase === "disconnected"
+                ? DISCONNECTED_COMPOSER_PLACEHOLDER
+                : "Ask anything, @tag files/folders, $use skills, or / for commands"));
   const expandedComposerImages = isComposerResting
     ? standaloneComposerImages.filter((image) => pendingSnapShotIdSet.has(image.id))
     : standaloneComposerImages;
@@ -7236,22 +7267,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onCitationSubmitAndSend={submitCitationAndSendStable}
                     onCitationDraftSave={saveCitationDraftToPromptStable}
                     onPaste={onComposerPasteStable}
-                    placeholder={
-                      isComposerApprovalState
-                        ? "Resolve this approval request to continue"
-                        : activePendingProgress
-                          ? isChoiceOnlyPendingQuestion
-                            ? "Choose an option above"
-                            : "Type your own answer, or leave this blank to use the selected option"
-                          : showPlanFollowUpPrompt && activeProposedPlan
-                            ? "Add feedback to refine the plan, or leave this blank to implement it"
-                            : projectSelectionRequired
-                              ? "Choose a project above to start a thread"
-                              : showProviderUnavailable
-                                ? "Enable a provider in Settings to send a message"
-                                : phase === "disconnected"
-                                  ? DISCONNECTED_COMPOSER_PLACEHOLDER
-                                  : "Ask anything, @tag files/folders, $use skills, or / for commands"
+                    placeholder={composerPlaceholder}
+                    placeholderContent={
+                      placeholderProject !== null && composerPlaceholder === contextPlaceholder ? (
+                        // Two lines at most, so a long title never grows the composer.
+                        <span className={isComposerResting ? "min-w-0 truncate" : "line-clamp-2"}>
+                          <ProjectFavicon
+                            project={placeholderProject}
+                            className="me-1.5 inline-block size-4 align-[-0.2em] opacity-75"
+                          />
+                          {contextPlaceholder}
+                        </span>
+                      ) : undefined
                     }
                     disabled={
                       isConnecting ||

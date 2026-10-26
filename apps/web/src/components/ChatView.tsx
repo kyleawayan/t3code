@@ -8525,6 +8525,7 @@ export default function ChatView(props: ChatViewProps) {
                               promptHistoryMessages={timelineMessages}
                               isServerThread={isServerThread}
                               isLocalDraftThread={isLocalDraftThread}
+                              placeholderProject={activeProject}
                               forceExpandedOnMobile={
                                 forceExpandedMobileComposer && isDraftHeroState
                               }
