@@ -126,6 +126,14 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --workspace-native-controls-inset: 0px;
   --workspace-titlebar-control-size: 1.75rem;
   --workspace-titlebar-control-gap: 0.75rem;
+  --workspace-sidebar-trigger-inset: 0px;
+  /* Room the header under the titlebar control cluster leaves for it: the chat
+     header while the right panel is closed, the panel's tab bar while it is open. */
+  --workspace-controls-reserve: 7rem;
+  /* Where the floating right panel's own controls end, and how far it stops short of
+     the window edge. */
+  --workspace-sheet-controls-inset: 0.75rem;
+  --workspace-sheet-inset-end: 0px;
   --workspace-titlebar-scroll-fade-height: 1.5rem;
   --chat-content-max-width: 46rem;
   --thread-details-panel-width: 17.5rem;
@@ -166,12 +174,36 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   );
 }
 
+/* The sidebar toggle stays at the window edge when the sidebar collapses or
+   becomes an overlay, so the titlebar control cluster steps inboard of it.
+   Headers that reserve room for the cluster add the same inset. */
+[data-slot="sidebar-wrapper"] {
+  --workspace-sidebar-trigger-inset: calc(var(--workspace-titlebar-control-size) + 0.25rem);
+  --workspace-controls-right: calc(
+    var(--workspace-window-edge-right) + var(--workspace-sidebar-trigger-inset)
+  );
+  --workspace-controls-reserve: calc(7rem + var(--workspace-sidebar-trigger-inset));
+  --workspace-sheet-controls-inset: calc(
+    var(--workspace-window-edge-right) + var(--workspace-sidebar-trigger-inset)
+  );
+}
+
 /* The main sidebar docks on the right, and the titlebar control cluster is
    viewport-anchored so it holds still while the header shrinks behind the right
    panel. Push that anchor inboard of the open sidebar, otherwise the controls
    land on top of it and the space the header reserves for them reads as a gap. */
 [data-slot="sidebar-wrapper"]:not([data-sidebar-mobile])[data-sidebar-state="expanded"] {
+  --workspace-sidebar-trigger-inset: 0px;
   --workspace-controls-right: calc(var(--workspace-window-edge-right) + var(--sidebar-width));
+  --workspace-sheet-inset-end: var(--sidebar-width);
+}
+
+/* The floating right panel opens beside an open sidebar instead of over it, and leaves
+   the collapsed sidebar's toggle its slot, so the panel's controls land exactly where
+   the cluster sat before it opened: one spot opens and closes it. */
+[data-slot="sheet-viewport"]:has([data-right-panel-sheet]),
+[data-slot="sheet-backdrop"]:has(~ [data-slot="sheet-viewport"] [data-right-panel-sheet]) {
+  right: var(--workspace-sheet-inset-end);
 }
 
 /* In a narrow window the sidebar is an overlay sheet on the same side as that cluster,
