@@ -206,6 +206,29 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   right: var(--workspace-sheet-inset-end);
 }
 
+/* Sidebar cards overlay their hover controls on the end of the top line instead of
+   reflowing it, so the project name fades out beneath them rather than re-truncating.
+   The controls reach past the status slot (at least 2rem) and its gap, so the name is
+   cleared for their width less that, then fades over 1rem. */
+@media (any-hover: hover) {
+  .group\/sidebar-row:hover [data-fade-under-controls] {
+    mask-image: linear-gradient(
+      to left,
+      transparent calc(var(--sidebar-row-controls-width) - 2rem),
+      black calc(var(--sidebar-row-controls-width) - 1rem)
+    );
+  }
+}
+[data-fade-under-controls]:has(
+  ~ [data-sidebar-status-slot]:is(:has(:focus-visible), [data-controls-open])
+) {
+  mask-image: linear-gradient(
+    to left,
+    transparent calc(var(--sidebar-row-controls-width) - 2rem),
+    black calc(var(--sidebar-row-controls-width) - 1rem)
+  );
+}
+
 /* In a narrow window the sidebar is an overlay sheet on the same side as that cluster,
    which would sit on top of the sheet's header. */
 [data-slot="sidebar-wrapper"][data-sidebar-mobile][data-sidebar-state="expanded"]
