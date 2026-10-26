@@ -24,6 +24,7 @@ import {
   shortcutLabelForCommand,
 } from "../keybindings";
 import { isEditableFocused } from "../lib/editableFocus";
+import { THREAD_SIDEBAR_FLOATING_MEDIA_QUERY } from "../rightPanelLayout";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
@@ -316,7 +317,7 @@ function SidebarControl({ showSidebar }: { readonly showSidebar: boolean }) {
   const router = useRouter();
   const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const { toggleSidebar, isMobile, mobileSheetMounted } = useSidebar();
+  const { toggleSidebar, isMobile, mobileSheetShown } = useSidebar();
   const isSidebarVisible = useSidebarVisibility();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
   const stageBackdropVariant = useSidebarStageBackdropVariant(environmentIdentificationMode);
@@ -381,7 +382,7 @@ function SidebarControl({ showSidebar }: { readonly showSidebar: boolean }) {
       ref={appShellCommandsRef}
       className={cn(
         "pointer-events-none fixed right-[var(--workspace-window-edge-right)] top-[var(--workspace-controls-top)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center",
-        isMobile && mobileSheetMounted && "hidden",
+        isMobile && mobileSheetShown && "hidden",
       )}
       data-sidebar-control=""
     >
@@ -461,6 +462,7 @@ export function AppSidebarLayout({
         className="h-dvh! min-h-0!"
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
         storageKey="chat_thread_sidebar_open"
+        mobileMediaQuery={THREAD_SIDEBAR_FLOATING_MEDIA_QUERY}
         style={sidebarProviderStyle}
       >
         {showSidebar ? (
@@ -473,6 +475,9 @@ export function AppSidebarLayout({
           <Sidebar
             side="right"
             collapsible="offcanvas"
+            // The thread list owns Mod+1-9 thread jumps, a desktop-only shortcut that must work
+            // while the floating sidebar is closed.
+            keepMobileSheetMounted={isElectron}
             data-app-sidebar=""
             {...sidebarArea}
             role="navigation"
