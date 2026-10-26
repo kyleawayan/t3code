@@ -64,11 +64,14 @@ function SheetPopup({
   side = "right",
   variant = "default",
   style,
+  portalContainer,
   ...props
 }: SheetPrimitive.Popup.Props & {
   showCloseButton?: boolean;
   keepMounted?: boolean;
   transitionDurationMs?: number;
+  /** Mount inside this element instead of the body, so the sheet inherits its CSS variables. */
+  portalContainer?: HTMLElement | null;
   side?: "right" | "left" | "top" | "bottom";
   variant?: "default" | "inset";
 }) {
@@ -80,7 +83,7 @@ function SheetPopup({
   const instant = transitionDurationMs === 0;
 
   return (
-    <SheetPortal keepMounted={keepMounted}>
+    <SheetPortal keepMounted={keepMounted} container={portalContainer}>
       <SheetBackdrop
         className={
           instant
