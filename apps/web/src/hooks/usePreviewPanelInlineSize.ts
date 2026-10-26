@@ -14,10 +14,10 @@ const PREVIEW_PANEL_WIDTH_STORAGE_KEY = "t3code:preview-panel-width";
 export const PREVIEW_PANEL_MIN_WIDTH = 360;
 const PREVIEW_PANEL_MAX_WIDTH_FRACTION = 0.7;
 /**
- * Floor for the column beside the panel: below this the chat column's
- * composer overflows, so the panel yields instead.
+ * Floor for the column beside the panel, kept small so diffs get the room. Below about 300px
+ * the composer's controls stop fitting and scroll sideways, which the fork accepts.
  */
-export const SIBLING_COLUMN_MIN_WIDTH = 360;
+export const SIBLING_COLUMN_MIN_WIDTH = 150;
 const PREVIEW_PANEL_DEFAULT_WIDTH = 540;
 
 export function usePreviewPanelInlineSize(
@@ -68,7 +68,7 @@ export function usePreviewPanelInlineSize(
   return { width, handlers, observeRow };
 }
 
-function getPreviewPanelMaxWidth(viewportWidth: number, containerWidth?: number): number {
+export function getPreviewPanelMaxWidth(viewportWidth: number, containerWidth?: number): number {
   const fractionCap = Math.floor(viewportWidth * PREVIEW_PANEL_MAX_WIDTH_FRACTION);
   const containerCap =
     containerWidth === undefined ? Infinity : Math.floor(containerWidth) - SIBLING_COLUMN_MIN_WIDTH;
