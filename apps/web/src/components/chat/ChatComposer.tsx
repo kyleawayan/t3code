@@ -3396,9 +3396,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     placeholder={composerPlaceholder}
                     placeholderContent={
                       placeholderProject !== null && composerPlaceholder === contextPlaceholder ? (
-                        // Two lines at most, so a long title never grows the composer.
+                        // Two lines at most, so a long title never grows the composer. The start
+                        // padding keeps the icon off the caret, so a focused composer still reads.
                         <span
-                          className={isComposerCollapsedMobile ? "min-w-0 truncate" : "line-clamp-2"}
+                          className={cn(
+                            "ps-1.5",
+                            isComposerCollapsedMobile ? "min-w-0 truncate" : "line-clamp-2",
+                          )}
                         >
                           <ProjectFavicon
                             project={placeholderProject}
