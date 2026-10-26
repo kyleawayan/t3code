@@ -3183,7 +3183,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         if (isInsideRestingComposerControlScope(event.target)) return;
         composerMentionDragHandlers.onDrop(event);
       }}
-      className="me-auto w-full min-w-0 max-w-(--chat-content-max-width)"
+      className="@container/composer me-auto w-full min-w-0 max-w-(--chat-content-max-width)"
       data-chat-composer-form="true"
       {...threadContextDropTargetProps()}
     >
@@ -3480,7 +3480,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   showMobilePendingAnswerActions && "hidden sm:flex",
                 )}
               >
-                {composerAttachButton ? <div className="me-2">{composerAttachButton}</div> : null}
+                {composerAttachButton ? (
+                  <div data-composer-attach-action="" className="me-2">
+                    {composerAttachButton}
+                  </div>
+                ) : null}
                 <div
                   data-chat-composer-actions="right"
                   data-chat-composer-transition-actions="true"
