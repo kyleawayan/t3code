@@ -23,6 +23,16 @@ export const PIERRE_TREE_UNSAFE_CSS = `
   [data-item-section='decoration'] { flex: 0 1 auto; }
   /* Pierre shows indent guides only while the tree is hovered. */
   [data-item-section='spacing-item'] { opacity: 0.75; }
+  /* Git status letters squish to half width, like names do: a bold M was the widest thing in
+     a narrow tree. The cell narrows with them and the centered letter overflows it evenly. */
+  [data-item-section='git'] { width: 0.45em; margin-left: -2px; overflow: visible; }
+  /* An empty decoration slot still costs a row gap between the name and its status. */
+  [data-item-section='decoration']:empty { display: none; }
+  [data-item-section='git'] > span[title^='Git status'] {
+    display: inline-block;
+    flex: none;
+    transform: scaleX(0.5);
+  }
   :host { container-type: inline-size; }
   /* A narrow tree gives names the room: tight gutters, no empty git lane, and about 6px
      of indent a level, which the always-on guides keep readable. */
