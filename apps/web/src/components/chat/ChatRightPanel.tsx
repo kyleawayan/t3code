@@ -34,6 +34,7 @@ export function ChatRightPanel(props: ChatRightPanelProps) {
     <RightPanelSheet
       animationDurationMs={sheetAnimationDurationMs}
       open={tabs.open === true}
+      container={workspaceLayoutElement}
       onClose={onCloseSheet}
     >
       <RightPanelTabs
