@@ -70,16 +70,29 @@ export function composerPromptLink(input: {
   });
 }
 
-export async function copyPromptLink(link: string): Promise<void> {
+export async function copyLinkWithToast(
+  link: string,
+  titles: { readonly copied?: string; readonly failed: string },
+  description?: string,
+): Promise<void> {
   try {
-    await writeTextToClipboard(link);
+    if (!(await writeTextToClipboard(link, "link")) || titles.copied === undefined) return;
+    toastManager.add({
+      type: "success",
+      title: titles.copied,
+      ...(description ? { description } : {}),
+    });
   } catch (error) {
     toastManager.add(
       stackedThreadToast({
         type: "error",
-        title: "Could not copy the prompt link",
+        title: titles.failed,
         description: error instanceof Error ? error.message : "An error occurred.",
       }),
     );
   }
+}
+
+export function copyPromptLink(link: string): Promise<void> {
+  return copyLinkWithToast(link, { failed: "Could not copy the prompt link" });
 }
