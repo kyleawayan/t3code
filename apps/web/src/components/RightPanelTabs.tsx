@@ -1236,10 +1236,14 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
           // The sheet overlays the titlebar's drag region, which would otherwise
           // eat clicks on the tabs and the add-surface button as window drags.
           props.mode !== "inline" && "[-webkit-app-region:no-drag]",
-          props.mode === "inline" && !props.layoutControls ? "pr-28" : "pr-3",
+          props.mode === "inline" && !props.layoutControls
+            ? "pr-(--workspace-controls-reserve)"
+            : props.mode === "sheet"
+              ? "pr-(--workspace-sheet-controls-inset)"
+              : "pr-3",
           ownsDesktopTitleBar && "drag-region",
           ownsDesktopTitleBar && "wco:pr-(--workspace-native-controls-inset)",
-          props.mode === "inline" && props.maximized && TITLEBAR_CONTROLS_INSET_CLASS,
+          props.mode !== "embedded" && props.maximized && TITLEBAR_CONTROLS_INSET_CLASS,
         )}
         data-right-panel-tabbar
       >

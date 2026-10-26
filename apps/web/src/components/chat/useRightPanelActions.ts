@@ -190,7 +190,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
           deviceStateLoaded ? deviceState : null,
         );
       }
-      useRightPanelStore.getState().setMaximized(activeThreadRef, false);
+      // Fork: maximize survives closing, so reopening restores the same layout.
       useRightPanelStore.getState().close(activeThreadRef);
     }
   };

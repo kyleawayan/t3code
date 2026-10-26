@@ -34,11 +34,14 @@ export function ChatRightPanel(props: ChatRightPanelProps) {
     <RightPanelSheet
       animationDurationMs={sheetAnimationDurationMs}
       open={tabs.open === true}
+      maximized={maximized}
+      container={workspaceLayoutElement}
       onClose={onCloseSheet}
     >
       <RightPanelTabs
         {...tabs}
         mode="sheet"
+        maximized={maximized}
         inlineSize={inlineSize}
         layoutControls={layoutControls}
       />
