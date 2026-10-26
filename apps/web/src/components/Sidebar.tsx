@@ -98,6 +98,7 @@ import {
   threadTraversalDirectionFromCommand,
 } from "../keybindings";
 import { useShortcutModifierState } from "../shortcutModifierState";
+import { copyDesktopThreadLink, desktopThreadLink } from "../lib/desktopThreadLink";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
@@ -2816,6 +2817,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             return;
           case "copy-thread-id":
             copyThreadIdToClipboard(thread.id, { threadId: thread.id });
+            return;
+          case "copy-thread-link":
+            void copyDesktopThreadLink(desktopThreadLink(threadRef));
             return;
           case "archive": {
             if (confirmThreadArchive) {
