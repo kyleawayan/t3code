@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   clampThreadSidebarWidth,
+  resolvePreferredThreadSidebarWidth,
   resolveThreadSidebarMaximumWidth,
   resolveThreadSidebarMinimumWidth,
+  THREAD_SIDEBAR_DEFAULT_WIDTH,
   THREAD_SIDEBAR_MIN_WIDTH,
 } from "./threadSidebarWidth";
 
@@ -32,5 +34,13 @@ describe("clampThreadSidebarWidth", () => {
   it("keeps widths inside the range and caps wide ones", () => {
     expect(clampThreadSidebarWidth(300, 238, 560)).toBe(300);
     expect(clampThreadSidebarWidth(900, 238, 560)).toBe(560);
+  });
+});
+
+describe("resolvePreferredThreadSidebarWidth", () => {
+  it("keeps a stored width whatever the window size, so a narrow launch doesn't shrink it", () => {
+    expect(resolvePreferredThreadSidebarWidth(420)).toBe(420);
+    expect(resolvePreferredThreadSidebarWidth(null)).toBe(THREAD_SIDEBAR_DEFAULT_WIDTH);
+    expect(resolvePreferredThreadSidebarWidth(100)).toBe(THREAD_SIDEBAR_MIN_WIDTH);
   });
 });

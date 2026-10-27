@@ -662,6 +662,9 @@ describe("DesktopWindow", () => {
         assert.equal(createdWindowOptions[0]?.height, 780);
         assert.isUndefined(createdWindowOptions[0]?.x);
         assert.isUndefined(createdWindowOptions[0]?.y);
+        // Fork: no minimum size, so the window can sit narrow beside other apps.
+        assert.isUndefined(createdWindowOptions[0]?.minWidth);
+        assert.isUndefined(createdWindowOptions[0]?.minHeight);
         assert.isTrue(createdWindowOptions[0]?.disableAutoHideCursor);
         assert.isFalse(createdWindowOptions[0]?.webPreferences?.backgroundThrottling);
         assert.deepEqual(fakeWindow.setAutoHideCursor.mock.calls, [[false]]);

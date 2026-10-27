@@ -279,6 +279,26 @@ describe("resolveRestingComposerControlsLayout", () => {
     });
   });
 
+  it("never moves a block into the overflow menu when the fork caps it at zero", () => {
+    for (const hostWidth of [357, 356, 240, 176]) {
+      expect(
+        resolveRestingComposerControlsLayout({ ...base, hostWidth, maxHiddenCount: 0 }).hiddenCount,
+        `${hostWidth}px`,
+      ).toBe(0);
+    }
+  });
+
+  it("still steps through icon-only labels under the zero cap", () => {
+    expect(
+      resolveRestingComposerControlsLayout({
+        ...base,
+        iconOnlyBlockWidths: [24, 24],
+        hostWidth: 240,
+        maxHiddenCount: 0,
+      }),
+    ).toMatchObject({ hiddenCount: 0, iconOnlyCount: 2 });
+  });
+
   it("shrinks the picker after moving every trailing block into overflow", () => {
     expect(resolveRestingComposerControlsLayout({ ...base, hostWidth: 176 })).toEqual({
       hiddenCount: 2,
