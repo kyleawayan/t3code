@@ -27,6 +27,7 @@ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../termina
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { useEnvironmentIdentificationMode, useLegacySidebarEnabled } from "../hooks/useSettings";
+import { useMouseNavigationButtons } from "../hooks/useMouseNavigationButtons";
 import {
   PanelAnimationSuppressionProvider,
   usePanelAnimationSettings,
@@ -254,6 +255,7 @@ function NavigationHistoryShortcuts() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [keybindings, routeThreadRef]);
+  useMouseNavigationButtons();
 
   return null;
 }
