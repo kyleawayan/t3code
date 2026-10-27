@@ -83,6 +83,8 @@ const isClosedViewEntry = (entry: unknown): entry is ClosedViewEntry => {
             typeof surface.target.name === "string" &&
             (surface.target.platform === "ios" || surface.target.platform === "android")))
       );
+    case "proposed-plan":
+      return typeof surface.planId === "string" && surface.id === `proposed-plan:${surface.planId}`;
     case "pull-request":
       return (
         typeof surface.projectId === "string" &&

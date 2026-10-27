@@ -275,6 +275,7 @@ import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { shortcutLabelForCommand } from "../keybindings";
 import { PersistentThreadTerminalDrawer } from "./PersistentThreadTerminals";
 import { copyDesktopThreadLink, desktopThreadLink } from "~/lib/desktopThreadLink";
+import { useAutoOpenProposedPlan } from "~/hooks/useAutoOpenProposedPlan";
 import {
   AlarmClockIcon,
   CheckCircle2Icon,
@@ -2578,6 +2579,12 @@ export default function ChatView(props: ChatViewProps) {
     }
     return findLatestProposedPlan(serverProjection, activeLatestRun?.runId ?? null);
   })();
+  useAutoOpenProposedPlan({
+    threadRef: isServerThread ? activeThreadRef : null,
+    latestRunId: activeLatestRun?.runId ?? null,
+    latestRunSettled,
+    plan: activeProposedPlan,
+  });
   const showPlanFollowUpPrompt = shouldShowPlanFollowUpPrompt({
     pendingUserInputCount: pendingUserInputs.length,
     interactionMode,

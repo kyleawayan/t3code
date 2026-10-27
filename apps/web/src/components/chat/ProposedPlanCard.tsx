@@ -37,8 +37,10 @@ import { projectEnvironment } from "~/state/projects";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
+import { useRightPanelStore } from "~/rightPanelStore";
 
 export const ProposedPlanCard = memo(function ProposedPlanCard({
+  planId,
   planMarkdown,
   environmentId,
   threadRef,
@@ -46,6 +48,8 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   workspaceRoot,
   findActive = false,
 }: {
+  /** Fork: lets the card open the plan as a right panel tab. */
+  planId?: string | undefined;
   planMarkdown: string;
   environmentId: EnvironmentId;
   threadRef?: ScopedThreadRef | undefined;
@@ -176,6 +180,13 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
             <EllipsisIcon aria-hidden="true" className="size-4" />
           </MenuTrigger>
           <MenuPopup align="end">
+            {threadRef && planId ? (
+              <MenuItem
+                onClick={() => useRightPanelStore.getState().openProposedPlan(threadRef, planId)}
+              >
+                Open in right pane
+              </MenuItem>
+            ) : null}
             <MenuItem onClick={handleCopyPlan}>
               {isCopied ? "Copied!" : "Copy to clipboard"}
             </MenuItem>
