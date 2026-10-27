@@ -36,6 +36,7 @@ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../termina
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { useEnvironmentIdentificationMode } from "../hooks/useSettings";
+import { useMouseNavigationButtons } from "../hooks/useMouseNavigationButtons";
 import {
   PanelAnimationSuppressionProvider,
   usePanelAnimationSettings,
@@ -439,6 +440,7 @@ export function AppSidebarLayout({
   showSidebar?: boolean;
 }) {
   const gt = useGT();
+  useMouseNavigationButtons();
   const sidebarArea = workspaceAreaProps("sidebar", 0, gt("Threads"));
   const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
     observedKey: null,
