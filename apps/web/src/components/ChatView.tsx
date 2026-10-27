@@ -205,6 +205,7 @@ import { isEditableFocused } from "../lib/editableFocus";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { shortcutLabelForCommand } from "../keybindings";
 import { cn } from "~/lib/utils";
+import { copyDesktopThreadLink, desktopThreadLink } from "~/lib/desktopThreadLink";
 import { TITLEBAR_CONTROLS_INSET_CLASS } from "~/workspaceTitlebar";
 import { toastManager } from "./ui/toast";
 import { projectScriptIdFromCommand } from "~/projectScripts";
@@ -2778,6 +2779,10 @@ export default function ChatView(props: ChatViewProps) {
       ...threadLifecycleShortcuts,
       "thread.copyReference": ({ event }) => {
         if (!event.repeat) copyActiveThreadReference();
+      },
+      "thread.copyLink": ({ event }) => {
+        if (event.repeat || !isServerThread || !activeThreadRef) return;
+        void copyDesktopThreadLink(desktopThreadLink(activeThreadRef));
       },
       "chat.find": () => {
         if (!isServerThread || serverConfig?.threadFind !== true || activeThreadKey === null)
