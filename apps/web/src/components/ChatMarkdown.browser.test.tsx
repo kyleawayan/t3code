@@ -643,6 +643,22 @@ describe("ChatMarkdown streaming", () => {
   });
 });
 
+describe("ChatMarkdown task lists", () => {
+  it("dims a done task without dimming its open sub-tasks", async () => {
+    setup();
+    await using screen = await renderText(
+      "- [x] Done\n  - [ ] Open child\n  - [x] Done child\n- [ ] Open sibling",
+    );
+    const [done, openChild, doneChild, openSibling] = [
+      ...screen.container.querySelectorAll("li"),
+    ].map((item) => getComputedStyle(item).webkitTextFillColor);
+
+    expect(done).not.toBe(openSibling);
+    expect(openChild).toBe(openSibling);
+    expect(doneChild).toBe(done);
+  });
+});
+
 describe("ChatMarkdown skill chips", () => {
   it("updates digit-leading skill labels when discovered skills change", async () => {
     setup();
