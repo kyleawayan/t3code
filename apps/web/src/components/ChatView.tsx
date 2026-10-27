@@ -274,6 +274,7 @@ import { isEditableFocused } from "../lib/editableFocus";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { shortcutLabelForCommand } from "../keybindings";
 import { PersistentThreadTerminalDrawer } from "./PersistentThreadTerminals";
+import { copyDesktopThreadLink, desktopThreadLink } from "~/lib/desktopThreadLink";
 import {
   AlarmClockIcon,
   CheckCircle2Icon,
@@ -5826,6 +5827,10 @@ export default function ChatView(props: ChatViewProps) {
     commands: {
       "thread.copyReference": ({ event }) => {
         if (!event.repeat) copyActiveThreadReferenceStable();
+      },
+      "thread.copyLink": ({ event }) => {
+        if (event.repeat || !isServerThread || !activeThreadRef) return;
+        void copyDesktopThreadLink(desktopThreadLink(activeThreadRef));
       },
       "thread.settle": () => {
         if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) return false;
