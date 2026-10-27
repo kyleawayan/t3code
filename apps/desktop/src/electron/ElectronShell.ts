@@ -38,6 +38,18 @@ const isRemoteEditorUrl = (url: URL) =>
         url.pathname.startsWith("/ssh-remote+") &&
         url.pathname.length > "/ssh-remote+".length);
 
+// Fork: markdown files open in Obsidian through `obsidian://open?path=<absolute path>`. Only that
+// one action and parameter pass, so a page can't reach the vault-editing actions.
+const isObsidianOpenUrl = (url: URL) =>
+  url.protocol === "obsidian:" &&
+  url.host === "open" &&
+  url.username.length === 0 &&
+  url.password.length === 0 &&
+  (url.pathname === "" || url.pathname === "/") &&
+  url.hash.length === 0 &&
+  [...url.searchParams.keys()].join() === "path" &&
+  (url.searchParams.get("path") ?? "").startsWith("/");
+
 export function parseSafeExternalUrl(rawUrl: unknown): Option.Option<string> {
   if (typeof rawUrl !== "string") {
     return Option.none();
@@ -45,7 +57,7 @@ export function parseSafeExternalUrl(rawUrl: unknown): Option.Option<string> {
 
   try {
     const url = new URL(rawUrl);
-    return SAFE_WEB_PROTOCOLS.has(url.protocol) || isRemoteEditorUrl(url)
+    return SAFE_WEB_PROTOCOLS.has(url.protocol) || isRemoteEditorUrl(url) || isObsidianOpenUrl(url)
       ? Option.some(url.href)
       : Option.none();
   } catch {
