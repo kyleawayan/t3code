@@ -41,6 +41,8 @@ const THREAD_KEYBINDING_COMMANDS = [
   "thread.previous",
   "thread.next",
   "thread.copyReference",
+  // Fork: copies the t3code:// deep link; no default key, the user binds it.
+  "thread.copyLink",
   "thread.settle",
   "thread.pin",
   "thread.undo",
