@@ -731,7 +731,12 @@ export function BranchToolbarBranchSelector({
               )}
             />
             <ComposerContextLabel displayMode={displayMode}>
-              <MiddleTruncate value={triggerLabel} variant="cap-aligned" className="w-full" />
+              {/* Fork: in the toolbar the name squishes like the checkout label beside it. */}
+              {displayMode === "panel" ? (
+                <MiddleTruncate value={triggerLabel} variant="cap-aligned" className="w-full" />
+              ) : (
+                triggerLabel
+              )}
             </ComposerContextLabel>
           </ComboboxTrigger>
         </span>
