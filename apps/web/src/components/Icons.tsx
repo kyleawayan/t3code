@@ -25,6 +25,15 @@ export const FinderIcon: Icon = (props) => (
   </svg>
 );
 
+// Fork: a faceted gem in Obsidian's purples, for the markdown Open-in default.
+export const ObsidianIcon: Icon = (props) => (
+  <svg viewBox="0 0 24 24" fill="none" {...props}>
+    <path d="M8.2 2.6 15.6 1l4.6 7.4-2.3 10.2L11 23l-6.6-6.8L3.5 9Z" fill="#6C31E3" />
+    <path d="M15.6 1 11 9.6l6.9 9 2.3-10.2Z" fill="#A88BFA" />
+    <path d="M11 9.6 3.5 9l.9 7.2L11 23Z" fill="#4A1FA8" />
+  </svg>
+);
+
 export const FileExplorerIcon: Icon = (props) => (
   <svg viewBox="0 0 24 24" fill="none" {...props}>
     <path
