@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import { cn } from "../lib/utils";
 import { THREAD_DETAILS_PANEL_LABEL_CLASS } from "./chat/threadDetailsPanelStyles";
-import { SquishText } from "./SquishText";
+import { SQUISH_TEXT_MIN_SCALE, SquishText } from "./SquishText";
 
 export function ComposerContextLabel({
   children,
@@ -18,7 +18,7 @@ export function ComposerContextLabel({
         "min-w-0",
         displayMode === "panel"
           ? "flex-1 overflow-x-clip overflow-y-visible text-left"
-          : "max-w-[240px] group-data-[compact]/composer-context:max-w-0",
+          : "max-w-[240px]",
       )}
     >
       <span
@@ -26,13 +26,14 @@ export function ComposerContextLabel({
         className={cn(
           "block w-full min-w-0 truncate",
           displayMode === "panel" && THREAD_DETAILS_PANEL_LABEL_CLASS,
-          displayMode === "toolbar" &&
-            "max-w-[240px] transition-opacity duration-180 ease-drawer group-data-[compact]/composer-context:opacity-0 motion-reduce:transition-none",
+          displayMode === "toolbar" && "max-w-[240px]",
         )}
       >
-        {/* In the toolbar, a long name squishes to fit before it clips. */}
+        {/* In the toolbar, a long name squishes to fit, then ends in "…". */}
         {displayMode === "toolbar" && typeof children === "string" ? (
-          <SquishText className="w-full">{children}</SquishText>
+          <SquishText ellipsisScale={SQUISH_TEXT_MIN_SCALE} className="w-full">
+            {children}
+          </SquishText>
         ) : (
           children
         )}
