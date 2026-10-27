@@ -34,6 +34,7 @@ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../termina
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { useEnvironmentIdentificationMode } from "../hooks/useSettings";
+import { useMouseNavigationButtons } from "../hooks/useMouseNavigationButtons";
 import {
   PanelAnimationSuppressionProvider,
   usePanelAnimationSettings,
@@ -415,6 +416,7 @@ function SidebarControl() {
 }
 
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
+  useMouseNavigationButtons();
   const sidebarArea = workspaceAreaProps("sidebar", 0, "Threads");
   const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
     observedKey: null,
