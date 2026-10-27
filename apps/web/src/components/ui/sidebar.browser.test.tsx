@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import "~/index.css";
 
-import { render } from "../../../test/render";
+import { act, fakeTimers, render } from "../../../test/render";
 import { Sidebar, SidebarProvider, SidebarRail, SidebarTrigger, useSidebar } from "./sidebar";
 
 function CollapseFromInside() {
@@ -180,4 +180,89 @@ it("opens the mobile sheet without a transition while panel animations are off",
   const popup = document.querySelector<HTMLElement>('[data-mobile="true"][data-sidebar="sidebar"]');
   expect(popup).not.toBeNull();
   expect(getComputedStyle(popup!).transitionDuration).toBe("0s");
+});
+
+function PeekTrigger() {
+  const { mobilePeek } = useSidebar();
+  return (
+    <>
+      <button
+        data-testid="peek-trigger"
+        onPointerEnter={mobilePeek.start}
+        onPointerLeave={mobilePeek.end}
+      >
+        Sidebar
+      </button>
+      <button data-testid="keyboard-toggle" onClick={mobilePeek.toggleFromKeyboard}>
+        Cmd+B
+      </button>
+    </>
+  );
+}
+
+// Fork: in sheet mode, hovering the trigger peeks the sidebar and Cmd+B opens it until the
+// pointer visits the sheet and leaves.
+describe("floating sidebar peek", () => {
+  const peekUi = (
+    <SidebarProvider mobileMediaQuery="(min-width: 0px)">
+      <Sidebar mobileWidth="300px">
+        <button data-testid="sidebar-control">Thread</button>
+      </Sidebar>
+      {/* Clear of the 300px sheet, so moving between them leaves it. */}
+      <div style={{ position: "fixed", top: 40, right: 40, display: "flex", gap: 40 }}>
+        <PeekTrigger />
+        <button data-testid="content-control">Content</button>
+      </div>
+    </SidebarProvider>
+  );
+  // Closing starts an exit animation, so "open" is read from the sheet's state attribute instead
+  // of waiting for it to unmount.
+  const sheetOpen = () =>
+    document
+      .querySelector('[data-slot="sidebar"][data-mobile="true"]')
+      ?.hasAttribute("data-open") ?? false;
+
+  // React derives enter and leave from `pointerout`/`pointerover`, so the pointer's moves are
+  // dispatched directly; the open sheet's modal backdrop blocks Playwright's own hover checks.
+  const movePointer = (from: Element, to: Element) => {
+    const init = { bubbles: true, pointerType: "mouse" };
+    from.dispatchEvent(new PointerEvent("pointerout", { ...init, relatedTarget: to }));
+    to.dispatchEvent(new PointerEvent("pointerover", { ...init, relatedTarget: from }));
+  };
+
+  it("opens while the trigger is hovered and closes after the pointer leaves", async () => {
+    await page.viewport(800, 900);
+    await using screen = await render(peekUi);
+    const trigger = screen.getByTestId("peek-trigger").element();
+    const content = screen.getByTestId("content-control").element();
+    await act(() => movePointer(content, trigger));
+    expect(sheetOpen()).toBe(true);
+
+    using _timers = fakeTimers();
+    await act(() => movePointer(trigger, content));
+    await act(() => vi.advanceTimersByTime(200));
+    expect(sheetOpen()).toBe(true);
+    await act(() => vi.advanceTimersByTime(200));
+    expect(sheetOpen()).toBe(false);
+  });
+
+  it("keeps a Cmd+B opening until the pointer visits the sheet and leaves", async () => {
+    await page.viewport(800, 900);
+    await using screen = await render(peekUi);
+    const content = screen.getByTestId("content-control").element();
+    await act(() => (screen.getByTestId("keyboard-toggle").element() as HTMLElement).click());
+    expect(sheetOpen()).toBe(true);
+
+    using _timers = fakeTimers();
+    await act(() => vi.advanceTimersByTime(1_000));
+    expect(sheetOpen()).toBe(true);
+
+    const sheetControl = page.getByTestId("sidebar-control").element();
+    await act(() => {
+      movePointer(content, sheetControl);
+      movePointer(sheetControl, content);
+    });
+    await act(() => vi.advanceTimersByTime(400));
+    expect(sheetOpen()).toBe(false);
+  });
 });
