@@ -79,7 +79,7 @@ import {
   extendReplacementRangeForTrailingSpace,
   replaceTextRange,
 } from "../../composer-logic";
-import { DEFAULT_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
+import { resolveComposerPlaceholder } from "../../composerPlaceholder";
 import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
 import {
   deriveComposerSendState,
@@ -2279,31 +2279,25 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     expandMobileComposer: expandMobileComposerStable,
   });
   const hasBlockingComposerTopDrawer = pendingUserInputs.length > 0;
-  // Fork: the resting placeholder names where a message goes, "{project}: {thread}". Drafts have
-  // no title yet, and the branch is already in the bottom bar.
-  const placeholderThreadTitle =
-    routeKind === "server" ? (activeThread ?? props.activeThreadShell)?.title : null;
-  const contextPlaceholder =
-    placeholderProject === null
-      ? null
-      : placeholderThreadTitle
-        ? `${placeholderProject.title}: ${placeholderThreadTitle}`
-        : placeholderProject.title;
-  const composerPlaceholder = isComposerApprovalState
-    ? activePendingApproval?.supportsFeedback
-      ? "Send feedback to decline this request"
-      : "Send a message to decline and redirect the agent"
-    : activePendingProgress
+  const composerPlaceholder = resolveComposerPlaceholder({
+    approval: isComposerApprovalState
+      ? activePendingApproval?.supportsFeedback
+        ? "feedback"
+        : "redirect"
+      : null,
+    pendingQuestion: activePendingProgress
       ? isChoiceOnlyPendingQuestion
-        ? "Choose an option above"
-        : "Type your own answer, or leave this blank to use the selected option"
-      : showPlanFollowUpPrompt && activeProposedPlan
-        ? "Add feedback to refine the plan, or leave this blank to implement it"
-        : projectSelectionRequired
-          ? "Choose a project above to start a thread"
-          : showProviderUnavailable
-            ? "Enable a provider in Settings to send a message"
-            : (contextPlaceholder ?? DEFAULT_COMPOSER_PLACEHOLDER);
+        ? "choice"
+        : "open"
+      : null,
+    planFollowUp: Boolean(showPlanFollowUpPrompt && activeProposedPlan),
+    projectSelectionRequired,
+    providerUnavailable: showProviderUnavailable,
+    projectTitle: placeholderProject?.title ?? null,
+    // Drafts have no title yet.
+    threadTitle:
+      routeKind === "server" ? ((activeThread ?? props.activeThreadShell)?.title ?? null) : null,
+  });
   const composerControlsCollapsed = isComposerCollapsedMobile;
   // The collapsed mobile web composer keeps a second controls row inside the card.
   const showInlineRestingControls = isComposerCollapsedMobile;
@@ -3440,9 +3434,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onCitationSubmitAndSend={submitCitationAndSendStable}
                     onCitationDraftSave={saveCitationDraftToPromptStable}
                     onPaste={onComposerPasteStable}
-                    placeholder={composerPlaceholder}
+                    placeholder={composerPlaceholder.text}
                     placeholderContent={
-                      placeholderProject !== null && composerPlaceholder === contextPlaceholder ? (
+                      placeholderProject !== null && composerPlaceholder.namesThread ? (
                         // Two lines at most, so a long title never grows the composer. The start
                         // padding keeps the icon off the caret, so a focused composer still reads.
                         <span
@@ -3455,7 +3449,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                             project={placeholderProject}
                             className="me-1.5 inline-block size-4 align-[-0.2em] opacity-75"
                           />
-                          {contextPlaceholder}
+                          {composerPlaceholder.text}
                         </span>
                       ) : undefined
                     }
