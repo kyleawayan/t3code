@@ -2220,28 +2220,21 @@ code {
 }
 
 /* A checked task reads as done. Loose lists wrap the checkbox in a paragraph. Text decoration
-   reaches every in-flow descendant, so nested lists become atomic inline boxes, which it skips,
-   and their items keep their own state. The text dims relative to its surroundings so it still
-   stands apart in already-muted blocks and follows the contrast setting; opacity would also
-   fade the checkbox. Done text deliberately falls below 4.5:1: at the 80% that keeps it, done
-   and open text sit under 2:1 apart and read as the same state. */
+   reaches every in-flow descendant, so nested lists become atomic inline boxes, which it skips.
+   The dim goes on the text fill, not `color`: nested lists reset the fill to their unchanged
+   `color`, so open sub-tasks stay readable and a nested done task dims only once. The text dims
+   relative to its surroundings so it still stands apart in already-muted blocks and follows the
+   contrast setting; opacity would also fade the checkbox. Done text deliberately falls below
+   4.5:1: at the 80% that keeps it, done and open text sit under 2:1 apart and read as the same
+   state. */
 .chat-markdown
   li.task-list-item:is(
     :has(> input[type="checkbox"]:checked),
     :has(> p:first-child > input[type="checkbox"]:checked)
   ) {
-  color: color-mix(in srgb, currentColor 50%, transparent);
+  -webkit-text-fill-color: color-mix(in srgb, currentColor 50%, transparent);
   text-decoration-line: line-through;
-}
-
-/* Inline code dims with its task, and a nested checked task must not dim a second time. */
-.chat-markdown
-  li.task-list-item:is(
-    :has(> input[type="checkbox"]:checked),
-    :has(> p:first-child > input[type="checkbox"]:checked)
-  )
-  :is(li, :not(pre) > code) {
-  color: inherit;
+  text-decoration-color: color-mix(in srgb, currentColor 50%, transparent);
 }
 
 .chat-markdown
@@ -2252,6 +2245,7 @@ code {
   > :is(ul, ol) {
   display: inline-block;
   width: 100%;
+  -webkit-text-fill-color: currentColor;
 }
 
 /* Markdown assumes inline images — GitHub comments lay button images out in a row — and the
