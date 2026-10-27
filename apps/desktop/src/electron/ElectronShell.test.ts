@@ -1,3 +1,5 @@
+import * as NodeOS from "node:os";
+
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { beforeEach, vi } from "vite-plus/test";
@@ -30,6 +32,9 @@ const SLACK_THREAD_PERMALINK =
   "https://my-workspace.slack.com/archives/C0123ABCD/p1700000000123456?thread_ts=1699999999.000100&cid=C0123ABCD";
 const SLACK_THREAD_DEEP_LINK =
   "slack://channel?team=T0123ABCD&id=C0123ABCD&message=1700000000.123456&thread_ts=1699999999.000100&host=slack.com";
+
+const ICLOUD = `${NodeOS.homedir()}/Library/Mobile Documents/iCloud~md~obsidian/Documents`;
+const obsidianOpen = (path: string) => `obsidian://open?path=${encodeURIComponent(path)}`;
 
 const findTeamResponse = (body: unknown) => ({ json: async () => body });
 
@@ -296,6 +301,43 @@ describe("ElectronShell", () => {
       const result = yield* electronShell.openExternal("file:///etc/passwd");
 
       assert.equal(result, false);
+      assert.equal(openExternalMock.mock.calls.length, 0);
+    }).pipe(Effect.provide(ElectronShell.layer)),
+  );
+
+  it.effect("opens a markdown file in Obsidian", () =>
+    Effect.gen(function* () {
+      openExternalMock.mockResolvedValue(undefined);
+
+      const electronShell = yield* ElectronShell.ElectronShell;
+      const result = yield* electronShell.openExternal(obsidianOpen(`${ICLOUD}/plan.md`));
+
+      assert.equal(result, true);
+      assert.deepEqual(openExternalMock.mock.calls[0]?.[0], obsidianOpen(`${ICLOUD}/plan.md`));
+    }).pipe(Effect.provide(ElectronShell.layer)),
+  );
+
+  it.effect("blocks Obsidian links beyond opening one iCloud markdown file", () =>
+    Effect.gen(function* () {
+      const electronShell = yield* ElectronShell.ElectronShell;
+      const results = yield* Effect.forEach(
+        [
+          "obsidian://new?path=%2Ftmp%2Fa.md&content=x",
+          "obsidian://open?vault=work",
+          "obsidian://open?path=%2Ftmp%2Fa.md&vault=work",
+          "obsidian://open?path=notes%2Fa.md",
+          "obsidian://user:pass@open?path=%2Ftmp%2Fa.md",
+          obsidianOpen(`${NodeOS.homedir()}/Documents/plan.md`),
+          obsidianOpen(`${ICLOUD}/run.command`),
+          obsidianOpen(`${ICLOUD}/notes/../plan.md`),
+        ],
+        (url) => electronShell.openExternal(url),
+      );
+
+      assert.deepEqual(
+        results,
+        Array.from({ length: 8 }, () => false),
+      );
       assert.equal(openExternalMock.mock.calls.length, 0);
     }).pipe(Effect.provide(ElectronShell.layer)),
   );

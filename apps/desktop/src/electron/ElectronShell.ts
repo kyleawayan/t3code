@@ -5,6 +5,7 @@ import {
   remoteSchemeForEditor,
   type SystemSettingsPane,
 } from "@t3tools/contracts";
+import * as NodeOS from "node:os";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -43,6 +44,27 @@ const isRemoteEditorUrl = (url: URL) =>
         url.pathname.startsWith("/ssh-remote+") &&
         url.pathname.length > "/ssh-remote+".length);
 
+// Fork: iCloud markdown opens in Obsidian through `obsidian://open?path=<absolute path>`. Preview
+// frames can open URLs without a click, so only that action, with a normalized markdown path
+// under iCloud, passes: no vault-editing actions and no other files.
+const OBSIDIAN_NOTE = /\.(?:md|mdx|markdown|mdown|mkd)$/i;
+const isObsidianNotePath = (path: string) =>
+  path
+    .split("/")
+    .slice(1)
+    .every((segment) => segment !== "" && segment !== "." && segment !== "..") &&
+  path.startsWith(`${NodeOS.homedir()}/Library/Mobile Documents/`) &&
+  OBSIDIAN_NOTE.test(path);
+const isObsidianOpenUrl = (url: URL) =>
+  url.protocol === "obsidian:" &&
+  url.host === "open" &&
+  url.username.length === 0 &&
+  url.password.length === 0 &&
+  (url.pathname === "" || url.pathname === "/") &&
+  url.hash.length === 0 &&
+  [...url.searchParams.keys()].join() === "path" &&
+  isObsidianNotePath(url.searchParams.get("path") ?? "");
+
 export function parseSafeExternalUrl(rawUrl: unknown): Option.Option<string> {
   if (typeof rawUrl !== "string") {
     return Option.none();
@@ -53,7 +75,8 @@ export function parseSafeExternalUrl(rawUrl: unknown): Option.Option<string> {
     return SAFE_WEB_PROTOCOLS.has(url.protocol) ||
       APP_LAUNCH_URLS.has(url.href) ||
       isRemoteEditorUrl(url) ||
-      isLocalEditorFileUrl(url)
+      isLocalEditorFileUrl(url) ||
+      isObsidianOpenUrl(url)
       ? Option.some(url.href)
       : Option.none();
   } catch {
