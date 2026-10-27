@@ -239,6 +239,33 @@ describe("thread undo shortcut", () => {
   });
 });
 
+describe("copy thread link shortcut", () => {
+  it("takes Cmd+Shift+C from the thread reference copy once the user binds it", () => {
+    const bindings = mergeWithDefaultKeybindings(
+      compile([
+        {
+          shortcut: modShortcut("c", { shiftKey: true }),
+          command: "thread.copyLink",
+          whenAst: whenNot(whenIdentifier("terminalFocus")),
+        },
+      ]),
+    );
+
+    assert.strictEqual(
+      resolveShortcutCommand(event({ key: "c", metaKey: true, shiftKey: true }), bindings, {
+        platform: "MacIntel",
+      }),
+      "thread.copyLink",
+    );
+  });
+
+  it("has no default shortcut", () => {
+    assert.isFalse(
+      DEFAULT_RESOLVED_KEYBINDINGS.some((binding) => binding.command === "thread.copyLink"),
+    );
+  });
+});
+
 describe("split/new/close terminal shortcuts", () => {
   it("supports when expressions", () => {
     const keybindings = compile([
