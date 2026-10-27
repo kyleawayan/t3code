@@ -472,6 +472,30 @@ describe("DesktopWindow", () => {
     );
   });
 
+  it.effect("creates the main window without a minimum size", () =>
+    Effect.gen(function* () {
+      const fakeWindow = makeFakeBrowserWindow();
+      const createCount = yield* Ref.make(0);
+      const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+      const createdWindowOptions: Electron.BrowserWindowConstructorOptions[] = [];
+      const layer = layerTest({
+        window: fakeWindow.window,
+        createCount,
+        mainWindow,
+        createdWindowOptions,
+      });
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+        assert.equal(yield* Ref.get(createCount), 1);
+        // Fork: no minimum size, so the window can sit narrow beside other apps.
+        assert.isUndefined(createdWindowOptions[0]?.minWidth);
+        assert.isUndefined(createdWindowOptions[0]?.minHeight);
+      }).pipe(Effect.provide(layer));
+    }),
+  );
+
   it.effect(
     "opens and reopens the window without backend readiness when local execution is disabled",
     () =>

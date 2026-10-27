@@ -1,4 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
+import type { EnvironmentPresentationWithProviders } from "@t3tools/client-runtime/state/presentation";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import { collectLimitAccounts } from "@t3tools/shared/usageLimits";
 import { useNowMinute } from "../../hooks/useNowMinute";
@@ -11,9 +13,10 @@ import { readUsagePagePreferences, saveUsagePagePreferences } from "../usage/usa
  * API-key accounts have no subscription windows, so they are left out, and the
  * section renders nothing unless some account reports limits.
  */
-export function SidebarUsageLimits() {
-  const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
-  const eligible = new Map(
+type Presentations = ReadonlyMap<EnvironmentId, EnvironmentPresentationWithProviders>;
+
+export function withoutApiKeyProviders(presentations: Presentations): Presentations {
+  return new Map(
     [...presentations].map(([id, presentation]) => [
       id,
       {
@@ -29,6 +32,11 @@ export function SidebarUsageLimits() {
       },
     ]),
   );
+}
+
+export function SidebarUsageLimits() {
+  const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
+  const eligible = withoutApiKeyProviders(presentations);
   const nowMinute = useNowMinute();
   if (collectLimitAccounts(eligible).length === 0) return null;
   const now = Date.parse(`${nowMinute}:00Z`);

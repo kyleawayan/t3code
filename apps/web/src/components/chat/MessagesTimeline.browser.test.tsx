@@ -993,3 +993,22 @@ it("renders automatic compaction as one live divider that finishes with its reas
   expect(container.querySelectorAll('[role="separator"]')).toHaveLength(1);
   expect(container.textContent).not.toContain("Compacting before");
 });
+
+// Fork: without a gutter of its own the minimap would sit over the messages, so it drops out.
+describe("timeline minimap gutter", () => {
+  it("shows beside a narrower message column and drops out once the column fills the chat", async () => {
+    await using screen = await renderTimeline([
+      message("First question", {}, "minimap-1"),
+      message("Second question", {}, "minimap-2"),
+      message("Third question", {}, "minimap-3"),
+    ]);
+    const container = screen.container as HTMLElement;
+    container.style.setProperty("--chat-content-max-width", "600px");
+    const minimap = () => container.querySelector('[data-testid="timeline-minimap"]');
+
+    await vi.waitFor(() => expect(minimap()).not.toBeNull());
+
+    container.style.width = "620px";
+    await vi.waitFor(() => expect(minimap()).toBeNull());
+  });
+});

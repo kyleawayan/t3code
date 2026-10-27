@@ -239,6 +239,20 @@ describe("thread undo shortcut", () => {
   });
 });
 
+describe("fork diff shortcut", () => {
+  it("opens the uncommitted diff from a user binding", () => {
+    const bindings = mergeWithDefaultKeybindings(
+      compile([{ shortcut: modShortcut("d", { altKey: true }), command: "diff.openUncommitted" }]),
+    );
+    assert.strictEqual(
+      resolveShortcutCommand(event({ key: "d", metaKey: true, altKey: true }), bindings, {
+        platform: "MacIntel",
+      }),
+      "diff.openUncommitted",
+    );
+  });
+});
+
 describe("copy thread link shortcut", () => {
   it("takes Cmd+Shift+C from the thread reference copy once the user binds it", () => {
     const bindings = mergeWithDefaultKeybindings(
