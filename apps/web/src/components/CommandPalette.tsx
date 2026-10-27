@@ -1356,7 +1356,7 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
-  if (activeThread !== null) {
+  if (activeThread) {
     const activeThreadLink = desktopThreadLink(
       scopeThreadRef(activeThread.environmentId, activeThread.id),
     );
@@ -1367,6 +1367,7 @@ function OpenCommandPaletteDialog(props: {
       title: "Copy thread link",
       description: activeThreadLink,
       icon: <LinkIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "thread.copyLink",
       run: () => copyDesktopThreadLink(activeThreadLink),
     });
   }
@@ -2448,6 +2449,16 @@ function OpenCommandPaletteDialog(props: {
       if (activeThreadReferenceCopyTarget === null) return;
       setOpen(false);
       void copyActiveThreadReference();
+      return;
+    }
+    if (command === "thread.copyLink") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!activeThread) return;
+      setOpen(false);
+      void copyDesktopThreadLink(
+        desktopThreadLink(scopeThreadRef(activeThread.environmentId, activeThread.id)),
+      );
       return;
     }
     // ChatView ignores shortcuts while the palette is open, so intercept find here.
