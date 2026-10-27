@@ -54,6 +54,7 @@ import { useClientSettings, updateClientSettings } from "~/hooks/useSettings";
 import { useTheme } from "~/hooks/useTheme";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "~/hooks/useLocalStorage";
 import { useWorkspaceMutationRefresh } from "~/hooks/useWorkspaceMutationRefresh";
+import { useExternalFileRefresh } from "~/hooks/useExternalFileRefresh";
 import { resolveDiffThemeName } from "~/lib/diffRendering";
 import { PREFERRED_HIGHLIGHTER } from "~/lib/syntaxHighlighting";
 import { cn } from "~/lib/utils";
@@ -1148,6 +1149,20 @@ export default function FilePreviewPanel({
     mutationId: workspaceMutationId,
     refresh: file.refresh,
     resourceKey: `file:${environmentId}:${cwd}:${relativePath ?? ""}`,
+  });
+  useExternalFileRefresh({
+    enabled:
+      attachment === undefined &&
+      relativePath !== null &&
+      !isFolder &&
+      !isMedia &&
+      !isPdf &&
+      !selectedFilePending,
+    // Only a local file can change under another app on this machine; a remote one would pay a
+    // full read over the connection every interval.
+    poll:
+      isMarkdown && window.desktopBridge !== undefined && environmentId === primaryEnvironmentId,
+    refresh: file.refresh,
   });
 
   useEffect(() => {
