@@ -60,6 +60,7 @@ import { useRemoteOpenState } from "~/remoteOpen";
 import { useClientSettings } from "~/hooks/useSettings";
 import { useTheme } from "~/hooks/useTheme";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "~/hooks/useLocalStorage";
+import { useExternalFileRefresh } from "~/hooks/useExternalFileRefresh";
 import { resolveDiffThemeName } from "~/lib/diffRendering";
 import { PREFERRED_HIGHLIGHTER } from "~/lib/syntaxHighlighting";
 import { cn } from "~/lib/utils";
@@ -1192,6 +1193,22 @@ export default function FilePreviewPanel({
         )
       : NO_FILE_REVISION_ATOM,
   );
+  useExternalFileRefresh({
+    enabled:
+      canReadFiles &&
+      attachment === undefined &&
+      relativePath !== null &&
+      !isFolder &&
+      !isMedia &&
+      !isPdf &&
+      !isDocument &&
+      !selectedFilePending,
+    // Only a local file can change under another app on this machine; a remote one would pay a
+    // full read over the connection every interval.
+    poll:
+      isMarkdown && window.desktopBridge !== undefined && environmentId === primaryEnvironmentId,
+    refresh: file.refresh,
+  });
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the breadcrumb DOM so the deepest and current crumbs are in view after commit
   useEffect(() => {
