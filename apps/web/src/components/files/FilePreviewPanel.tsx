@@ -59,7 +59,7 @@ import { useClientSettings } from "~/hooks/useSettings";
 import { useTheme } from "~/hooks/useTheme";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "~/hooks/useLocalStorage";
 import { useExternalFileRefresh } from "~/hooks/useExternalFileRefresh";
-import { isObsidianVaultCandidate } from "~/lib/obsidianPath";
+import { isObsidianVaultCandidate, obsidianNoteTitle } from "~/lib/obsidianPath";
 import { resolveDiffThemeName } from "~/lib/diffRendering";
 import { PREFERRED_HIGHLIGHTER } from "~/lib/syntaxHighlighting";
 import { cn } from "~/lib/utils";
@@ -936,6 +936,7 @@ function RenderedMarkdownSurface({
   workspaceMutationId,
   readOnly,
   onPendingChange,
+  title,
 }: Omit<
   EditableFileSurfaceProps,
   | "resolvedTheme"
@@ -948,6 +949,7 @@ function RenderedMarkdownSurface({
   threadRef: ScopedThreadRef;
   readOnly: boolean;
   workspaceMutationId: string | null;
+  title: string | null;
 }) {
   const saveTarget = { environmentId, cwd, relativePath };
   useFileSaveSession(saveTarget, onPendingChange);
@@ -960,6 +962,7 @@ function RenderedMarkdownSurface({
         relativePath={relativePath}
         threadRef={threadRef}
         workspaceMutationId={workspaceMutationId}
+        title={title}
         onTaskListChange={
           readOnly
             ? undefined
@@ -1177,6 +1180,15 @@ export default function FilePreviewPanel({
       : relativePath && attachment === undefined
         ? resolvePathLinkTarget(relativePath, cwd)
         : null;
+  const obsidianPath =
+    absolutePath !== null &&
+    isMarkdown &&
+    file.isFile &&
+    window.desktopBridge !== undefined &&
+    environmentId === primaryEnvironmentId &&
+    isObsidianVaultCandidate(absolutePath)
+      ? absolutePath
+      : null;
   const onFilePostRender = useFileLineReveal(relativePath, revealLine, revealRequestId);
   // Mounting the file read under the workspace mutation id refetches it after each mutation.
   useAtomMount(
@@ -1309,15 +1321,7 @@ export default function FilePreviewPanel({
               openInCwdIsFile={file.isFile}
               compact
               revealFileManager={revealsInFileManager}
-              obsidianPath={
-                isMarkdown &&
-                file.isFile &&
-                window.desktopBridge !== undefined &&
-                environmentId === primaryEnvironmentId &&
-                isObsidianVaultCandidate(absolutePath)
-                  ? absolutePath
-                  : null
-              }
+              obsidianPath={obsidianPath}
             />
           ) : null}
           {canToggleRendered && renderedMode ? (
@@ -1531,6 +1535,7 @@ export default function FilePreviewPanel({
                 workspaceMutationId={workspaceMutationId}
                 readOnly={file.data.truncated || isHostFile || !canWriteFiles}
                 onPendingChange={onPendingChange}
+                title={obsidianPath === null ? null : obsidianNoteTitle(obsidianPath)}
               />
             ) : tableDelimiter && renderTable ? (
               <DelimitedTablePreview
