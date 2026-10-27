@@ -22,6 +22,7 @@ const RIGHT_PANEL_KINDS = [
   "pull-request",
   "pull-requests",
   "side-chat",
+  "proposed-plan",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -76,7 +77,10 @@ export type RightPanelSurface =
       detailTab?: PullRequestDetailTab;
     }
   | { id: "pull-requests"; kind: "pull-requests" }
-  | { id: `side-chat:${string}`; kind: "side-chat"; threadId: ThreadId };
+  | { id: `side-chat:${string}`; kind: "side-chat"; threadId: ThreadId }
+  // Fork: a proposed plan from the thread, read-only. Only the id persists; the markdown is read
+  // from the thread so the tab always shows the plan as the agent last wrote it.
+  | { id: `proposed-plan:${string}`; kind: "proposed-plan"; planId: string };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 const RIGHT_PANEL_STORAGE_VERSION = 14;
@@ -123,7 +127,10 @@ interface RightPanelStoreState {
   ) => boolean;
   open: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "side-chat">,
+    kind: Exclude<
+      RightPanelKind,
+      "file" | "terminal" | "pull-request" | "side-chat" | "proposed-plan"
+    >,
   ) => void;
   openSideChat: (ref: ScopedThreadRef, threadId: ThreadId) => void;
   openDevice: (ref: ScopedThreadRef, target: DeviceTabTarget, automatic?: boolean) => void;
@@ -139,6 +146,12 @@ interface RightPanelStoreState {
     keepSource?: boolean,
   ) => void;
   openAttachment: (ref: ScopedThreadRef, attachment: ChatFileAttachment) => void;
+  openProposedPlan: (ref: ScopedThreadRef, planId: string) => void;
+  /**
+   * Opens a plan the agent just proposed without counting as a user action, replacing the
+   * thread's other plan tabs so a revised plan reuses one tab. Replaced tabs stay reopenable.
+   */
+  autoOpenProposedPlan: (ref: ScopedThreadRef, planId: string) => void;
   openPullRequest: (
     ref: ScopedThreadRef,
     target: {
@@ -183,7 +196,10 @@ interface RightPanelStoreState {
   toggleVisibility: (ref: ScopedThreadRef) => void;
   toggle: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "side-chat">,
+    kind: Exclude<
+      RightPanelKind,
+      "file" | "terminal" | "pull-request" | "side-chat" | "proposed-plan"
+    >,
   ) => void;
   setThreadPanelOpen: (
     ref: ScopedThreadRef,
@@ -206,7 +222,10 @@ const DEFAULT_THREAD_PANEL_VISIBILITY: ThreadPanelVisibility = {
 };
 
 const singletonSurface = (
-  kind: Exclude<RightPanelKind, "file" | "preview" | "terminal" | "pull-request" | "side-chat">,
+  kind: Exclude<
+    RightPanelKind,
+    "file" | "preview" | "terminal" | "pull-request" | "side-chat" | "proposed-plan"
+  >,
 ): RightPanelSurface => {
   switch (kind) {
     case "diff":
@@ -835,6 +854,40 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             return { ...current, isOpen: true, activeSurfaceId: target.id, surfaces };
           }),
         ),
+      openProposedPlan: (ref, planId) =>
+        set((state) =>
+          userAction(state, scopedThreadKey(ref), (current) =>
+            upsertSurface(current, {
+              id: `proposed-plan:${planId}`,
+              kind: "proposed-plan",
+              planId,
+            }),
+          ),
+        ),
+      autoOpenProposedPlan: (ref, planId) =>
+        set((state) => {
+          const threadKey = scopedThreadKey(ref);
+          const current = state.byThreadKey[threadKey] ?? EMPTY_THREAD_STATE;
+          const isOlderPlan = (surface: RightPanelSurface) =>
+            surface.kind === "proposed-plan" && surface.planId !== planId;
+          return {
+            ...automaticUpdate(state, threadKey, (thread) =>
+              upsertSurface(
+                { ...thread, surfaces: thread.surfaces.filter((surface) => !isOlderPlan(surface)) },
+                { id: `proposed-plan:${planId}`, kind: "proposed-plan", planId },
+              ),
+            ),
+            // A close revision is what files removed tabs into Reopen Closed Tab.
+            ...(current.surfaces.some(isOlderPlan)
+              ? {
+                  closeRevisionByThreadKey: {
+                    ...state.closeRevisionByThreadKey,
+                    [threadKey]: (state.closeRevisionByThreadKey[threadKey] ?? 0) + 1,
+                  },
+                }
+              : {}),
+          };
+        }),
       openAttachment: (ref, attachment) =>
         set((state) =>
           userAction(state, scopedThreadKey(ref), (current) => {
