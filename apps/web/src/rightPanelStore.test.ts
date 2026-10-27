@@ -1203,3 +1203,50 @@ describe("rightPanelStore", () => {
     expect(store.getUserActionRevision(refA)).toBe(revision);
   });
 });
+
+describe("proposed plan tab", () => {
+  it("opens a plan by id, records it when closed, and reopens it", async () => {
+    const store = useRightPanelStore.getState();
+    store.openProposedPlan(refA, "plan-1");
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "proposed-plan:plan-1",
+      surfaces: [{ id: "proposed-plan:plan-1", kind: "proposed-plan", planId: "plan-1" }],
+    });
+
+    store.closeSurface(refA, "proposed-plan:plan-1");
+    expect(useClosedViewStore.getState().entries).toMatchObject([
+      { kind: "panel-tab", threadRef: refA, surface: { id: "proposed-plan:plan-1" } },
+    ]);
+
+    await reopenClosedView(useClosedViewStore.getState().entries[0]!, {
+      workspaceAvailable: false,
+      openPreview: () => {
+        throw new Error("A plan tab must not create a browser session");
+      },
+    });
+    expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      id: "proposed-plan:plan-1",
+      kind: "proposed-plan",
+      planId: "plan-1",
+    });
+  });
+
+  it("reuses one tab when a revised plan opens automatically, keeping the old one reopenable", () => {
+    const store = useRightPanelStore.getState();
+    store.openProposedPlan(refA, "plan-1");
+    store.openFile(refA, "README.md");
+    const userRevision = useRightPanelStore.getState().userActionRevisionByThreadKey;
+
+    store.autoOpenProposedPlan(refA, "plan-2");
+
+    const state = useRightPanelStore.getState();
+    expect(
+      selectThreadRightPanelState(state.byThreadKey, refA).surfaces.map((surface) => surface.id),
+    ).toEqual(["file:README.md", "proposed-plan:plan-2"]);
+    expect(state.userActionRevisionByThreadKey).toBe(userRevision);
+    expect(useClosedViewStore.getState().entries).toMatchObject([
+      { kind: "panel-tab", threadRef: refA, surface: { id: "proposed-plan:plan-1" } },
+    ]);
+  });
+});

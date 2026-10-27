@@ -188,6 +188,7 @@ import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { shortcutLabelForCommand } from "../keybindings";
 import { cn } from "~/lib/utils";
 import { copyDesktopThreadLink, desktopThreadLink } from "~/lib/desktopThreadLink";
+import { useAutoOpenProposedPlan } from "~/hooks/useAutoOpenProposedPlan";
 import { TITLEBAR_CONTROLS_INSET_CLASS } from "~/workspaceTitlebar";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { projectScriptIdFromCommand } from "~/projectScripts";
@@ -1290,6 +1291,12 @@ export default function ChatView(props: ChatViewProps) {
     }
     return findLatestProposedPlan(serverProjection, activeLatestRun?.runId ?? null);
   })();
+  useAutoOpenProposedPlan({
+    threadRef: isServerThread ? activeThreadRef : null,
+    latestRunId: activeLatestRun?.runId ?? null,
+    latestRunSettled,
+    plan: activeProposedPlan,
+  });
   const showPlanFollowUpPrompt = shouldShowPlanFollowUpPrompt({
     pendingUserInputCount: pendingUserInputs.length,
     interactionMode,

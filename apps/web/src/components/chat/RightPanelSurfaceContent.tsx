@@ -22,6 +22,7 @@ import { PullRequestDetailPanel } from "../pullRequest/PullRequestDetailPanel";
 import { PullRequestDetailGhost } from "../pullRequest/PullRequestGhosts";
 import { PullRequestsUnavailableState } from "../pullRequest/PullRequestsUnavailableState";
 import { ThreadPullRequestsPanel } from "../pullRequest/ThreadPullRequestsPanel";
+import { ProposedPlanPanel } from "../plan/ProposedPlanPanel";
 
 const PreviewPanel = lazy(() =>
   import("../preview/PreviewPanel").then((module) => ({ default: module.PreviewPanel })),
@@ -165,6 +166,17 @@ export function RightPanelSurfaceContent(props: {
     }
     case "pull-requests":
       return <ThreadPullRequestsPanel threadRef={threadRef} />;
+    case "proposed-plan":
+      return (
+        <ProposedPlanPanel
+          key={surface.id}
+          planId={surface.planId}
+          threadRef={threadRef}
+          environmentId={props.environmentId}
+          composerDraftTarget={props.composerDraftTarget}
+          cwd={props.files.workspaceRoot}
+        />
+      );
     case "device":
       return (
         <Suspense fallback={null}>
