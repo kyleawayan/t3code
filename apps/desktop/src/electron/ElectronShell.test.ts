@@ -304,6 +304,41 @@ describe("ElectronShell", () => {
     }).pipe(Effect.provide(ElectronShell.layer)),
   );
 
+  it.effect("opens a markdown file in Obsidian", () =>
+    Effect.gen(function* () {
+      openExternalMock.mockResolvedValue(undefined);
+
+      const electronShell = yield* ElectronShell.ElectronShell;
+      const result = yield* electronShell.openExternal(
+        "obsidian://open?path=%2FUsers%2Fme%2Fnotes%2Fplan.md",
+      );
+
+      assert.equal(result, true);
+      assert.deepEqual(
+        openExternalMock.mock.calls[0]?.[0],
+        "obsidian://open?path=%2FUsers%2Fme%2Fnotes%2Fplan.md",
+      );
+    }).pipe(Effect.provide(ElectronShell.layer)),
+  );
+
+  it.effect("blocks Obsidian links beyond opening one absolute path", () =>
+    Effect.gen(function* () {
+      const electronShell = yield* ElectronShell.ElectronShell;
+      const results = yield* Effect.all(
+        [
+          "obsidian://new?path=%2Ftmp%2Fa.md&content=x",
+          "obsidian://open?vault=work",
+          "obsidian://open?path=%2Ftmp%2Fa.md&vault=work",
+          "obsidian://open?path=notes%2Fa.md",
+          "obsidian://user:pass@open?path=%2Ftmp%2Fa.md",
+        ].map((url) => electronShell.openExternal(url)),
+      );
+
+      assert.deepEqual(results, [false, false, false, false, false]);
+      assert.equal(openExternalMock.mock.calls.length, 0);
+    }).pipe(Effect.provide(ElectronShell.layer)),
+  );
+
   it.effect("returns false when Electron rejects openExternal", () =>
     Effect.gen(function* () {
       openExternalMock.mockRejectedValue(new Error("open failed"));

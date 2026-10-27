@@ -55,6 +55,7 @@ import { useTheme } from "~/hooks/useTheme";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "~/hooks/useLocalStorage";
 import { useWorkspaceMutationRefresh } from "~/hooks/useWorkspaceMutationRefresh";
 import { useExternalFileRefresh } from "~/hooks/useExternalFileRefresh";
+import { isObsidianVaultCandidate } from "~/lib/obsidianPath";
 import { resolveDiffThemeName } from "~/lib/diffRendering";
 import { PREFERRED_HIGHLIGHTER } from "~/lib/syntaxHighlighting";
 import { cn } from "~/lib/utils";
@@ -1264,6 +1265,15 @@ export default function FilePreviewPanel({
               openInCwdIsFile={file.isFile}
               compact
               revealFileManager={revealsInFileManager}
+              obsidianPath={
+                isMarkdown &&
+                file.isFile &&
+                window.desktopBridge !== undefined &&
+                environmentId === primaryEnvironmentId &&
+                isObsidianVaultCandidate(absolutePath)
+                  ? absolutePath
+                  : null
+              }
             />
           ) : null}
           {canToggleRendered && renderedMode ? (

@@ -38,6 +38,7 @@ import {
   FinderIcon,
   Icon,
   KiroIcon,
+  ObsidianIcon,
   TraeIcon,
   VisualStudioCode,
   VisualStudioCodeInsiders,
@@ -70,6 +71,16 @@ import {
 } from "./threadDetailsPanelStyles";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { useComposerMenuState } from "./useComposerMenuState";
+import { toastManager } from "../ui/toast";
+
+function openInObsidian(absolutePath: string) {
+  void openRemoteEditorUrl(`obsidian://open?path=${encodeURIComponent(absolutePath)}`).then(
+    (opened) => {
+      if (opened) return;
+      toastManager.add({ type: "error", title: "Could not open the file in Obsidian" });
+    },
+  );
+}
 
 type OpenInOption = {
   label: string;
@@ -214,6 +225,7 @@ export const OpenInPicker = memo(function OpenInPicker({
   enableShortcut = true,
   displayMode = "toolbar",
   revealFileManager = false,
+  obsidianPath = null,
 }: {
   environmentId: EnvironmentId;
   keybindings: ResolvedKeybindingsConfig;
@@ -225,6 +237,11 @@ export const OpenInPicker = memo(function OpenInPicker({
   enableShortcut?: boolean;
   displayMode?: "toolbar" | "panel";
   revealFileManager?: boolean;
+  /**
+   * Fork: a local markdown file's absolute path. Obsidian becomes the default action and the
+   * Mod+O target, and the editors in the menu open directly instead of becoming the default.
+   */
+  obsidianPath?: string | null;
 }) {
   const isPanel = displayMode === "panel";
   const ActionGroup = isPanel ? "div" : Group;
@@ -243,7 +260,7 @@ export const OpenInPicker = memo(function OpenInPicker({
   const effectiveEditors = remote.mode === "local-exec" ? availableEditors : remoteCapableEditors;
   const [preferredEditor, setPreferredEditor] = usePreferredEditor(effectiveEditors);
 
-  const openInEditor = (editorId: EditorId | null) => {
+  const openInEditor = (editorId: EditorId | null, remember = true) => {
     if (!openInCwd) return;
     const editor = editorId ?? preferredEditor;
     if (!editor) return;
@@ -261,7 +278,7 @@ export const OpenInPicker = memo(function OpenInPicker({
       void openRemoteEditorUrl(url).then((opened) => {
         if (!opened) return;
         markRemoteHintSeen();
-        setPreferredEditor(editor);
+        if (remember) setPreferredEditor(editor);
       });
       return;
     }
@@ -274,7 +291,7 @@ export const OpenInPicker = memo(function OpenInPicker({
         ...(revealFileManager && editor === "file-manager" ? { reveal: true } : {}),
       },
     });
-    setPreferredEditor(editor);
+    if (remember) setPreferredEditor(editor);
     return result;
   };
 
@@ -284,9 +301,15 @@ export const OpenInPicker = memo(function OpenInPicker({
   );
 
   useEffect(() => {
-    if (!enableShortcut || !canOpenEditor) return;
+    // Obsidian opens on this machine, so it doesn't need the host's permission to open editors.
+    if (!enableShortcut || (!canOpenEditor && !obsidianPath)) return;
     const handler = (e: globalThis.KeyboardEvent) => {
       if (e.defaultPrevented || !isOpenFavoriteEditorShortcut(e, keybindings)) return;
+      if (obsidianPath) {
+        e.preventDefault();
+        openInObsidian(obsidianPath);
+        return;
+      }
       if (!openInCwd) return;
       if (!preferredEditor) return;
       if (
@@ -305,6 +328,7 @@ export const OpenInPicker = memo(function OpenInPicker({
     enableShortcut,
     environmentId,
     keybindings,
+    obsidianPath,
     openInCwd,
     openInEditor,
     preferredEditor,
@@ -312,8 +336,14 @@ export const OpenInPicker = memo(function OpenInPicker({
   ]);
   // Derived after the shortcut effect so the compiler can cache the resolved editor list.
   const options = resolveOpenInOptions(navigator.platform, effectiveEditors);
-  const primaryOption = options.find(({ value }) => value === preferredEditor) ?? null;
+  const preferredOption = options.find(({ value }) => value === preferredEditor) ?? null;
+  const primaryOption: Pick<OpenInOption, "label" | "Icon" | "kind"> | null = obsidianPath
+    ? { label: "Obsidian", Icon: ObsidianIcon, kind: "brand" }
+    : preferredOption;
   const primaryLabel = isPanel ? `Open in ${primaryOption?.label ?? "editor"}` : "Open";
+  const openPrimary = () =>
+    obsidianPath ? openInObsidian(obsidianPath) : openInEditor(preferredEditor);
+  const primaryDisabled = obsidianPath ? false : !preferredEditor || !openInCwd || !canOpenEditor;
 
   const editorItems = (
     <>
@@ -323,6 +353,18 @@ export const OpenInPicker = memo(function OpenInPicker({
         </MenuItem>
       ) : (
         <>
+          {obsidianPath ? (
+            <MenuItem
+              density={presentation === "menu" ? "touch" : "default"}
+              onClick={() => openInObsidian(obsidianPath)}
+            >
+              <ObsidianIcon aria-hidden="true" className={getOpenInIconClass("brand")} />
+              <MenuItemLabel>Obsidian</MenuItemLabel>
+              {openFavoriteEditorShortcutLabel && (
+                <MenuShortcut>{openFavoriteEditorShortcutLabel}</MenuShortcut>
+              )}
+            </MenuItem>
+          ) : null}
           {options.length === 0 && (
             <MenuItem density={presentation === "menu" ? "touch" : "default"} disabled>
               No installed editors found
@@ -334,8 +376,10 @@ export const OpenInPicker = memo(function OpenInPicker({
               disabled={!openInCwd || !canOpenEditor}
               key={value}
               onClick={() => {
-                if (presentation === "menu") {
-                  void openInEditor(value);
+                if (presentation === "menu" || obsidianPath) {
+                  // Beside Obsidian, picking an editor opens the file once without making that
+                  // editor the default for every other file.
+                  void openInEditor(value, !obsidianPath);
                 } else {
                   setPreferredEditor(value);
                 }
@@ -343,7 +387,7 @@ export const OpenInPicker = memo(function OpenInPicker({
             >
               <Icon aria-hidden="true" className={getOpenInIconClass(kind)} />
               <MenuItemLabel>{label}</MenuItemLabel>
-              {value === preferredEditor && openFavoriteEditorShortcutLabel && (
+              {!obsidianPath && value === preferredEditor && openFavoriteEditorShortcutLabel && (
                 <MenuShortcut>{openFavoriteEditorShortcutLabel}</MenuShortcut>
               )}
             </MenuItem>
@@ -364,8 +408,8 @@ export const OpenInPicker = memo(function OpenInPicker({
           <MenuItem
             density={presentation === "menu" ? "touch" : "default"}
 
-            disabled={!openInCwd || !canOpenEditor}
-            onClick={() => openInEditor(preferredEditor)}
+            disabled={primaryDisabled}
+            onClick={openPrimary}
           >
             <primaryOption.Icon className={cn("size-4", getOpenInIconClass(primaryOption.kind))} />
             <MenuItemLabel>Open in {primaryOption.label}</MenuItemLabel>
@@ -394,13 +438,19 @@ export const OpenInPicker = memo(function OpenInPicker({
         : {})}
     >
       <ThreadDetailsControl
-        aria-label={compact ? "Open file in preferred editor" : primaryLabel}
+        aria-label={
+          compact
+            ? obsidianPath
+              ? "Open file in Obsidian"
+              : "Open file in preferred editor"
+            : primaryLabel
+        }
         size={isPanel ? "sm" : "xs"}
         variant={isPanel ? "ghost" : "outline"}
         part="primary"
         panel={isPanel}
-        disabled={!preferredEditor || !openInCwd || !canOpenEditor}
-        onClick={() => openInEditor(preferredEditor)}
+        disabled={primaryDisabled}
+        onClick={openPrimary}
       >
         {primaryOption?.Icon ? (
           <primaryOption.Icon

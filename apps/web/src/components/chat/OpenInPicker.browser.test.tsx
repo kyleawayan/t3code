@@ -361,3 +361,45 @@ describe("client editor links", () => {
     expect(state.markHintSeen).not.toHaveBeenCalled();
   });
 });
+
+describe("markdown files in Obsidian", () => {
+  const notes = "/work/project/notes.md";
+  const obsidianUrl = "obsidian://open?path=%2Fwork%2Fproject%2Fnotes.md";
+
+  it("opens Obsidian from the button and the shortcut, and editors from the menu", async () => {
+    await using fixture = await setup();
+    const { screen, byLabel, menuItems, click, pressOpenFavorite } = fixture;
+    state.allowed.add(selected);
+    await act(async () => {
+      for (const listener of state.listeners) listener();
+      await screen.rerender(
+        <OpenInPicker
+          environmentId={selected}
+          keybindings={DEFAULT_RESOLVED_KEYBINDINGS}
+          availableEditors={editors}
+          openInCwd={notes}
+          openInCwdIsFile
+          compact
+          obsidianPath={notes}
+        />,
+      );
+    });
+
+    await click(byLabel("Open file in Obsidian"));
+    expect(state.openUrl).toHaveBeenCalledExactlyOnceWith(obsidianUrl);
+
+    state.openUrl.mockClear();
+    const event = await pressOpenFavorite();
+    expect(event.defaultPrevented).toBe(true);
+    expect(state.openUrl).toHaveBeenCalledExactlyOnceWith(obsidianUrl);
+    expect(state.run).not.toHaveBeenCalled();
+
+    await click(byLabel("Choose editor"));
+    expect(menuItems()[0]?.textContent).toContain("Obsidian");
+    await click(menuItems().find((item) => item.textContent?.includes("VS Code"))!);
+    expect(state.run).toHaveBeenCalledExactlyOnceWith({
+      environmentId: selected,
+      input: { cwd: notes, editor: "vscode" },
+    });
+  });
+});
