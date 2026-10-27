@@ -7,3 +7,9 @@
 export function isObsidianVaultCandidate(absolutePath: string): boolean {
   return absolutePath.startsWith("/") && absolutePath.includes("/Library/Mobile Documents/");
 }
+
+/** The note name Obsidian shows as its inline title: the file name without its extension. */
+export function obsidianNoteTitle(absolutePath: string): string {
+  const name = absolutePath.slice(absolutePath.lastIndexOf("/") + 1);
+  return name.replace(/\.(?:md|mdx|markdown|mdown|mkd)$/i, "");
+}
