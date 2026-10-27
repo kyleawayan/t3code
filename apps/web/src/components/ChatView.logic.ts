@@ -1385,3 +1385,54 @@ export function isThreadWokeUnseen(input: {
     .filter((ms) => !Number.isNaN(ms));
   return seenAt.every((ms) => ms < wokeAtMs);
 }
+
+// Fork: v0.1.1 has no server-side cap on concurrent agents, so the composer refuses to start more
+// than this many. Agents started by scheduled tasks or MCP tools never pass through the composer.
+export const MAX_ACTIVE_AGENTS = 2;
+
+export const AGENT_LIMIT_SEND_BLOCK_REASON =
+  "Only two agents can work at once. Wait for one to finish or stop one before sending.";
+
+// Counts threads doing work: the sidebar's Working state plus a starting session. A thread held
+// in a queue, blocked waiting on another thread, or stopped on an approval or question is idle
+// until something else moves it.
+const STARTING_OR_WAITING_RUNTIME_STATUSES = new Set(["preparing", "starting", "waiting"]);
+
+export function isAgentActive(
+  shell: Pick<
+    EnvironmentThreadShell,
+    | "runtime"
+    | "blockedOnThreadWait"
+    | "hasPendingApprovals"
+    | "hasPendingUserInput"
+    | "pendingSubagentRequest"
+  >,
+): boolean {
+  if (shell.hasPendingApprovals || shell.hasPendingUserInput || shell.pendingSubagentRequest) {
+    return false;
+  }
+  const status = shell.runtime?.status;
+  if (status === "running") return shell.blockedOnThreadWait !== true;
+  return status !== undefined && STARTING_OR_WAITING_RUNTIME_STATUSES.has(status);
+}
+
+/**
+ * `startingAgents` is how many agents the send starts: one, or one per model in a multiple-model
+ * send. A follow-up to a thread with a turn in progress starts none, so queue and steer still
+ * send, including to a thread that is idle only because it waits on others.
+ */
+export function agentLimitSendBlockReason(
+  activeThreadKeys: ReadonlyArray<string>,
+  targetThreadKey: string | null,
+  startingAgents = 1,
+  targetTurnInProgress = false,
+): string | null {
+  const targetWorking =
+    targetTurnInProgress ||
+    (targetThreadKey !== null && activeThreadKeys.includes(targetThreadKey));
+  const starting = targetWorking && startingAgents === 1 ? 0 : startingAgents;
+  const others = activeThreadKeys.filter((key) => key !== targetThreadKey).length;
+  return starting > 0 && others + starting > MAX_ACTIVE_AGENTS
+    ? AGENT_LIMIT_SEND_BLOCK_REASON
+    : null;
+}

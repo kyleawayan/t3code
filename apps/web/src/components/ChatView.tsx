@@ -376,7 +376,7 @@ import {
   primaryServerKeybindingsAtom,
   serverEnvironment,
 } from "../state/server";
-import { threadEnvironment } from "../state/threads";
+import { environmentThreadShells, threadEnvironment } from "../state/threads";
 import { resolveProviderSkillsForCwd } from "@t3tools/client-runtime/providerSkills";
 import { vcsEnvironment } from "../state/vcs";
 import { sourceControlEnvironment } from "../state/sourceControl";
@@ -522,6 +522,8 @@ import {
   resolveComposerInteractionMode,
   resolveComposerProviderSelection,
   getAntigravitySendBlockReason,
+  agentLimitSendBlockReason,
+  isAgentActive,
   resolveThreadMetadataUpdateForNextTurn,
   resolveSendEnvMode,
   revokeBlobPreviewUrl,
@@ -660,6 +662,16 @@ type EnvironmentUnavailableState = {
   readonly label: string;
   readonly connection: EnvironmentConnectionPresentation;
 };
+
+// Fork: joined into one string so ChatView re-renders only when the set of working threads
+// changes, not on every shell update. Navigation shells leave out archived threads and subagents,
+// which run inside their parent's turn.
+const activeAgentThreadKeysAtom = Atom.make((get) =>
+  get(environmentThreadShells.navigationThreadShellsAtom)
+    .filter(isAgentActive)
+    .map((shell) => scopedThreadKey(scopeThreadRef(shell.environmentId, shell.id)))
+    .join("\n"),
+).pipe(Atom.withLabel("web-active-agent-thread-keys"));
 
 // Kept per route so a send in flight, and the multiple-model selections, survive
 // ChatView remounting while the user navigates.
@@ -1665,6 +1677,18 @@ export default function ChatView(props: ChatViewProps) {
   const activeThreadRef = useActiveThreadRef(activeThread);
   const terminalActions = useThreadTerminalActions(activeThreadRef);
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
+  const activeAgentThreadKeys = useAtomValue(activeAgentThreadKeysAtom);
+  // The cap stands in for one host's missing server-side limit, so it counts that host's agents.
+  const agentLimitBlockReason = agentLimitSendBlockReason(
+    activeAgentThreadKeys === ""
+      ? []
+      : activeAgentThreadKeys
+          .split("\n")
+          .filter((key) => parseScopedThreadKey(key)?.environmentId === environmentId),
+    activeThreadKey,
+    multipleModelSelections?.length ?? 1,
+    activeRuntime !== null && activeRuntime.status !== "idle",
+  );
   const activeEnvironmentServerBrowser = useEnvironmentSupportsServerBrowser(
     activeThreadRef?.environmentId ?? null,
   );
@@ -8571,7 +8595,8 @@ export default function ChatView(props: ChatViewProps) {
                                             ? "Messages loading"
                                             : worktreeSetupBlocksSend
                                               ? "Preparing worktree"
-                                              : projectCloneSendBlockReason
+                                              : (projectCloneSendBlockReason ??
+                                                agentLimitBlockReason)
                                 }
                                 isPreparingWorktree={isPreparingWorktree && !sendQueuesBehindSetup}
                                 queuedRunsControl={queuedRunsControl}
