@@ -124,8 +124,14 @@ export function clampDrawerHeight(height: number, maxHeight: number): number {
   return Math.min(Math.max(Math.round(safeHeight), MIN_DRAWER_HEIGHT), maxHeight);
 }
 
+// Fork: the drawer sits under the chat and the right panel, so it measures the workspace column
+// that holds both; the chat column is the fallback for any surface that still nests it there.
 function chatColumnOf(drawer: HTMLElement | null): HTMLElement | null {
-  return drawer?.closest<HTMLElement>("[data-chat-column]") ?? null;
+  return (
+    drawer?.closest<HTMLElement>("[data-workspace-column]") ??
+    drawer?.closest<HTMLElement>("[data-chat-column]") ??
+    null
+  );
 }
 
 function readDrawerLayout(column: HTMLElement | null): Omit<DrawerLayout, "composerHeight"> {
