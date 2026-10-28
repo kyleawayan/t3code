@@ -1,6 +1,7 @@
 import { closestCenter, type CollisionDetection, type Modifier } from "@dnd-kit/core";
 import { verticalListSortingStrategy, type SortingStrategy } from "@dnd-kit/sortable";
 import {
+  parseSidebarProjectGroupId,
   resolveSidebarDropTarget,
   sidebarListItemId,
   sidebarMarkerId,
@@ -89,6 +90,15 @@ export function createSidebarCollisionDetection(
   };
 }
 
+// A dragged project header only trades places with other project headers.
+export const sidebarProjectGroupCollisionDetection: CollisionDetection = (args) =>
+  closestCenter({
+    ...args,
+    droppableContainers: args.droppableContainers.filter(
+      (container) => parseSidebarProjectGroupId(String(container.id)) !== null,
+    ),
+  });
+
 export function createSidebarSortingStrategy(input: {
   items: readonly SidebarListItem[];
   enabled?: boolean;
@@ -125,6 +135,7 @@ export function createSidebarSortingStrategy(input: {
     let slimHeight = input.slimHeight;
     let headerScale: number | undefined;
     for (const [index, item] of items.entries()) {
+      if (item.kind === "project") continue;
       if (item.kind === "marker") {
         if (isShelfHeader(item)) {
           const height = rects[index]?.height;
@@ -168,9 +179,23 @@ export function createSidebarSortingStrategy(input: {
     groups.settled = visible.map((key) => ({ kind: "thread", key, section: "settled" }));
     const projected: SidebarListItem[] = [];
     const marker = (name: SidebarListMarker) => projected.push({ kind: "marker", marker: name });
+    const projectKeys = items.flatMap((item) => (item.kind === "project" ? [item.key] : []));
     const section = (name: "active" | "settled") => {
-      if (groups[name].length > 0) projected.push(...groups[name]);
-      else marker(`${name}-placeholder`);
+      if (groups[name].length === 0) marker(`${name}-placeholder`);
+      else if (name === "settled" || projectKeys.length === 0) projected.push(...groups[name]);
+      else {
+        // A thread whose project has no header yet starts a new group, which
+        // lands at the top.
+        const headed = new Set(projectKeys);
+        projected.push(
+          ...groups.active.filter((item) => item.group === undefined || !headed.has(item.group)),
+        );
+        for (const key of projectKeys) {
+          const members = groups.active.filter((item) => item.group === key);
+          if (members.length === 0) continue;
+          projected.push({ kind: "project", key }, ...members);
+        }
+      }
     };
     marker("pinned-header");
     projected.push(...groups.pinned);
