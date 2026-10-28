@@ -77,7 +77,7 @@ export function isMissedFixedTimeRun(
   // today's.
   const today = nextScheduledRunAt(
     schedule,
-    DateTime.subtract(DateTime.startOf(now, "day"), { millis: 1 }),
+    DateTime.subtract(DateTime.startOf(now, "day"), { milliseconds: 1 }),
   );
   if (today === null) return true;
   const todayMs = DateTime.toEpochMillis(today);

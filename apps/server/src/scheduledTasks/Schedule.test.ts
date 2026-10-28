@@ -59,6 +59,29 @@ describe("scheduled task schedule calculation", () => {
     ).toBe(false);
   });
 
+  it("measures today in the server's local time zone", () => {
+    const zoned = (day: number, hour: number, minute = 0) =>
+      DateTime.makeZonedUnsafe(
+        { year: 2026, month: 7, day, hour, minute, second: 0, millisecond: 0 },
+        { timeZone: "America/Los_Angeles", adjustForTimeZone: true },
+      );
+    const fixedTime = { type: "fixed_time", timeOfDay: "09:00" } as const;
+    // 17:30 in Los Angeles is already the next day in UTC; today's 09:00 still catches up.
+    expect(isMissedFixedTimeRun(fixedTime, zoned(1, 9), zoned(1, 17, 30))).toBe(false);
+    expect(isMissedFixedTimeRun(fixedTime, zoned(1, 9), zoned(2, 8))).toBe(true);
+  });
+
+  it("catches up a midnight run missed the same day", () => {
+    const midnight = { type: "fixed_time", timeOfDay: "00:00" } as const;
+    expect(
+      isMissedFixedTimeRun(
+        midnight,
+        DateTime.makeUnsafe("2026-07-01T00:00:00.000Z"),
+        DateTime.makeUnsafe("2026-07-01T07:00:00.000Z"),
+      ),
+    ).toBe(false);
+  });
+
   it("compares schedules structurally", () => {
     expect(
       isSameSchedule({ type: "interval", everyMs: 60_000 }, { type: "interval", everyMs: 60_000 }),
