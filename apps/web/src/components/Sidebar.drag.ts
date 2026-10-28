@@ -108,6 +108,7 @@ export function createSidebarSortingStrategy(input: {
   settledVisibleCount?: number;
   routeThreadKey?: string | null;
   snoozedThreadCount?: number;
+  projectOrder?: readonly string[];
   cardHeight?: number;
   slimHeight?: number;
   boundaryLabelHeight?: number;
@@ -179,23 +180,42 @@ export function createSidebarSortingStrategy(input: {
     groups.settled = visible.map((key) => ({ kind: "thread", key, section: "settled" }));
     const projected: SidebarListItem[] = [];
     const marker = (name: SidebarListMarker) => projected.push({ kind: "marker", marker: name });
-    const projectKeys = items.flatMap((item) => (item.kind === "project" ? [item.key] : []));
+    const projectKeysOf = (shelf: "active" | "snoozed") =>
+      items.flatMap((item) =>
+        item.kind === "project" && (item.shelf ?? "active") === shelf ? [item.key] : [],
+      );
+    const pushGrouped = (list: ThreadItem[], shelf: "active" | "snoozed") => {
+      const projectKeys = projectKeysOf(shelf);
+      if (projectKeys.length === 0) {
+        projected.push(...list);
+        return;
+      }
+      const headed = new Set(projectKeys);
+      const rank = (key: string) => input.projectOrder?.indexOf(key) ?? -1;
+      // A thread whose project has no header yet previews in the slot its saved order gives it.
+      const slots = [...projectKeys];
+      for (const item of list) {
+        if (item.group === undefined || slots.includes(item.group)) continue;
+        const group = item.group;
+        const at = slots.findIndex((key) => headed.has(key) && rank(key) > rank(group));
+        slots.splice(at === -1 ? slots.length : at, 0, group);
+      }
+      projected.push(...list.filter((item) => item.group === undefined));
+      for (const key of slots) {
+        const members = list.filter((item) => item.group === key);
+        if (members.length === 0) continue;
+        if (headed.has(key)) {
+          projected.push(
+            shelf === "snoozed" ? { kind: "project", key, shelf } : { kind: "project", key },
+          );
+        }
+        projected.push(...members);
+      }
+    };
     const section = (name: "active" | "settled") => {
       if (groups[name].length === 0) marker(`${name}-placeholder`);
-      else if (name === "settled" || projectKeys.length === 0) projected.push(...groups[name]);
-      else {
-        // A thread whose project has no header yet starts a new group, which
-        // lands at the top.
-        const headed = new Set(projectKeys);
-        projected.push(
-          ...groups.active.filter((item) => item.group === undefined || !headed.has(item.group)),
-        );
-        for (const key of projectKeys) {
-          const members = groups.active.filter((item) => item.group === key);
-          if (members.length === 0) continue;
-          projected.push({ kind: "project", key }, ...members);
-        }
-      }
+      else if (name === "settled") projected.push(...groups.settled);
+      else pushGrouped(groups.active, "active");
     };
     marker("pinned-header");
     projected.push(...groups.pinned);
@@ -211,7 +231,7 @@ export function createSidebarSortingStrategy(input: {
         items.some((item) => item.kind === "marker" && item.marker === "snoozed-header"))
     ) {
       marker("snoozed-header");
-      projected.push(...groups.snoozed);
+      pushGrouped(groups.snoozed, "snoozed");
     }
     marker("settled-header");
     section("settled");

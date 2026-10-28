@@ -8,7 +8,6 @@ import { FolderIcon } from "lucide-react";
 import {
   animateSidebarLayoutChanges,
   sidebarMarkerId,
-  sidebarProjectGroupId,
   type SidebarListMarker,
 } from "../Sidebar.logic";
 import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
@@ -153,14 +152,16 @@ export function SidebarSectionHeader(props: {
 }
 
 export function SidebarProjectGroupHeader(props: {
+  sortableId: string;
   projectKey: string;
   label: string;
   project: ProjectFaviconProject | null;
   dragDisabled: boolean;
   first: boolean;
+  shelf?: "snoozed" | undefined;
 }) {
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: sidebarProjectGroupId(props.projectKey),
+    id: props.sortableId,
     disabled: props.dragDisabled ? SIDEBAR_SORTABLE_DRAG_DISABLED : SIDEBAR_SORTABLE_DRAG_ENABLED,
     animateLayoutChanges: animateSidebarLayoutChanges,
   });
@@ -170,6 +171,7 @@ export function SidebarProjectGroupHeader(props: {
       data-thread-selection-safe
       data-testid="sidebar-project-group"
       data-project-group={props.projectKey}
+      data-shelf={props.shelf}
       className={cn(
         // Padding, not margin: the drag preview lays rows out from their measured heights.
         "mx-0.5 list-none rounded-md px-2 text-sm font-semibold text-foreground select-none",

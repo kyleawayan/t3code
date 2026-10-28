@@ -5,6 +5,7 @@ import {
   createSidebarCollisionDetection,
   createSidebarSortingStrategy,
   restrictBelowSidebarLabel,
+  sidebarProjectGroupCollisionDetection,
 } from "./Sidebar.drag";
 import {
   resolveSidebarDropTarget,
@@ -726,5 +727,75 @@ describe("lifted card clearance", () => {
   it("follows the list when it scrolls and includes content preceding Pins", () => {
     expect(511 + apply(511, 36, -500, 96).y).toBe(128);
     expect(511 + apply(511, 36, -500, 136, 114).y).toBe(250);
+  });
+});
+
+describe("sidebar project groups while dragging", () => {
+  const header = (key: string, shelf?: "snoozed"): SidebarListItem =>
+    shelf ? { kind: "project", key, shelf } : { kind: "project", key };
+  const grouped = (key: string, section: SidebarSection, group: string): SidebarListItem => ({
+    kind: "thread",
+    key,
+    section,
+    group,
+  });
+
+  it("lets a dragged project header land only on other Active headers", () => {
+    const items = [
+      pinnedHeader,
+      divider,
+      header("a"),
+      grouped("a1", "active", "a"),
+      header("b"),
+      grouped("b1", "active", "b"),
+      marker("snoozed-header"),
+      header("c", "snoozed"),
+      grouped("c1", "snoozed", "c"),
+    ];
+    const { rects } = layout(items, sidebarListItemId(header("a")), sidebarListItemId(header("b")));
+    const snoozedHeaderRect = rects[7]!;
+    const collisions = sidebarProjectGroupCollisionDetection({
+      active: {
+        id: sidebarListItemId(header("a")),
+        data: { current: {} },
+        rect: { current: { initial: rects[2]!, translated: snoozedHeaderRect } },
+      },
+      collisionRect: snoozedHeaderRect,
+      droppableRects: new Map(items.map((item, index) => [sidebarListItemId(item), rects[index]!])),
+      droppableContainers: items.map((item, index) => ({
+        id: sidebarListItemId(item),
+        key: sidebarListItemId(item),
+        disabled: false,
+        data: { current: {} },
+        node: { current: null },
+        rect: { current: rects[index]! },
+      })),
+      pointerCoordinates: null,
+    });
+    // Dropped right over the snoozed header, the nearest valid target is still Active's "b".
+    expect(collisions[0]?.id).toBe(sidebarListItemId(header("b")));
+  });
+
+  it("previews a thread whose project has no group in its saved project slot", () => {
+    const items = [
+      pinnedHeader,
+      grouped("x", "pinned", "a"),
+      divider,
+      header("b"),
+      grouped("b1", "active", "b"),
+      header("c"),
+      grouped("c1", "active", "c"),
+      settledHeader,
+      marker("settled-placeholder"),
+    ];
+    const transforms = preview(
+      { items, settledOrder: [], settledExpanded: false, projectOrder: ["b", "a", "c"] },
+      "x",
+      "b1",
+    );
+    // x leaves the pinned rows above and re-enters after group "b": "b" moves up by one
+    // row while "c" ends where it started.
+    expect(transforms.get(sidebarListItemId(header("b")))!.y).toBeLessThan(0);
+    expect(transforms.get(sidebarListItemId(header("c")))!.y).toBe(0);
   });
 });

@@ -201,11 +201,11 @@ export type SidebarListItem =
       readonly group?: string;
     }
   | { readonly kind: "marker"; readonly marker: SidebarListMarker }
-  | { readonly kind: "project"; readonly key: string };
+  | { readonly kind: "project"; readonly key: string; readonly shelf?: "snoozed" };
 
 const SIDEBAR_PROJECT_GROUP_PREFIX = "sidebar-project-";
 
-export function sidebarProjectGroupId(projectKey: string): string {
+function sidebarProjectGroupId(projectKey: string): string {
   return `${SIDEBAR_PROJECT_GROUP_PREFIX}${projectKey}`;
 }
 
@@ -217,7 +217,12 @@ export function parseSidebarProjectGroupId(id: string): string | null {
 
 export function sidebarListItemId(item: SidebarListItem): string {
   if (item.kind === "thread") return item.key;
-  if (item.kind === "project") return sidebarProjectGroupId(item.key);
+  if (item.kind === "project") {
+    // Snoozed headers never drag, so their ids stay out of the project-drag namespace.
+    return item.shelf === "snoozed"
+      ? `sidebar-snoozed-project-${item.key}`
+      : sidebarProjectGroupId(item.key);
+  }
   return sidebarMarkerId(item.marker);
 }
 
@@ -318,6 +323,19 @@ export function resolveSidebarDropTarget(
     else activeOrder.push(item.key);
   }
   return { section, pinnedOrder, activeOrder };
+}
+
+// Grouped Active rows reorder only among their own project's threads: order keys come from
+// same-project neighbors, so other projects' keys are never rewritten.
+export function scopeActiveDropToProject(
+  target: SidebarDropTarget,
+  activeOrder: readonly string[],
+  inProject: (key: string) => boolean,
+): { readonly target: SidebarDropTarget; readonly activeOrder: readonly string[] } {
+  return {
+    target: { ...target, activeOrder: target.activeOrder.filter(inProject) },
+    activeOrder: activeOrder.filter(inProject),
+  };
 }
 
 export type SidebarThreadDropPlan =

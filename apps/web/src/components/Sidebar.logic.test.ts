@@ -24,6 +24,7 @@ import {
   sortInboxThreadsByReturn,
   resolveSidebarDropTarget,
   groupSidebarThreadsByProject,
+  scopeActiveDropToProject,
   moveSidebarProjectGroup,
   planSidebarThreadDrop,
   sortPinnedThreadsForSidebar,
@@ -1418,6 +1419,33 @@ describe("sidebar project groups", () => {
         overKey: "a",
       }),
     ).toBeNull();
+  });
+
+  it("reorders a grouped row by rewriting only its own project's keys", () => {
+    // Grouped display: [B: b1], [A: a1, a2]; dragging a2 above a1.
+    const keys = new Map([
+      ["b1", "t"],
+      ["a1", "m"],
+      ["a2", "n"],
+    ]);
+    const scoped = scopeActiveDropToProject(
+      { section: "active", pinnedOrder: [], activeOrder: ["b1", "a2", "a1"] },
+      ["b1", "a1", "a2"],
+      (key) => key.startsWith("a"),
+    );
+    const plan = planSidebarThreadDrop({
+      activeKey: "a2",
+      activeSection: "active",
+      target: scoped.target,
+      pinnedOrder: [],
+      pinnedKeysById: new Map(),
+      activeOrder: scoped.activeOrder,
+      activeKeysById: keys,
+    });
+    expect(plan.kind).toBe("move-active");
+    const assignments = plan.kind === "move-active" ? plan.assignments : [];
+    expect(assignments.map(({ id }) => id)).toEqual(["a2"]);
+    expect(assignments[0]!.orderKey < "m").toBe(true);
   });
 
   it("leaves project headers out of drop orders", () => {
