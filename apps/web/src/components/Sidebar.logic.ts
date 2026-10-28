@@ -193,11 +193,81 @@ export function sidebarMarkerId(marker: SidebarListMarker): string {
 }
 
 export type SidebarListItem =
-  | { readonly kind: "thread"; readonly key: string; readonly section: SidebarSection }
-  | { readonly kind: "marker"; readonly marker: SidebarListMarker };
+  | {
+      readonly kind: "thread";
+      readonly key: string;
+      readonly section: SidebarSection;
+      // Project group key, set while the Active section is grouped by project.
+      readonly group?: string;
+    }
+  | { readonly kind: "marker"; readonly marker: SidebarListMarker }
+  | { readonly kind: "project"; readonly key: string };
+
+const SIDEBAR_PROJECT_GROUP_PREFIX = "sidebar-project-";
+
+export function sidebarProjectGroupId(projectKey: string): string {
+  return `${SIDEBAR_PROJECT_GROUP_PREFIX}${projectKey}`;
+}
+
+export function parseSidebarProjectGroupId(id: string): string | null {
+  return id.startsWith(SIDEBAR_PROJECT_GROUP_PREFIX)
+    ? id.slice(SIDEBAR_PROJECT_GROUP_PREFIX.length)
+    : null;
+}
 
 export function sidebarListItemId(item: SidebarListItem): string {
-  return item.kind === "thread" ? item.key : sidebarMarkerId(item.marker);
+  if (item.kind === "thread") return item.key;
+  if (item.kind === "project") return sidebarProjectGroupId(item.key);
+  return sidebarMarkerId(item.marker);
+}
+
+export interface SidebarProjectGroup<T> {
+  readonly projectKey: string;
+  readonly threads: readonly T[];
+}
+
+// Keeps each project's threads in their incoming order. Projects missing from
+// the saved order lead, so a project that just gained its first active thread
+// shows at the top.
+export function groupSidebarThreadsByProject<T>(
+  threads: readonly T[],
+  projectKeyOf: (thread: T) => string,
+  savedOrder: readonly string[],
+): SidebarProjectGroup<T>[] {
+  const groups = new Map<string, T[]>();
+  for (const thread of threads) {
+    const key = projectKeyOf(thread);
+    const group = groups.get(key);
+    if (group) group.push(thread);
+    else groups.set(key, [thread]);
+  }
+  const rank = new Map(savedOrder.map((key, index) => [key, index]));
+  return [...groups]
+    .map(([projectKey, groupThreads]) => ({ projectKey, threads: groupThreads }))
+    .toSorted(
+      (left, right) => (rank.get(left.projectKey) ?? -1) - (rank.get(right.projectKey) ?? -1),
+    );
+}
+
+// Projects without active threads are hidden but keep their saved slot, so
+// they return where they were. Returns null when the drop changes nothing.
+export function moveSidebarProjectGroup(input: {
+  readonly savedOrder: readonly string[];
+  readonly displayedKeys: readonly string[];
+  readonly movedKey: string;
+  readonly overKey: string;
+}): string[] | null {
+  const { savedOrder, displayedKeys, movedKey, overKey } = input;
+  const from = displayedKeys.indexOf(movedKey);
+  const to = displayedKeys.indexOf(overKey);
+  if (from === -1 || to === -1 || from === to) return null;
+  const saved = new Set(savedOrder);
+  const order = [...displayedKeys.filter((key) => !saved.has(key)), ...savedOrder].filter(
+    (key) => key !== movedKey,
+  );
+  const anchor = order.indexOf(overKey);
+  order.splice(from < to ? anchor + 1 : anchor, 0, movedKey);
+  return order;
 }
 
 function sectionAtSidebarSlot(items: readonly SidebarListItem[], index: number): SidebarSection {
@@ -235,6 +305,7 @@ export function resolveSidebarDropTarget(
   const activeOrder: string[] = [];
   let currentSection: SidebarSection = "pinned";
   for (const item of moved) {
+    if (item.kind === "project") continue;
     if (item.kind === "marker") {
       if (item.marker === "pinned-divider") currentSection = "active";
       else if (

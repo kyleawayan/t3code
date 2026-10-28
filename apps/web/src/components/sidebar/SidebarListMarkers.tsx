@@ -4,12 +4,15 @@ import { CSS } from "@dnd-kit/utilities";
 import { type ReactNode } from "react";
 import { cn } from "~/lib/utils";
 import { useClientSettings } from "../../hooks/useSettings";
+import { FolderIcon } from "lucide-react";
 import {
   animateSidebarLayoutChanges,
   sidebarMarkerId,
+  sidebarProjectGroupId,
   type SidebarListMarker,
 } from "../Sidebar.logic";
-import { SIDEBAR_SORTABLE_DRAG_DISABLED } from "./SidebarThreadRow";
+import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
+import { SIDEBAR_SORTABLE_DRAG_DISABLED, SIDEBAR_SORTABLE_DRAG_ENABLED } from "./SidebarThreadRow";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 
 function SortableSidebarMarker(props: {
@@ -146,5 +149,53 @@ export function SidebarSectionHeader(props: {
         {!redesign && collapsedCount !== null ? ` (${collapsedCount})` : null}
       </CollapsibleSectionHeader>
     </SortableSidebarMarker>
+  );
+}
+
+export function SidebarProjectGroupHeader(props: {
+  projectKey: string;
+  label: string;
+  project: ProjectFaviconProject | null;
+  dragDisabled: boolean;
+  first: boolean;
+}) {
+  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: sidebarProjectGroupId(props.projectKey),
+    disabled: props.dragDisabled ? SIDEBAR_SORTABLE_DRAG_DISABLED : SIDEBAR_SORTABLE_DRAG_ENABLED,
+    animateLayoutChanges: animateSidebarLayoutChanges,
+  });
+  return (
+    <li
+      ref={setNodeRef}
+      data-thread-selection-safe
+      data-testid="sidebar-project-group"
+      data-project-group={props.projectKey}
+      className={cn(
+        // Padding, not margin: the drag preview lays rows out from their measured heights.
+        "mx-0.5 list-none rounded-md px-2 text-sm font-semibold text-foreground select-none",
+        props.first || isDragging ? "pt-1.5" : "pt-4.5",
+        !props.dragDisabled && "cursor-grab active:cursor-grabbing",
+        isDragging && "relative z-10 bg-sidebar-row-hover pb-1.5 shadow-sm",
+      )}
+      style={{
+        transform: CSS.Translate.toString(transform),
+        transition,
+        visibility: !isDragging && transform?.scaleY === 0 ? "hidden" : undefined,
+      }}
+      {...listeners}
+    >
+      <div className="flex h-6 items-center gap-2">
+        {props.project ? (
+          <ProjectFavicon project={props.project} className="size-4 shrink-0" />
+        ) : (
+          <FolderIcon className="size-4 shrink-0" />
+        )}
+        <span className="min-w-0 truncate">{props.label}</span>
+      </div>
+      {/* Cancels the sidebar group's and this row's horizontal padding to span the sidebar. */}
+      {isDragging ? null : (
+        <div aria-hidden className="-mx-4.5 mt-1 h-px bg-sidebar-foreground/15" />
+      )}
+    </li>
   );
 }

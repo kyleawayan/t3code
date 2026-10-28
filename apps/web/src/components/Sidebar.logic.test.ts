@@ -23,6 +23,8 @@ import {
   shouldRecedeSidebarThread,
   sortInboxThreadsByReturn,
   resolveSidebarDropTarget,
+  groupSidebarThreadsByProject,
+  moveSidebarProjectGroup,
   planSidebarThreadDrop,
   sortPinnedThreadsForSidebar,
   sortProjectsForSidebar,
@@ -1350,5 +1352,90 @@ describe("resolveSidebarRouteReveal", () => {
         findThread,
       }),
     ).toEqual({ pendingKey: hiddenKey, widensScope: false });
+  });
+});
+
+describe("sidebar project groups", () => {
+  const threads = [
+    { key: "a1", project: "a" },
+    { key: "b1", project: "b" },
+    { key: "a2", project: "a" },
+    { key: "c1", project: "c" },
+  ];
+  const keysOf = (order: readonly string[]) =>
+    groupSidebarThreadsByProject(threads, (thread) => thread.project, order).map((group) => [
+      group.projectKey,
+      group.threads.map((thread) => thread.key),
+    ]);
+
+  it("clusters threads by project and leads with projects missing from the saved order", () => {
+    expect(keysOf([])).toEqual([
+      ["a", ["a1", "a2"]],
+      ["b", ["b1"]],
+      ["c", ["c1"]],
+    ]);
+    expect(keysOf(["c", "a", "gone"])).toEqual([
+      ["b", ["b1"]],
+      ["c", ["c1"]],
+      ["a", ["a1", "a2"]],
+    ]);
+  });
+
+  it("moves a project relative to the header it is dropped on", () => {
+    expect(
+      moveSidebarProjectGroup({
+        savedOrder: [],
+        displayedKeys: ["a", "b", "c"],
+        movedKey: "a",
+        overKey: "c",
+      }),
+    ).toEqual(["b", "c", "a"]);
+    expect(
+      moveSidebarProjectGroup({
+        savedOrder: ["a", "b", "c"],
+        displayedKeys: ["a", "b", "c"],
+        movedKey: "c",
+        overKey: "a",
+      }),
+    ).toEqual(["c", "a", "b"]);
+  });
+
+  it("keeps hidden projects in their saved slot", () => {
+    // "h" has no active threads, so it is not displayed between "a" and "b".
+    expect(
+      moveSidebarProjectGroup({
+        savedOrder: ["a", "h", "b"],
+        displayedKeys: ["new", "a", "b"],
+        movedKey: "b",
+        overKey: "a",
+      }),
+    ).toEqual(["new", "b", "a", "h"]);
+    expect(
+      moveSidebarProjectGroup({
+        savedOrder: ["a", "b"],
+        displayedKeys: ["a", "b"],
+        movedKey: "a",
+        overKey: "a",
+      }),
+    ).toBeNull();
+  });
+
+  it("leaves project headers out of drop orders", () => {
+    expect(
+      resolveSidebarDropTarget(
+        [
+          { kind: "marker", marker: "pinned-header" },
+          { kind: "marker", marker: "pinned-divider" },
+          { kind: "project", key: "a" },
+          { kind: "thread", key: "a1", section: "active", group: "a" },
+          { kind: "thread", key: "a2", section: "active", group: "a" },
+          { kind: "project", key: "b" },
+          { kind: "thread", key: "b1", section: "active", group: "b" },
+          { kind: "marker", marker: "settled-header" },
+        ],
+        "a2",
+        "a1",
+      ),
+    ).toEqual({ section: "active", pinnedOrder: [], activeOrder: ["a2", "a1", "b1"] });
   });
 });
