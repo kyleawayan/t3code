@@ -4,8 +4,9 @@
 const OSC52_MAX_PAYLOAD = 1_048_576; // about 768 KiB of text; larger payloads are dropped, never truncated
 
 export function decodeOsc52Payload(payload: string): string | null {
-  // Some emitters omit the "=" padding, which atob rejects.
-  const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
+  // Some emitters omit the "=" padding, which atob rejects; wrapped base64 carries newlines.
+  const compact = payload.replace(/\s+/g, "");
+  const padded = compact + "=".repeat((4 - (compact.length % 4)) % 4);
   try {
     const bytes = Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
     return new TextDecoder().decode(bytes);
@@ -31,29 +32,40 @@ export class Osc52ClipboardWatcher {
     for (let index = 0; index < data.length; index += 1) {
       const code = data.charCodeAt(index);
       switch (this.state) {
-        case "ground":
-          if (code === 0x1b) this.state = "esc";
+        case "ground": {
+          // Plain output is most of the stream; jump straight to the next ESC.
+          const next = data.indexOf("\x1b", index);
+          if (next === -1) return;
+          index = next;
+          this.state = "esc";
           break;
+        }
         case "esc":
           if (code === 0x5d) {
-            this.state = "osc";
-            this.buffer = "";
-            this.dropped = false;
+            this.startOsc();
           } else {
             this.state = code === 0x1b ? "esc" : "ground";
           }
           break;
         case "osc":
           if (code === 0x07) this.finish();
+          else if (code === 0x18 || code === 0x1a) this.reset();
           else if (code === 0x1b) this.state = "oscEsc";
           else this.collect(data[index]!);
           break;
         case "oscEsc":
           if (code === 0x5c) this.finish();
+          else if (code === 0x5d) this.startOsc();
           else this.state = code === 0x1b ? "esc" : "ground";
           break;
       }
     }
+  }
+
+  private startOsc(): void {
+    this.state = "osc";
+    this.buffer = "";
+    this.dropped = false;
   }
 
   private collect(char: string): void {
