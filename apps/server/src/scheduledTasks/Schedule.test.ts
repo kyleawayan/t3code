@@ -53,16 +53,37 @@ describe("scheduled task schedule calculation", () => {
     expect(parts?.minute).toBe(0);
   });
 
-  it("skips fixed-time runs missed by more than the grace window", () => {
+  it("catches up today's missed fixed-time run once and drops older misses", () => {
     const fixedTime = { type: "fixed_time", timeOfDay: "09:00" } as const;
-    const dueAt = DateTime.makeUnsafe("2026-07-01T09:00:00.000Z");
-    const withinGrace = DateTime.makeUnsafe("2026-07-01T09:05:00.000Z");
-    const pastGrace = DateTime.makeUnsafe("2026-07-01T15:00:00.000Z");
-    expect(isMissedFixedTimeRun(fixedTime, dueAt, withinGrace)).toBe(false);
-    expect(isMissedFixedTimeRun(fixedTime, dueAt, pastGrace)).toBe(true);
-    expect(isMissedFixedTimeRun({ type: "interval", everyMs: 60_000 }, dueAt, pastGrace)).toBe(
-      false,
-    );
+    const weekdays = { type: "fixed_time", timeOfDay: "09:00", weekdays: [1, 2, 3, 4, 5] } as const;
+    const wednesday9 = DateTime.makeUnsafe("2026-07-01T09:00:00.000Z");
+    const friday9 = DateTime.makeUnsafe("2026-07-03T09:00:00.000Z");
+    // Slept through today's run: catch up on wake.
+    expect(
+      isMissedFixedTimeRun(fixedTime, wednesday9, DateTime.makeUnsafe("2026-07-01T09:05:00.000Z")),
+    ).toBe(false);
+    expect(
+      isMissedFixedTimeRun(fixedTime, wednesday9, DateTime.makeUnsafe("2026-07-01T15:00:00.000Z")),
+    ).toBe(false);
+    // Woke the next morning before 9: yesterday's run is stale.
+    expect(
+      isMissedFixedTimeRun(fixedTime, wednesday9, DateTime.makeUnsafe("2026-07-02T08:00:00.000Z")),
+    ).toBe(true);
+    // Slept Friday to Monday 11:00: Monday's run fires once.
+    expect(
+      isMissedFixedTimeRun(weekdays, friday9, DateTime.makeUnsafe("2026-07-06T11:00:00.000Z")),
+    ).toBe(false);
+    // Woke Saturday: today is not a scheduled day.
+    expect(
+      isMissedFixedTimeRun(weekdays, friday9, DateTime.makeUnsafe("2026-07-04T11:00:00.000Z")),
+    ).toBe(true);
+    expect(
+      isMissedFixedTimeRun(
+        { type: "interval", everyMs: 60_000 },
+        wednesday9,
+        DateTime.makeUnsafe("2026-07-01T15:00:00.000Z"),
+      ),
+    ).toBe(false);
   });
 
   it("compares schedules structurally", () => {

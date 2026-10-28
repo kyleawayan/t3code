@@ -73,7 +73,19 @@ export function isMissedFixedTimeRun(
   now: DateTime.DateTime,
 ): boolean {
   if (schedule.type !== "fixed_time") return false;
-  return DateTime.toEpochMillis(now) - DateTime.toEpochMillis(dueAt) > MISSED_FIXED_TIME_GRACE_MS;
+  const nowMs = DateTime.toEpochMillis(now);
+  const dueMs = DateTime.toEpochMillis(dueAt);
+  if (nowMs - dueMs <= MISSED_FIXED_TIME_GRACE_MS) return false;
+  // A machine that slept through today's run catches up once on wake. Older
+  // misses are dropped so a long sleep does not fire a stale run right before
+  // today's.
+  const today = nextScheduledRunAt(
+    schedule,
+    DateTime.subtract(DateTime.startOf(now, "day"), { millis: 1 }),
+  );
+  if (today === null) return true;
+  const todayMs = DateTime.toEpochMillis(today);
+  return todayMs > nowMs || todayMs < dueMs;
 }
 
 function describeSchedule(schedule: ScheduledTaskSchedule): string {
