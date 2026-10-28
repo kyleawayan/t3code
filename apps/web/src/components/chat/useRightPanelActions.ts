@@ -130,7 +130,6 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
   const createBrowserSurfaceStable = useStableCallback(createBrowserSurface);
   const addDiffSurface = () => {
     if (!activeThreadRef || !isServerThread || !isGitRepo) return;
-    useDiffPanelStore.getState().selectGitScope(activeThreadRef, "branch");
     useRightPanelStore.getState().open(activeThreadRef, "diff");
     onDiffPanelOpen?.();
   };
@@ -147,12 +146,13 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
       rightPanels.toggle(activeThreadRef, "diff");
       return;
     }
-    explicitDiffOpenRef.current = diffOpen ? null : activeThreadRef;
     diffPanel.selectGitScope(activeThreadRef, "unstaged");
     rightPanels.open(activeThreadRef, "diff");
     onDiffPanelOpen?.();
   };
   const openChangesFromThreadPanel = () => {
+    if (!activeThreadRef || !isServerThread || !isGitRepo) return;
+    useDiffPanelStore.getState().selectGitScope(activeThreadRef, "branch");
     addDiffSurface();
   };
   const openChangesFromThreadPanelStable = useStableCallback(openChangesFromThreadPanel);

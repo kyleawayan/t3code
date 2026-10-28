@@ -1,10 +1,11 @@
 import { EnvironmentId, ThreadId, TurnItemId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import {
   resolveToolCallDiffTarget,
+  selectThreadDiffPanelSelection,
   useDiffPanelSessionStore,
   useDiffPanelStore,
 } from "./diffPanelStore";
@@ -83,6 +84,18 @@ describe("diffPanelStore", () => {
       resolveToolCallDiffTarget(target, [{ ...completed, sourceThreadId: ThreadId.make("other") }]),
     ).toBe(target);
     expect(resolveToolCallDiffTarget(target, [])).toBe(target);
+  });
+
+  it("opens threads on Uncommitted and keeps each thread's own scope", () => {
+    const threadA = scopeThreadRef(EnvironmentId.make("environment-1"), ThreadId.make("thread-a"));
+    const threadB = scopeThreadRef(EnvironmentId.make("environment-1"), ThreadId.make("thread-b"));
+    const selection = (ref: typeof threadA) =>
+      selectThreadDiffPanelSelection(useDiffPanelStore.getState().byThreadKey, ref).kind;
+
+    expect(selection(threadA)).toBe("unstaged");
+    useDiffPanelStore.getState().selectGitScope(threadA, "branch");
+    expect(selection(threadA)).toBe("branch");
+    expect(selection(threadB)).toBe("unstaged");
   });
 
   it("retains fold choices when a panel consumer returns with fresh defaults", () => {
