@@ -16,6 +16,11 @@ describe("decodeOsc52Payload", () => {
     expect(decodeOsc52Payload("YWI")).toBe("ab");
   });
 
+  it("accepts padded base64 wrapped across lines", () => {
+    const wrapped = base64("a".repeat(60)).replace(/(.{76})/g, "$1\n");
+    expect(decodeOsc52Payload(wrapped)).toBe("a".repeat(60));
+  });
+
   it("returns null for invalid base64", () => {
     expect(decodeOsc52Payload("not valid !!")).toBeNull();
   });
@@ -53,6 +58,13 @@ describe("Osc52ClipboardWatcher", () => {
     const { texts, watcher } = collect();
     watcher.scan("\x1b]0;window title\x07\x1b]52;c;?\x07\x1b]52;c;\x07");
     expect(texts).toEqual([]);
+  });
+
+  it("starts a fresh sequence after an unterminated one and aborts on CAN", () => {
+    const { texts, watcher } = collect();
+    watcher.scan(`\x1b]0;cut short\x1b${osc52("after").slice(1)}`);
+    watcher.scan(`\x1b]52;c;aGVs\x18bG8=\x07`);
+    expect(texts).toEqual(["after"]);
   });
 
   it("drops a payload over the size cap", () => {
