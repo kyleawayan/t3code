@@ -185,6 +185,7 @@ import {
   groupSidebarThreadsByProject,
   sidebarFolderExpansionKeys,
   moveSidebarProjectGroup,
+  scopeActiveDropToProject,
   parseSidebarProjectGroupId,
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
@@ -206,7 +207,6 @@ import {
   shouldCreateNewThreadInCurrentProject,
   shouldNavigateAfterThreadPark,
   sidebarListItemId,
-  sidebarProjectGroupId,
   sidebarThreadKeyAtY,
   sortInboxThreadsByReturn,
   sortPinnedThreadsForSidebar,
@@ -518,7 +518,7 @@ function useSidebarThreads(input: {
     clockKey: `${nowMinute}:${snoozeWakeClock}:${inboxReturnsVersion}`,
   });
 
-  const { pinnedThreads, workingThreads, snoozedThreads, settledThreads } = partition;
+  const { pinnedThreads, workingThreads, settledThreads } = partition;
   const projectKeyOf = (thread: Pick<EnvironmentThreadShell, "environmentId" | "projectId">) => {
     const ref = `${thread.environmentId}:${thread.projectId}`;
     return projectKeyByProjectRef.get(ref) ?? ref;
@@ -532,6 +532,14 @@ function useSidebarThreads(input: {
     activeProjectGroups === null
       ? partition.activeThreads
       : activeProjectGroups.flatMap((group) => group.threads);
+  const snoozedProjectGroups =
+    activeProjectGroups === null
+      ? null
+      : groupActiveThreadsByProject(partition.snoozedThreads, projectKeyOf, projectGroupOrder);
+  const snoozedThreads =
+    snoozedProjectGroups === null
+      ? partition.snoozedThreads
+      : snoozedProjectGroups.flatMap((group) => group.threads);
   // Older settled threads load in pages; the shelf lists them only as far as they are loaded.
   const olderSettledShelf = useOlderSettledShelf({
     scopes: olderSettledScopes([...serverConfigs.keys()], scopedProjectKeys),
@@ -606,7 +614,10 @@ function useSidebarThreads(input: {
   return {
     ...partition,
     activeThreads,
+    snoozedThreads,
     activeProjectGroups,
+    // Headers only when the shelf is open; a collapsed shelf shows at most the open thread.
+    snoozedProjectGroups: snoozedShelfExpanded ? snoozedProjectGroups : null,
     projectKeyOfThread: activeProjectGroups === null ? null : projectKeyOf,
     groupByProjectEnabled,
     toggleGroupByProject: () => setGroupByProjectEnabled((value) => !value),
@@ -1104,6 +1115,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   // Project headers drag through the same DndContext as threads but never
   // set dragState, so thread-only drag effects stay inert.
   const [draggingProjectKey, setDraggingProjectKey] = useState<string | null>(null);
+  // Folding the groups above a dragged header moves it up; its pre-fold layout offset
+  // lets the drag cancel that shift so the header stays under the pointer.
+  const projectDragAnchorRef = useRef<{ node: HTMLElement; offsetTop: number } | null>(null);
+  // The list keeps its pre-fold height during a header drag; shrinking it would make the
+  // browser scroll a scrolled-down sidebar, a second shift the modifier cannot see.
+  const [projectDragListHeight, setProjectDragListHeight] = useState<number | null>(null);
   const dragSensorRef = useRef<SidebarPointerSensor | null>(null);
   const contextDragKeyRef = useRef<string | null>(null);
   const dragScrollRef = useRef<{ readonly viewport: Element; readonly top: number } | null>(null);
@@ -1390,6 +1407,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     pinnedKeysById,
     activeKeysById,
     activeProjectGroups,
+    snoozedProjectGroups,
     projectKeyOfThread,
     groupByProjectEnabled,
     toggleGroupByProject,
@@ -1752,7 +1770,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   };
   const restrictBelowPins: Modifier = (args) =>
     restrictBelowSidebarLabel(args, dragLabelOffsetRef.current);
+  const cancelProjectFoldShift: Modifier = ({ transform }) => {
+    const anchor = projectDragAnchorRef.current;
+    return anchor
+      ? { ...transform, y: transform.y - (anchor.node.offsetTop - anchor.offsetTop) }
+      : transform;
+  };
   const dndModifiers = [
+    cancelProjectFoldShift,
     restrictToVerticalAxis,
     restrictBelowPins,
     restrictToFirstScrollableAncestor,
@@ -1801,6 +1826,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       listMotionRef.current?.release();
       setDragState(null);
       setDraggingProjectKey(null);
+      projectDragAnchorRef.current = null;
+      setProjectDragListHeight(null);
     }
   };
   const attachDragSensor = (sensor: SidebarPointerSensor) => {
@@ -1977,6 +2004,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     if (draggedProjectKey !== null) {
       listMotionRef.current?.suspend();
       dragLabelOffsetRef.current = 0;
+      const header = threadListRef.current?.querySelector<HTMLElement>(
+        `[data-project-group="${globalThis.CSS.escape(draggedProjectKey)}"]:not([data-shelf])`,
+      );
+      projectDragAnchorRef.current = header ? { node: header, offsetTop: header.offsetTop } : null;
+      setProjectDragListHeight(threadListRef.current?.offsetHeight ?? null);
       setDraggingProjectKey(draggedProjectKey);
       return;
     }
@@ -2050,7 +2082,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     }
     if (snoozedThreads.length > 0) {
       items.push({ kind: "marker", marker: "snoozed-header" });
-      items.push(...rowsOf(visibleSnoozedThreads, "snoozed"));
+      if (snoozedProjectGroups === null) items.push(...rowsOf(visibleSnoozedThreads, "snoozed"));
+      else {
+        for (const group of snoozedProjectGroups) {
+          items.push({ kind: "project", key: group.projectKey, shelf: "snoozed" });
+          items.push(...rowsOf(group.threads, "snoozed"));
+        }
+      }
     }
     items.push({ kind: "marker", marker: "settled-header" });
     const settledRows = rowsOf(renderedSettledThreads, "settled");
@@ -2064,7 +2102,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       item.kind === "thread"
         ? item.section + ":" + item.key
         : item.kind === "project"
-          ? "project:" + item.key
+          ? "project:" + (item.shelf ?? "") + ":" + item.key
           : item.marker,
     )
     .join("\n");
@@ -2136,12 +2174,25 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           activeThreads,
           workingShelfEnabled,
         });
+  // With grouping on, the time-ordered inbox preview must rank rows in their grouped slots.
+  const previewActiveOrder =
+    draggedActiveOrder === undefined || projectKeyOfThread === null
+      ? draggedActiveOrder
+      : groupActiveThreadsByProject(
+          draggedActiveOrder,
+          (key) => {
+            const thread = threadByKey.get(key);
+            return thread === undefined ? key : projectKeyOfThread(thread);
+          },
+          projectGroupOrder,
+        ).flatMap((group) => group.threads);
   const threadSortingStrategy = createSidebarSortingStrategy({
     items: sidebarListItems,
     enabled: !isContextDrag,
     boundaryLabelHeight: SIDEBAR_DRAG_LABEL_HEIGHT,
     settledOrder: draggedSettledOrder,
-    ...(draggedActiveOrder === undefined ? {} : { activeOrder: draggedActiveOrder }),
+    ...(previewActiveOrder === undefined ? {} : { activeOrder: previewActiveOrder }),
+    projectOrder: projectGroupOrder,
     settledExpanded: settledShelfExpanded,
     settledVisibleCount,
     routeThreadKey: routeRowThreadKey,
@@ -2152,6 +2203,19 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const draggedThreadKey = dragState?.activeKey;
   const draggedFromSection = dragState?.activeSection;
   const dragActivationY = dragState?.activationY;
+  const scopeDropToSourceProject = (
+    source: EnvironmentThreadShell,
+    target: NonNullable<ReturnType<typeof resolveSidebarDropTarget>>,
+  ) => {
+    if (projectKeyOfThread === null || target.section !== "active") {
+      return { target, activeOrder: activeKeys };
+    }
+    const sourceProject = projectKeyOfThread(source);
+    return scopeActiveDropToProject(target, activeKeys, (key) => {
+      const thread = threadByKey.get(key);
+      return thread !== undefined && projectKeyOfThread(thread) === sourceProject;
+    });
+  };
   const dndCollisionDetection = (() => {
     if (draggingProjectKey !== null) return sidebarProjectGroupCollisionDetection;
     if (draggedThreadKey === undefined || draggedFromSection === undefined)
@@ -2162,17 +2226,20 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       (id) => {
         const target = resolveSidebarDropTarget(sidebarListItems, draggedThreadKey, id);
         if (target === null) return false;
-        // A thread cannot change project, so grouped rows reorder only
-        // within their own project.
-        if (
-          projectKeyOfThread !== null &&
-          draggedFromSection === "active" &&
-          target.section === "active"
-        ) {
+        // A thread cannot change project, so with grouping on it can only land among its
+        // own project's rows, unless that project has no group yet.
+        if (projectKeyOfThread !== null && target.section === "active") {
+          const sourceProject = projectKeyOfThread(source);
+          const hasGroup = activeProjectGroups?.some(
+            (group) =>
+              group.projectKey === sourceProject &&
+              group.threads.some((thread) => threadShellKey(thread) !== draggedThreadKey),
+          );
           const over = threadByKey.get(id);
-          if (over === undefined || projectKeyOfThread(over) !== projectKeyOfThread(source))
+          if (hasGroup && (over === undefined || projectKeyOfThread(over) !== sourceProject))
             return false;
         }
+        const scoped = scopeDropToSourceProject(source, target);
         return (
           planSidebarThreadDrop({
             activeKey: draggedThreadKey,
@@ -2180,11 +2247,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             activePinned: source.pinnedAt != null,
             activeSettled: source.settledOverride === "settled",
             supportsSettlement: serverConfigs.has(source.environmentId),
-            target,
+            target: scoped.target,
             pinnedOrder: pinnedKeys,
             pinnedKeysById,
             reorderableKeys: draggableThreadKeys,
-            activeOrder: activeKeys,
+            activeOrder: scoped.activeOrder,
             activeKeysById,
             activeReorderableKeys: activeReorderableThreadKeys,
             activeTimeOrdered: workingShelfEnabled,
@@ -2222,17 +2289,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     const activeThread = threadByKey.get(activeKey);
     if (activeSection === undefined || target === null || activeThread === undefined) return;
     const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    const scoped = scopeDropToSourceProject(activeThread, target);
     const plan = planSidebarThreadDrop({
       activeKey,
       activeSection,
       activePinned: activeThread.pinnedAt != null,
       activeSettled: activeThread.settledOverride === "settled",
       supportsSettlement: serverConfigs.has(activeThread.environmentId),
-      target,
+      target: scoped.target,
       pinnedOrder: pinnedKeys,
       pinnedKeysById,
       reorderableKeys: draggableThreadKeys,
-      activeOrder: activeKeys,
+      activeOrder: scoped.activeOrder,
       activeKeysById,
       activeReorderableKeys: activeReorderableThreadKeys,
       activeTimeOrdered: workingShelfEnabled,
@@ -2266,7 +2334,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         plan.kind === "pin" ||
         plan.kind === "settle" ||
         (plan.kind === "move-active" && plan.unsnooze),
-      order: plan.kind === "settle" ? null : plan.order,
+      // The optimistic list keeps the full display order; the plan only saw one project.
+      order:
+        plan.kind === "settle" || plan.order === null
+          ? null
+          : target.section === "active"
+            ? target.activeOrder
+            : plan.order,
       keysAtDrop: target.section === "active" ? activeKeysById : pinnedKeysById,
       assignedKeys: new Map(assignments.map(({ id, orderKey }) => [id, orderKey])),
     };
@@ -3464,7 +3538,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             >
               <DndContext
                 sensors={dndSensors}
-                autoScroll={isContextDrag ? false : SIDEBAR_AUTO_SCROLL}
+                // The fold shift is cancelled by cancelProjectFoldShift; dnd-kit's own
+                // compensation would scroll the list as well and double it.
+                autoScroll={
+                  isContextDrag
+                    ? false
+                    : draggingProjectKey !== null
+                      ? { ...SIDEBAR_AUTO_SCROLL, layoutShiftCompensation: false }
+                      : SIDEBAR_AUTO_SCROLL
+                }
                 collisionDetection={dndCollisionDetection}
                 modifiers={dndModifiers}
                 onDragStart={handleThreadDragStart}
@@ -3486,6 +3568,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                       dragState !== null &&
                         "after:pointer-events-none after:absolute after:inset-x-0 after:-bottom-30 after:h-px after:content-['']",
                     )}
+                    style={
+                      projectDragListHeight === null
+                        ? undefined
+                        : { minHeight: projectDragListHeight }
+                    }
                   >
                     {(() => {
                       const renderThreadRow = (
@@ -3628,14 +3715,22 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         }
                         if (item.kind === "project") {
                           const group = projectGroupByScopeKey.get(item.key) ?? null;
+                          const snoozedShelf = item.shelf === "snoozed";
+                          const shelfGroups = snoozedShelf
+                            ? snoozedProjectGroups
+                            : activeProjectGroups;
+                          const sortableId = sidebarListItemId(item);
                           items.push(
                             <SidebarProjectGroupHeader
-                              key={sidebarProjectGroupId(item.key)}
+                              key={sortableId}
+                              sortableId={sortableId}
                               projectKey={item.key}
-                              first={activeProjectGroups?.[0]?.projectKey === item.key}
+                              first={shelfGroups?.[0]?.projectKey === item.key}
+                              shelf={item.shelf}
                               label={group?.displayName ?? "Project"}
                               project={group}
                               dragDisabled={
+                                snoozedShelf ||
                                 dragState !== null ||
                                 optimisticDrop !== null ||
                                 (activeProjectGroups?.length ?? 0) < 2
