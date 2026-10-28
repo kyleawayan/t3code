@@ -11,6 +11,7 @@ import {
   type GhosttySnapshot,
   type GhosttyTheme,
 } from "./core";
+import { Osc52ClipboardWatcher } from "./osc52";
 import {
   measureGhosttyCell,
   renderGhosttySnapshot,
@@ -655,6 +656,9 @@ export class GhosttyTerminalSurface {
   private readonly reducedMotionMedia = window.matchMedia?.("(prefers-reduced-motion: reduce)");
   private inputLeft = -1;
   private inputTop = -1;
+  private readonly osc52 = new Osc52ClipboardWatcher((text) => {
+    void navigator.clipboard?.writeText(text);
+  });
 
   private constructor(
     mount: HTMLElement,
@@ -779,6 +783,7 @@ export class GhosttyTerminalSurface {
 
   write(data: string): void {
     if (this.disposed) return;
+    this.osc52.scan(data);
     this.core.write(
       data,
       this.synchronizedRenderTimer === null
@@ -795,6 +800,8 @@ export class GhosttyTerminalSurface {
     if (this.disposed) return;
     this.cancelSynchronizedRenderTimer();
     this.lastMouseMotionData = null;
+    // Replays are not scanned: reopening the drawer would re-copy an old tmux yank.
+    this.osc52.reset();
     this.core.resetAndWrite(data);
     this.synchronizeMouseTrackingState();
     this.cursorOn = true;
