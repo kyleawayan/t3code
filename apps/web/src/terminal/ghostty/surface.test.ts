@@ -401,6 +401,21 @@ describe("GhosttyTerminalSurface visibility", () => {
     );
   }
 
+  it("lets only the focused terminal take the clipboard through OSC 52", async () => {
+    const harness = createHarness();
+    const writeText = vi.fn(async (_text: string) => {});
+    vi.stubGlobal("navigator", { platform: "MacIntel", clipboard: { writeText } });
+    Object.assign(document, { hasFocus: () => true });
+    const surface = await harness.create();
+    const copy = `\x1b]52;c;${btoa("secret")}\x07`;
+
+    surface.write(copy);
+    expect(writeText).not.toHaveBeenCalled();
+    surface.input.dispatchEvent(new Event("focus"));
+    surface.write(copy);
+    expect(writeText).toHaveBeenCalledExactlyOnceWith("secret");
+  });
+
   it.each(["native", "clipboard"])("pastes once when %s arrives first", async (first) => {
     const harness = createHarness();
     const read = Promise.resolve("echo hi");

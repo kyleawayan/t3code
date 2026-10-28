@@ -643,8 +643,11 @@ export class GhosttyTerminalSurface {
   private readonly reducedMotionMedia = window.matchMedia?.("(prefers-reduced-motion: reduce)");
   private inputLeft = -1;
   private inputTop = -1;
+  // Only the focused, visible terminal may take the clipboard: a hidden terminal or output the
+  // user isn't watching should not replace it unseen. Browsers also reject unfocused documents.
   private readonly osc52 = new Osc52ClipboardWatcher((text) => {
-    void navigator.clipboard?.writeText(text);
+    if (!this.focused || !this.visible || !document.hasFocus()) return;
+    navigator.clipboard?.writeText(text).catch(() => undefined);
   });
 
   private constructor(
