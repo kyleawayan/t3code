@@ -38,8 +38,9 @@ export function FileMarkdownPreview(props: {
   if (!props.title) return markdown;
   return (
     <div className="mx-auto max-w-4xl px-6 py-5">
-      {/* Kept out of the markdown source, whose offsets the task checkboxes write back to. */}
-      <div className="chat-markdown">
+      {/* Kept out of the markdown source, whose offsets the task checkboxes write back to.
+          As its wrapper's only child the h1 loses its bottom margin, so the wrapper spaces it. */}
+      <div className="chat-markdown mb-4">
         <h1 dir="auto">{props.title}</h1>
       </div>
       {markdown}
