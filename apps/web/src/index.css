@@ -2501,7 +2501,15 @@ code {
   }
 }
 
-/* The fullscreen dialog wraps long cells instead of truncating them. */
+/* The fullscreen dialog fits the table to its width and wraps long cells, like expanded tables. */
+.chat-markdown[data-table-fullscreen] table {
+  min-width: 0;
+}
+
+.chat-markdown[data-table-fullscreen] th {
+  white-space: normal;
+}
+
 .chat-markdown[data-table-fullscreen] td {
   max-width: 40rem;
   overflow-wrap: break-word;
