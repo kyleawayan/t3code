@@ -3,11 +3,11 @@ import { type RefObject, useEffect } from "react";
 import { isMacPlatform } from "../lib/utils";
 
 const SWIPE_DISTANCE_PX = 120;
-// A trackpad gesture, momentum included, sends wheel events far closer together than this.
-const GESTURE_GAP_MS = 150;
-// Rendering the new route stalls wheel events, so its momentum lands after a gap that looks like a
-// new gesture. After navigating, only a scroll end or a pause this long starts one.
-const POST_NAVIGATION_GAP_MS = 1000;
+// A gesture ends when the desktop app reports its scroll ended; this pause is only a fallback.
+// Short gaps can't mark an end: a busy renderer delivers queued momentum late, as one burst.
+const GESTURE_TIMEOUT_MS = 1000;
+// Wheel events stop arriving well within this once the fingers lift.
+const INDICATOR_HIDE_MS = 150;
 // Gestures often open with a zero or diagonal nudge, so the axis waits for this much movement.
 const AXIS_LOCK_PX = 4;
 
@@ -15,10 +15,12 @@ export interface SwipeState {
   readonly lastTimeStamp: number;
   readonly distance: number;
   readonly settled: boolean;
-  readonly navigated: boolean;
   readonly pendingX: number;
   readonly pendingY: number;
-  /** Fingers never move perfectly sideways; a mouse thumb wheel or Shift+wheel does. */
+  /**
+   * Fingers never move perfectly sideways; a mouse thumb wheel or Shift+wheel does. Only events
+   * that also move sideways count, so a turn of the main wheel can't stand in for a finger.
+   */
   readonly sawVertical: boolean;
 }
 
@@ -26,7 +28,6 @@ export const initialSwipeState: SwipeState = {
   lastTimeStamp: Number.NEGATIVE_INFINITY,
   distance: 0,
   settled: false,
-  navigated: false,
   pendingX: 0,
   pendingY: 0,
   sawVertical: false,
@@ -36,15 +37,20 @@ export interface SwipeInput {
   readonly deltaX: number;
   readonly deltaY: number;
   readonly timeStamp: number;
-  /** Called once per gesture: it reads layout, which is too costly for every wheel event. */
-  readonly canScrollHorizontally: (direction: number) => boolean;
+  /** A panel already handled this event, so the gesture is that panel's. */
+  readonly handled: boolean;
+  /**
+   * Whether something else owns a sideways gesture here, such as a scroller or an open modal.
+   * Called once per gesture: it reads layout, which is too costly for every wheel event.
+   */
+  readonly claimed: (direction: number) => boolean;
   readonly canGoBack: boolean;
   readonly canGoForward: boolean;
 }
 
 /**
- * Like Chrome's two-finger history swipe: a gesture that starts horizontal on content that can't
- * scroll that way navigates once. Vertical and scrolling gestures stay settled until they end.
+ * Like Chrome's two-finger history swipe: a gesture that starts horizontal where nothing else
+ * claims it navigates once. Vertical and claimed gestures stay settled until they end.
  * `preview` is the distance to show, or 0 when it can't navigate that way.
  */
 export function reduceSwipe(
@@ -55,13 +61,13 @@ export function reduceSwipe(
   readonly navigate: "back" | "forward" | null;
   readonly preview: number;
 } {
-  const gap = state.navigated ? POST_NAVIGATION_GAP_MS : GESTURE_GAP_MS;
-  const current = input.timeStamp - state.lastTimeStamp > gap ? initialSwipeState : state;
+  const timedOut = input.timeStamp - state.lastTimeStamp > GESTURE_TIMEOUT_MS;
+  const current = timedOut ? initialSwipeState : state;
   const lastTimeStamp = input.timeStamp;
-  if (current.settled) {
-    return { state: { ...current, lastTimeStamp }, navigate: null, preview: 0 };
+  if (current.settled || input.handled) {
+    return { state: { ...current, lastTimeStamp, settled: true }, navigate: null, preview: 0 };
   }
-  const sawVertical = current.sawVertical || input.deltaY !== 0;
+  const sawVertical = current.sawVertical || (input.deltaY !== 0 && input.deltaX !== 0);
   let distance: number;
   if (current.distance === 0) {
     const pendingX = current.pendingX + input.deltaX;
@@ -73,7 +79,7 @@ export function reduceSwipe(
         preview: 0,
       };
     }
-    if (Math.abs(pendingY) >= Math.abs(pendingX) || input.canScrollHorizontally(pendingX)) {
+    if (Math.abs(pendingY) >= Math.abs(pendingX) || input.claimed(pendingX)) {
       return {
         state: { ...initialSwipeState, lastTimeStamp, settled: true },
         navigate: null,
@@ -94,11 +100,14 @@ export function reduceSwipe(
     };
   }
   return {
-    state: { ...current, lastTimeStamp, distance, sawVertical, settled: true, navigated: true },
+    state: { ...current, lastTimeStamp, distance, sawVertical, settled: true },
     navigate: distance < 0 ? "back" : "forward",
     preview: distance,
   };
 }
+
+// Modal dialogs and sheets only lock scrolling; they don't stop wheel events reaching the page.
+const MODAL_BACKDROP = '[data-slot$="dialog-backdrop"], [data-slot="sheet-backdrop"]';
 
 function canScrollHorizontally(event: WheelEvent, direction: number): boolean {
   for (const node of event.composedPath()) {
@@ -146,14 +155,17 @@ export function useTrackpadSwipeNavigation(indicator: RefObject<HTMLElement | nu
     let hideTimer: ReturnType<typeof setTimeout> | undefined;
     let visible = false;
     const onWheel = (event: WheelEvent) => {
-      // Panels that handle horizontal wheel input themselves (device orbit, preview stream,
-      // dialogs) cancel or stop it, so only unclaimed events reach this bubble listener.
-      if (event.ctrlKey || event.defaultPrevented) return;
+      if (event.ctrlKey) return;
       const result = reduceSwipe(state, {
         deltaX: event.deltaX,
         deltaY: event.deltaY,
         timeStamp: event.timeStamp,
-        canScrollHorizontally: (direction) => canScrollHorizontally(event, direction),
+        // Panels with their own wheel handling (device orbit, preview stream, tab strip) cancel
+        // the events they use, or stop them before this bubble listener.
+        handled: event.defaultPrevented,
+        claimed: (direction) =>
+          document.querySelector(MODAL_BACKDROP) !== null ||
+          canScrollHorizontally(event, direction),
         canGoBack: navigation.canGoBack,
         canGoForward: navigation.canGoForward,
       });
@@ -169,7 +181,7 @@ export function useTrackpadSwipeNavigation(indicator: RefObject<HTMLElement | nu
             hideIndicator(element);
             visible = false;
           },
-          result.navigate ? 0 : GESTURE_GAP_MS,
+          result.navigate ? 0 : INDICATOR_HIDE_MS,
         );
       } else if (element && visible) {
         hideIndicator(element);

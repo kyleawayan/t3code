@@ -2,24 +2,25 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { initialSwipeState, reduceSwipe, type SwipeInput } from "./useTrackpadSwipeNavigation";
 
-type TestInput = Partial<Omit<SwipeInput, "canScrollHorizontally">> & {
-  readonly canScrollHorizontally?: boolean;
+type TestInput = Partial<Omit<SwipeInput, "claimed">> & {
+  readonly claimed?: boolean;
 };
 
 function run(inputs: readonly TestInput[], onScrollCheck?: () => void) {
   let state = initialSwipeState;
   const navigations: string[] = [];
-  inputs.forEach(({ canScrollHorizontally = false, ...input }, index) => {
+  inputs.forEach(({ claimed = false, ...input }, index) => {
     const result = reduceSwipe(state, {
       deltaX: 0,
       deltaY: 0,
       timeStamp: index * 16,
       canGoBack: true,
       canGoForward: true,
+      handled: false,
       ...input,
-      canScrollHorizontally: () => {
+      claimed: () => {
         onScrollCheck?.();
-        return canScrollHorizontally;
+        return claimed;
       },
     });
     state = result.state;
@@ -44,6 +45,26 @@ describe("reduceSwipe", () => {
     expect(run(thumbWheel)).toEqual([]);
   });
 
+  it("does not let a vertical-only event finish a thumb-wheel swipe", () => {
+    const thumbWheel = [-30, -30, -30, -30, -30, -30].map((deltaX) => ({ deltaX }));
+    expect(run([...thumbWheel, { deltaX: 0, deltaY: 5 }, { deltaX: -30 }])).toEqual([]);
+  });
+
+  it("ignores the rest of a gesture once a panel handled part of it", () => {
+    expect(run([...swipe(-30, 3, { handled: true }), ...swipe(-30, 10)])).toEqual([]);
+  });
+
+  it("keeps one gesture across a render stall until the scroll ends", () => {
+    // A sideways scroller claimed the gesture, then a stalled renderer delivered its momentum late.
+    const scrolling = swipe(-30, 5, { claimed: true });
+    const lateMomentum = [-900, -60, -50].map((deltaX, index) => ({
+      deltaX,
+      deltaY: -1,
+      timeStamp: 64 + 300 + index * 16,
+    }));
+    expect(run([...scrolling, ...lateMomentum])).toEqual([]);
+  });
+
   it("ignores short swipes", () => {
     expect(run(swipe(-30, 3))).toEqual([]);
   });
@@ -57,18 +78,20 @@ describe("reduceSwipe", () => {
     expect(run([{ deltaX: -1, deltaY: -1 }, ...swipe(-30, 10)])).toEqual(["back"]);
   });
 
-  it("checks for sideways scrolling once per gesture, not on every event", () => {
-    let checks = 0;
+  it("checks whether something claims the gesture once, and never for vertical scrolls", () => {
+    let verticalChecks = 0;
     run(
       Array.from({ length: 20 }, () => ({ deltaX: -1, deltaY: 30 })),
-      () => checks++,
+      () => verticalChecks++,
     );
-    run(swipe(-30, 20), () => checks++);
-    expect(checks).toBeLessThanOrEqual(1);
+    let swipeChecks = 0;
+    run(swipe(-30, 20), () => swipeChecks++);
+    expect(verticalChecks).toBe(0);
+    expect(swipeChecks).toBe(1);
   });
 
-  it("ignores gestures over content that can scroll sideways", () => {
-    expect(run(swipe(-30, 20, { canScrollHorizontally: true }))).toEqual([]);
+  it("ignores gestures something else claims, like a sideways scroller or an open modal", () => {
+    expect(run(swipe(-30, 20, { claimed: true }))).toEqual([]);
   });
 
   it("ignores the momentum burst that lands after navigating", () => {
