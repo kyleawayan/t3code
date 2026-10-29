@@ -131,6 +131,7 @@ import {
 } from "./filePreviewMode";
 import { setMarkdownTaskChecked } from "@t3tools/shared/markdownTaskList";
 import { changeFileSaveSession, useFileSaveSession } from "./fileSaveSessions";
+import { markdownPreviewScrollKey, usePersistedScrollAreaPosition } from "./markdownPreviewScroll";
 import { revisionedQuery } from "~/state/revisionedQuery";
 import {
   getOptimisticProjectFileQueryData,
@@ -1112,9 +1113,16 @@ function RenderedMarkdownSurface({
 }) {
   const saveTarget = { environmentId, cwd, relativePath };
   useFileSaveSession(saveTarget, onPendingChange);
+  const scrollAreaRef = usePersistedScrollAreaPosition(
+    markdownPreviewScrollKey(threadRef, cwd, relativePath),
+  );
 
   return (
-    <ScrollArea className="min-h-0 flex-1" onKeyDown={selectRenderedContentOnSelectAll}>
+    <ScrollArea
+      ref={scrollAreaRef}
+      className="min-h-0 flex-1"
+      onKeyDown={selectRenderedContentOnSelectAll}
+    >
       <FileMarkdownPreview
         text={contents}
         cwd={cwd}
