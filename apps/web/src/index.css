@@ -2470,6 +2470,12 @@ code {
   overflow-wrap: break-word;
 }
 
+/* The fullscreen dialog wraps long cells instead of truncating them. */
+.chat-markdown[data-table-fullscreen] td {
+  max-width: 40rem;
+  overflow-wrap: break-word;
+}
+
 /* Formula cells keep their natural width and scroll with the table. */
 .chat-markdown :is(th, td):has([data-markdown-math]) {
   max-width: none;
