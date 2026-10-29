@@ -34,6 +34,7 @@ import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { useEnvironmentIdentificationMode, useLegacySidebarEnabled } from "../hooks/useSettings";
 import { useMouseNavigationButtons } from "../hooks/useMouseNavigationButtons";
+import { TrackpadSwipeIndicator } from "./TrackpadSwipeIndicator";
 import {
   PanelAnimationSuppressionProvider,
   usePanelAnimationSettings,
@@ -439,6 +440,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         style={sidebarProviderStyle}
       >
         <SidebarBrandWidthProbe onWidthChange={setBrandWidth} />
+        <TrackpadSwipeIndicator />
         {/* The in-flow gap that reserves the sidebar's width follows DOM order,
             so a right-docked sidebar comes after the main content. */}
         {children}

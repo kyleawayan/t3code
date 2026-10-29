@@ -24,6 +24,9 @@ vi.mock("electron", async (importOriginal) => ({
       setUserAgent: vi.fn(),
     })),
   },
+  webContents: {
+    getFocusedWebContents: vi.fn(() => null),
+  },
   screen: {
     getAllDisplays: vi.fn(() => [
       {
@@ -78,6 +81,12 @@ function makeFakeBrowserWindow() {
       zoomLevel = level;
     }),
     isLoadingMainFrame: vi.fn(() => false),
+    navigationHistory: {
+      canGoBack: vi.fn(() => true),
+      canGoForward: vi.fn(() => false),
+      goBack: vi.fn(),
+      goForward: vi.fn(),
+    },
     on: vi.fn((eventName: string, listener: (...args: readonly unknown[]) => void) => {
       webContentsListeners.set(eventName, listener);
     }),
@@ -132,6 +141,7 @@ function makeFakeBrowserWindow() {
     isMinimized: window.isMinimized,
     loadURL: window.loadURL,
     maximize: window.maximize,
+    navigationHistory: webContents.navigationHistory,
     openDevTools: webContents.openDevTools,
     reload: webContents.reload,
     reloadIgnoringCache: webContents.reloadIgnoringCache,
@@ -972,6 +982,49 @@ describe("DesktopWindow", () => {
             height: 930,
           },
         ]);
+      }).pipe(Effect.provide(layer));
+    }),
+  );
+
+  it.effect("navigates history from macOS swipes when there is somewhere to go", () =>
+    Effect.gen(function* () {
+      const fakeWindow = makeFakeBrowserWindow();
+      const createCount = yield* Ref.make(0);
+      const mainWindow = yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none());
+      const layer = layerTest({ window: fakeWindow.window, createCount, mainWindow });
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+
+        const swipe = fakeWindow.windowListeners.get("swipe");
+        if (!swipe) {
+          return yield* Effect.die("swipe listener was not registered");
+        }
+        swipe({}, "left");
+        swipe({}, "right");
+        swipe({}, "up");
+
+        assert.equal(fakeWindow.navigationHistory.goBack.mock.calls.length, 1);
+        assert.equal(fakeWindow.navigationHistory.goForward.mock.calls.length, 0);
+
+        const preview = {
+          hostWebContents: fakeWindow.window.webContents,
+          focusedFrame: {},
+          navigationHistory: {
+            canGoBack: vi.fn(() => true),
+            canGoForward: vi.fn(() => true),
+            goBack: vi.fn(),
+            goForward: vi.fn(),
+          },
+        };
+        using _focused = vi
+          .mocked(Electron.webContents.getFocusedWebContents)
+          .mockReturnValue(preview as unknown as Electron.WebContents);
+        swipe({}, "left");
+
+        assert.equal(preview.navigationHistory.goBack.mock.calls.length, 1);
+        assert.equal(fakeWindow.navigationHistory.goBack.mock.calls.length, 1);
       }).pipe(Effect.provide(layer));
     }),
   );

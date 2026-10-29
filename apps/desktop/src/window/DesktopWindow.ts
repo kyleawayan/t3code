@@ -678,6 +678,18 @@ export const make = Effect.gen(function* () {
         syncMacosWindowButtons(window);
         window.webContents.send(WINDOW_FULLSCREEN_STATE_CHANNEL, false);
       });
+      // Fork: Logi's Back/Forward buttons and three-finger page swipes arrive as legacy swipes.
+      // They go to the preview page when it holds focus, like its mouse side buttons do.
+      window.on("swipe", (_event, direction) => {
+        const focused = Electron.webContents.getFocusedWebContents();
+        const target =
+          focused?.hostWebContents === window.webContents && focused.focusedFrame !== null
+            ? focused
+            : window.webContents;
+        const history = target.navigationHistory;
+        if (direction === "left" && history.canGoBack()) history.goBack();
+        if (direction === "right" && history.canGoForward()) history.goForward();
+      });
     }
 
     let developmentLoadRetryIndex = 0;
