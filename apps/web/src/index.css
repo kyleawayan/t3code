@@ -2501,6 +2501,12 @@ code {
   }
 }
 
+/* The fullscreen dialog wraps long cells instead of truncating them. */
+.chat-markdown[data-table-fullscreen] td {
+  max-width: 40rem;
+  overflow-wrap: break-word;
+}
+
 /* Formula cells keep their natural width and scroll with the table. */
 .chat-markdown .chat-markdown-table-container td:has([data-markdown-math]) {
   max-width: none;

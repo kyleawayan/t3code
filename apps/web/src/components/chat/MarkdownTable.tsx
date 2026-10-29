@@ -1,4 +1,4 @@
-import { Check, Copy, Maximize2, Minimize2 } from "lucide";
+import { Check, Copy, Expand, Maximize2, Minimize2 } from "lucide";
 import { useRef, useState, type ComponentProps } from "react";
 
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
@@ -10,6 +10,7 @@ import {
 } from "../../markdown-clipboard";
 import { MorphIcon } from "../MorphIcon";
 import { Button } from "../ui/button";
+import { Dialog, DialogPopup, DialogTitle } from "../ui/dialog";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { ScrollArea } from "../ui/scroll-area";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -44,6 +45,7 @@ export function MarkdownTable({ children, ...props }: ComponentProps<"table">) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [expanded, setExpanded] = useState(() => getClientSettings().wordWrap);
   const [hasClippedCells, setHasClippedCells] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
   const { copyToClipboard, isCopied: copied } = useCopyToClipboard<"markdown" | "csv">({
     timeout: 1200,
     onError: (cause, format) =>
@@ -114,32 +116,60 @@ export function MarkdownTable({ children, ...props }: ComponentProps<"table">) {
         ) : (
           <span />
         )}
-        <Menu>
+        <div className="flex items-center">
           <Tooltip>
             <TooltipTrigger
               render={
-                <MenuTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="ghost-muted"
-                      size="icon-xs"
-                      aria-label={copyLabel}
-                    />
-                  }
+                <Button
+                  type="button"
+                  variant="ghost-muted"
+                  size="icon-xs"
+                  onClick={() => setFullscreen(true)}
+                  aria-label="Open table fullscreen"
                 />
               }
             >
-              <MorphIcon className="size-3" icon={copied ? Check : Copy} />
+              <MorphIcon className="size-3" icon={Expand} />
             </TooltipTrigger>
-            <TooltipPopup side="top">{copyLabel}</TooltipPopup>
+            <TooltipPopup side="top">Open table fullscreen</TooltipPopup>
           </Tooltip>
-          <MenuPopup align="end">
-            <MenuItem onClick={() => handleCopy("markdown")}>Copy as Markdown</MenuItem>
-            <MenuItem onClick={() => handleCopy("csv")}>Copy as CSV</MenuItem>
-          </MenuPopup>
-        </Menu>
+          <Menu>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <MenuTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost-muted"
+                        size="icon-xs"
+                        aria-label={copyLabel}
+                      />
+                    }
+                  />
+                }
+              >
+                <MorphIcon className="size-3" icon={copied ? Check : Copy} />
+              </TooltipTrigger>
+              <TooltipPopup side="top">{copyLabel}</TooltipPopup>
+            </Tooltip>
+            <MenuPopup align="end">
+              <MenuItem onClick={() => handleCopy("markdown")}>Copy as Markdown</MenuItem>
+              <MenuItem onClick={() => handleCopy("csv")}>Copy as CSV</MenuItem>
+            </MenuPopup>
+          </Menu>
+        </div>
       </div>
+      <Dialog open={fullscreen} onOpenChange={setFullscreen}>
+        <DialogPopup className="w-auto max-w-[min(100%,80rem)]">
+          <DialogTitle className="sr-only">Table</DialogTitle>
+          <ScrollArea scrollFade className="min-h-0">
+            <div className="chat-markdown px-6 pt-10 pb-6" data-table-fullscreen>
+              <table {...props}>{children}</table>
+            </div>
+          </ScrollArea>
+        </DialogPopup>
+      </Dialog>
     </div>
   );
 }
