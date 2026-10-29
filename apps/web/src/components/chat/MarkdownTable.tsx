@@ -1,5 +1,5 @@
-import { CheckIcon, CopyIcon } from "lucide-react";
-import { useRef, type ComponentProps } from "react";
+import { CheckIcon, CopyIcon, ExpandIcon } from "lucide-react";
+import { useRef, useState, type ComponentProps } from "react";
 
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import {
@@ -7,6 +7,7 @@ import {
   serializeTableElementToMarkdown,
 } from "../../markdown-clipboard";
 import { Button } from "../ui/button";
+import { Dialog, DialogPopup, DialogTitle } from "../ui/dialog";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { ScrollArea } from "../ui/scroll-area";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -14,6 +15,7 @@ import { reportMarkdownActionFailure } from "./markdownActionFailure";
 
 export function MarkdownTable({ children, ...props }: ComponentProps<"table">) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
   const { copyToClipboard, isCopied: copied } = useCopyToClipboard<"markdown" | "csv">({
     timeout: 1200,
     onError: (cause, format) =>
@@ -39,6 +41,22 @@ export function MarkdownTable({ children, ...props }: ComponentProps<"table">) {
       </ScrollArea>
       {/* Stays within the row's px-1: the chat lane clips sideways overflow. */}
       <div className="mt-0.5 -mx-1 flex items-center justify-end select-none">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                type="button"
+                variant="ghost-muted"
+                size="icon-xs"
+                onClick={() => setFullscreen(true)}
+                aria-label="Open table fullscreen"
+              />
+            }
+          >
+            <ExpandIcon className="size-3" />
+          </TooltipTrigger>
+          <TooltipPopup side="top">Open table fullscreen</TooltipPopup>
+        </Tooltip>
         <Menu>
           <Tooltip>
             <TooltipTrigger
@@ -65,6 +83,16 @@ export function MarkdownTable({ children, ...props }: ComponentProps<"table">) {
           </MenuPopup>
         </Menu>
       </div>
+      <Dialog open={fullscreen} onOpenChange={setFullscreen}>
+        <DialogPopup className="w-auto max-w-[min(100%,80rem)]">
+          <DialogTitle className="sr-only">Table</DialogTitle>
+          <ScrollArea scrollFade className="min-h-0">
+            <div className="chat-markdown px-6 pt-10 pb-6" data-table-fullscreen>
+              <table {...props}>{children}</table>
+            </div>
+          </ScrollArea>
+        </DialogPopup>
+      </Dialog>
     </div>
   );
 }
