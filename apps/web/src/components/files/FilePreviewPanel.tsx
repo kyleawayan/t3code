@@ -120,6 +120,7 @@ import {
   shouldShowFileExplorer,
   workspaceAssetResource,
 } from "./filePreviewMode";
+import { markdownPreviewScrollKey, usePersistedScrollAreaPosition } from "./markdownPreviewScroll";
 import { useFileSaveCoordinator } from "./useFileSaveCoordinator";
 import { revisionedQuery } from "~/state/revisionedQuery";
 import {
@@ -938,9 +939,12 @@ function RenderedMarkdownSurface({
     relativePath,
     onPendingChange,
   });
+  const scrollAreaRef = usePersistedScrollAreaPosition(
+    markdownPreviewScrollKey(threadRef, cwd, relativePath),
+  );
 
   return (
-    <ScrollArea className="min-h-0 flex-1">
+    <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1">
       <FileMarkdownPreview
         text={contents}
         cwd={cwd}
