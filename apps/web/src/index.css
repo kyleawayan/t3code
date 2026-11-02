@@ -305,6 +305,122 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   visibility: hidden;
 }
 
+@font-face {
+  font-family: "DSEG7 Modern";
+  font-style: italic;
+  font-weight: 700;
+  font-display: block;
+  src: url("./components/sidebar/fonts/DSEG7Modern-BoldItalic.woff2") format("woff2");
+}
+
+.sidebar-chrono-panel {
+  --chrono-panel: color-mix(in srgb, var(--color-sidebar-foreground) 5%, var(--color-sidebar));
+  background: var(--chrono-panel);
+
+  @variant dark {
+    --chrono-panel: color-mix(in srgb, var(--color-sidebar-foreground) 10%, var(--color-sidebar));
+  }
+}
+
+.sidebar-chrono-button {
+  position: relative;
+  background: color-mix(in srgb, var(--chrono-panel), black 15%);
+  box-shadow:
+    inset 0 1px 2px rgb(0 0 0 / 45%),
+    0 1px 0 rgb(255 255 255 / 70%);
+
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    border-radius: inherit;
+  }
+
+  &::before {
+    inset: 3px;
+    background: linear-gradient(to bottom, #fdfdfd, #bcbcbc);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 45%);
+  }
+
+  &::after {
+    inset: 5px;
+    background: linear-gradient(to bottom, #c8c8c8, #f1f1f1);
+    box-shadow:
+      inset 0 1px 1.5px rgb(0 0 0 / 30%),
+      inset 0 -1px 0 rgb(255 255 255 / 70%);
+  }
+
+  &:active::before,
+  &:active::after {
+    translate: 0 0.5px;
+  }
+
+  &:active::before {
+    background: linear-gradient(to bottom, #ececec, #b4b4b4);
+    box-shadow: 0 0 1px rgb(0 0 0 / 45%);
+  }
+
+  &:active::after {
+    background: linear-gradient(to bottom, #bdbdbd, #e6e6e6);
+  }
+
+  @variant dark {
+    background: color-mix(in srgb, var(--chrono-panel), black 55%);
+    box-shadow:
+      inset 0 1px 3px rgb(0 0 0 / 90%),
+      0 1px 0 rgb(255 255 255 / 10%);
+  }
+}
+
+.sidebar-chrono-display {
+  --chrono-accent: var(--app-theme-accent, var(--color-ring));
+  container-type: inline-size;
+  color: color-mix(in srgb, var(--chrono-accent) 20%, white);
+  background:
+    linear-gradient(to bottom, rgb(255 255 255 / 10%), rgb(255 255 255 / 0%) 45%),
+    radial-gradient(
+      110% 90% at 50% 55%,
+      color-mix(in srgb, var(--chrono-accent) 75%, transparent),
+      transparent 75%
+    ),
+    color-mix(in srgb, var(--chrono-accent) 18%, #04060a);
+  box-shadow:
+    inset 0 1px 3px rgb(0 0 0 / 70%),
+    inset 0 0 10px rgb(0 0 0 / 55%),
+    inset 0 0 0 1px rgb(0 0 0 / 50%),
+    0 1px 0 rgb(255 255 255 / 70%);
+
+  @variant dark {
+    box-shadow:
+      inset 0 1px 3px rgb(0 0 0 / 90%),
+      inset 0 0 10px rgb(0 0 0 / 65%),
+      inset 0 0 0 1px rgb(0 0 0 / 60%),
+      0 1px 0 rgb(255 255 255 / 8%);
+  }
+}
+
+/* Trimmed to the cap height so the label's top edge meets the display's. */
+.sidebar-chrono-label {
+  text-box: trim-both cap alphabetic;
+}
+
+/* Without antialiased smoothing, macOS thickens glyphs enough to close the gaps between
+   segments. */
+.sidebar-chrono-digits {
+  padding: 0.3em 0.35em;
+  font-family: "DSEG7 Modern";
+  font-size: min(23cqw, 2.25rem);
+  -webkit-font-smoothing: antialiased;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  text-shadow:
+    0 0 1px color-mix(in srgb, var(--chrono-accent) 40%, white),
+    0 0 6px color-mix(in srgb, var(--chrono-accent) 70%, white);
+}
+
 /* The font tokens are declared outside the inline theme so utilities reference
    the variables and Settings -> Appearance can override them at runtime. The
    default stacks are mirrored in `appearanceFonts.ts`. */
