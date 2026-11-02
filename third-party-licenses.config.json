@@ -126,6 +126,14 @@
       "sourceUrl": "https://github.com/ryanoasis/nerd-fonts"
     },
     {
+      "bundles": ["assets", "web"],
+      "license": "OFL-1.1",
+      "name": "DSEG",
+      "noticeFile": "apps/web/src/components/sidebar/fonts/DSEG-LICENSE.txt",
+      "sourceUrl": "https://github.com/keshikan/DSEG",
+      "version": "0.46"
+    },
+    {
       "bundles": ["ios", "mobile"],
       "license": "MIT",
       "name": "GhosttyKit",
