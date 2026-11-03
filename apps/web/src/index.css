@@ -2381,7 +2381,13 @@ code {
   color: var(--info-foreground);
 }
 
-/* Fork: file links match other links instead of the mention chip accent. */
+/* Fork: file, thread, and citation links match other links instead of their chip kind's accent.
+   File links share the mention kind with user-message @-mentions, so they're matched by class. */
+.chat-markdown {
+  --context-chip-thread: var(--info-foreground);
+  --context-chip-citation: var(--info-foreground);
+}
+
 .chat-markdown .chat-markdown-file-link:not([data-state]) {
   --context-chip-accent: var(--info-foreground);
 }
