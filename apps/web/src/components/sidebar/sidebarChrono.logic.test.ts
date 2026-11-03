@@ -6,10 +6,13 @@ import {
   CHRONO_MAX_SECONDS,
   CHRONO_RESET,
   ChronoStateSchema,
+  NO_ELAPSED_TODAY,
   chronoDisplay,
+  elapsedTodayDisplay,
   formatChronoSeconds,
   msUntilNextChronoTick,
   pressChrono,
+  recordChronoRun,
 } from "./sidebarChrono.logic";
 
 const T0 = 1_000_000;
@@ -40,6 +43,43 @@ describe("pressChrono", () => {
     const pastCap = T0 + 120 * 60 * MINUTE;
     expect(chronoDisplay(running, pastCap)).toBe("99:59:59");
     expect(chronoDisplay(pressChrono(running, pastCap), pastCap)).toBe("99:59:59");
+  });
+});
+
+describe("elapsed time today", () => {
+  // Local wall-clock times, so the midnight reset holds in any time zone.
+  const at = (day: number, hour: number, minute = 0, second = 0) =>
+    new Date(2026, 10, day, hour, minute, second).getTime();
+
+  it("adds every run stopped today, across resets, and counts a running chrono live", () => {
+    let state = pressChrono(CHRONO_RESET, at(3, 9));
+    let elapsed = recordChronoRun(NO_ELAPSED_TODAY, state, at(3, 9, 30));
+    state = pressChrono(state, at(3, 9, 30));
+    expect(elapsedTodayDisplay(elapsed, state, at(3, 12))).toBe("00:30:00");
+
+    state = pressChrono(pressChrono(state, at(3, 10)), at(3, 10));
+    // Whole seconds, like the chrono's own reading.
+    expect(elapsedTodayDisplay(elapsed, state, at(3, 10, 15, 5) + 999)).toBe("00:45:05");
+
+    elapsed = recordChronoRun(elapsed, state, at(3, 11));
+    expect(elapsedTodayDisplay(elapsed, pressChrono(state, at(3, 11)), at(3, 23))).toBe("01:30:00");
+  });
+
+  it("starts over at local midnight and counts only today's part of a run across it", () => {
+    const yesterday = recordChronoRun(
+      NO_ELAPSED_TODAY,
+      pressChrono(CHRONO_RESET, at(2, 20)),
+      at(2, 22),
+    );
+    const stopped = { phase: "stopped" as const, elapsedSeconds: 7200 };
+    expect(elapsedTodayDisplay(yesterday, stopped, at(2, 23))).toBe("02:00:00");
+    expect(elapsedTodayDisplay(yesterday, stopped, at(3, 0, 0, 1))).toBe("00:00:00");
+
+    const overnight = pressChrono(CHRONO_RESET, at(2, 23));
+    expect(elapsedTodayDisplay(yesterday, overnight, at(3, 0, 20))).toBe("00:20:00");
+    expect(
+      elapsedTodayDisplay(recordChronoRun(yesterday, overnight, at(3, 1)), stopped, at(3, 2)),
+    ).toBe("01:00:00");
   });
 });
 

@@ -4,14 +4,19 @@ import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   CHRONO_RESET,
+  ChronoElapsedTodaySchema,
   ChronoStateSchema,
+  NO_ELAPSED_TODAY,
   chronoDisplay,
+  elapsedTodayDisplay,
   msUntilNextChronoTick,
   pressChrono,
+  recordChronoRun,
   type ChronoState,
 } from "./sidebarChrono.logic";
 
 const CHRONO_STORAGE_KEY = "t3code:sidebar-chrono:v1";
+const CHRONO_ELAPSED_TODAY_STORAGE_KEY = "t3code:sidebar-chrono-elapsed-today:v1";
 
 const CHRONO_ACTION_LABEL = {
   reset: "Start chronograph",
@@ -45,14 +50,29 @@ function useChronoNow(startedAt: number | null): number {
 
 export const SidebarChrono = memo(function SidebarChrono() {
   const [state, setState] = useLocalStorage(CHRONO_STORAGE_KEY, CHRONO_RESET, ChronoStateSchema);
+  const [elapsedToday, setElapsedToday] = useLocalStorage(
+    CHRONO_ELAPSED_TODAY_STORAGE_KEY,
+    NO_ELAPSED_TODAY,
+    ChronoElapsedTodaySchema,
+  );
+  // A stopped chrono stops ticking, so the tooltip reads today's total from when it opened.
+  const [tooltipOpenedAt, setTooltipOpenedAt] = useState(0);
   const now = useChronoNow(state.phase === "running" ? state.startedAt : null);
   const display = chronoDisplay(state, now);
-  const press = () => setState((current) => pressChrono(current, Date.now()));
+  const press = () => {
+    const pressedAt = Date.now();
+    setElapsedToday((current) => recordChronoRun(current, state, pressedAt));
+    setState((current) => pressChrono(current, pressedAt));
+  };
   const actionLabel = CHRONO_ACTION_LABEL[state.phase];
 
   return (
     <div className="mx-(--sidebar-row-content-inset) flex items-stretch gap-1 rounded-lg border border-border/60 p-1">
-      <Tooltip>
+      <Tooltip
+        onOpenChange={(open) => {
+          if (open) setTooltipOpenedAt(Date.now());
+        }}
+      >
         <TooltipTrigger
           render={
             <button
@@ -61,16 +81,18 @@ export const SidebarChrono = memo(function SidebarChrono() {
               onClick={press}
               className="sidebar-chrono-button flex size-8.5 shrink-0 items-center justify-center rounded-sm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
             >
-              <span
-                aria-hidden
-                className="sidebar-chrono-legend font-semibold text-4xs tracking-wider"
-              >
+              <span aria-hidden className="sidebar-chrono-legend font-semibold text-4xs">
                 CHR
               </span>
             </button>
           }
         />
-        <TooltipPopup side="top">{actionLabel}</TooltipPopup>
+        <TooltipPopup side="top">
+          <div>{actionLabel}</div>
+          <div className="text-muted-foreground tabular-nums">
+            ET {elapsedTodayDisplay(elapsedToday, state, Math.max(now, tooltipOpenedAt))}
+          </div>
+        </TooltipPopup>
       </Tooltip>
       <div className="sidebar-chrono-display flex min-w-0 flex-1 items-center justify-center rounded-sm">
         <span
