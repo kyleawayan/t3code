@@ -313,15 +313,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   src: url("./components/sidebar/fonts/7segment.woff") format("woff");
 }
 
-.sidebar-chrono-panel {
-  --chrono-panel: var(--color-sidebar);
-  background: var(--chrono-panel);
-}
-
 .sidebar-chrono-button {
   position: relative;
   cursor: pointer;
-  background: color-mix(in srgb, var(--chrono-panel), black 15%);
+  background: color-mix(in srgb, var(--color-sidebar), black 15%);
   box-shadow:
     inset 0 1px 2px rgb(0 0 0 / 45%),
     0 1px 0 rgb(255 255 255 / 70%);
@@ -373,7 +368,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 
   @variant dark {
-    background: color-mix(in srgb, var(--chrono-panel), black 55%);
+    background: color-mix(in srgb, var(--color-sidebar), black 55%);
     box-shadow:
       inset 0 1px 3px rgb(0 0 0 / 90%),
       0 1px 0 rgb(255 255 255 / 10%);
@@ -410,7 +405,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 .sidebar-chrono-legend {
   position: relative;
   z-index: 1;
-  font-size: 0.5rem;
   text-box: trim-both cap alphabetic;
   color: rgb(0 0 0 / 55%);
 }
@@ -442,6 +436,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 .sidebar-chrono-digits[data-blank] {
   color: transparent;
   text-shadow: none;
+  user-select: none;
 }
 
 /* The font tokens are declared outside the inline theme so utilities reference

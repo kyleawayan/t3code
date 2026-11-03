@@ -51,7 +51,7 @@ export const SidebarChrono = memo(function SidebarChrono() {
   const actionLabel = CHRONO_ACTION_LABEL[state.phase];
 
   return (
-    <div className="sidebar-chrono-panel mx-(--sidebar-row-content-inset) flex items-stretch gap-1 rounded-lg border border-border/60 p-1">
+    <div className="mx-(--sidebar-row-content-inset) flex items-stretch gap-1 rounded-lg border border-border/60 p-1">
       <Tooltip>
         <TooltipTrigger
           render={
@@ -61,7 +61,10 @@ export const SidebarChrono = memo(function SidebarChrono() {
               onClick={press}
               className="sidebar-chrono-button flex size-8.5 shrink-0 items-center justify-center rounded-sm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
             >
-              <span aria-hidden className="sidebar-chrono-legend font-semibold tracking-wider">
+              <span
+                aria-hidden
+                className="sidebar-chrono-legend font-semibold text-4xs tracking-wider"
+              >
                 CHR
               </span>
             </button>
