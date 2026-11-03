@@ -3650,7 +3650,9 @@ export default function ChatView(props: ChatViewProps) {
                                 activeThreadId={activeThreadId}
                                 activeThread={activeThread}
                                 activeThreadShell={activeThreadShell}
-                                placeholderProject={activeProject ?? null}
+                                placeholderProject={
+                                  activeProject && !activeProjectIsScratch ? activeProject : null
+                                }
                                 promptHistoryEntries={timelineEntries}
                                 forceExpandedOnMobile={
                                   forceExpandedMobileComposer && isDraftHeroState
