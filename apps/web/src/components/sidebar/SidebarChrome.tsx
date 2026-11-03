@@ -236,7 +236,9 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter({
       <SidebarProviderUpdatePill />
       <SidebarUpdateArchitectureWarning />
       <SidebarChrono />
-      <SidebarUtilityMenu />
+      <div className="px-0.5">
+        <SidebarUtilityMenu />
+      </div>
     </SidebarFooter>
   );
 });
