@@ -97,6 +97,10 @@ jobs:
       - name: Build CLI executable
         run: node apps/server/scripts/cli.ts build-exe --verbose
 
+      # The Linux CLI archive ships libatomic.so.1 and points t3's RUNPATH at it with patchelf.
+      - name: Install patchelf
+        run: command -v patchelf || { sudo apt-get update && sudo apt-get install -y patchelf; }
+
       - name: Package and smoke-test WSL runtime
         shell: bash
         env:
