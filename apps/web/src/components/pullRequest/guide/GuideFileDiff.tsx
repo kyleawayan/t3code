@@ -86,7 +86,7 @@ export function GuideFileDiff({
 
   const options = {
     diffStyle: "unified" as const,
-    lineDiffType: "none" as const,
+    lineDiffType: "word" as const,
     overflow: "scroll" as const,
     disableFileHeader: true,
     theme: resolveDiffThemeName(resolvedTheme),
