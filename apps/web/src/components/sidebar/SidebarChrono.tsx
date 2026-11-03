@@ -20,11 +20,11 @@ const CHRONO_ACTION_LABEL = {
 } satisfies Record<ChronoState["phase"], string>;
 
 // DSEG draws "!" as a digit with no segments lit, and a space as an unlit colon.
-const CHRONO_NO_SEGMENTS = "!! !!";
+const CHRONO_NO_SEGMENTS = "!! !! !!";
 
 function useChronoNow(startedAt: number | null): number {
   const [now, setNow] = useState(Date.now);
-  // oxlint-disable-next-line t3code/react-effect-budget -- ticks once a minute while the chrono runs
+  // oxlint-disable-next-line t3code/react-effect-budget -- ticks once a second while the chrono runs
   useEffect(() => {
     if (startedAt === null) return;
     let timeout: number | undefined;

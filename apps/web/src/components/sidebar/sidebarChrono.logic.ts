@@ -1,7 +1,7 @@
 import * as Schema from "effect/Schema";
 
-/** The display shows HH:MM, so it holds at 99:59. */
-export const CHRONO_MAX_MINUTES = 99 * 60 + 59;
+/** The display shows HH:MM:SS, so it holds at 99:59:59. */
+export const CHRONO_MAX_SECONDS = 99 * 3600 + 59 * 60 + 59;
 
 export const ChronoStateSchema = Schema.Union([
   Schema.Struct({ phase: Schema.Literal("reset") }),
@@ -12,7 +12,7 @@ export type ChronoState = typeof ChronoStateSchema.Type;
 
 export const CHRONO_RESET: ChronoState = { phase: "reset" };
 
-const MINUTE_MS = 60_000;
+const SECOND_MS = 1000;
 
 /** Successive pushes start, stop, then reset, like the Boeing 737 CHR control. */
 export function pressChrono(state: ChronoState, now: number): ChronoState {
@@ -44,12 +44,12 @@ export function chronoDisplay(state: ChronoState, now: number): string | null {
 /** Milliseconds until a chrono started at `startedAt` next changes its display, or null once capped. */
 export function msUntilNextChronoTick(startedAt: number, now: number): number | null {
   const elapsedMs = Math.max(0, now - startedAt);
-  if (elapsedMs >= CHRONO_MAX_MINUTES * MINUTE_MS) return null;
-  return MINUTE_MS - (elapsedMs % MINUTE_MS);
+  if (elapsedMs >= CHRONO_MAX_SECONDS * SECOND_MS) return null;
+  return SECOND_MS - (elapsedMs % SECOND_MS);
 }
 
 export function formatChronoSeconds(totalSeconds: number): string {
-  const minutes = Math.min(CHRONO_MAX_MINUTES, Math.floor(Math.max(0, totalSeconds) / 60));
-  const hours = Math.floor(minutes / 60);
-  return `${String(hours).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  const seconds = Math.min(CHRONO_MAX_SECONDS, Math.floor(Math.max(0, totalSeconds)));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(Math.floor(seconds / 3600))}:${pad(Math.floor(seconds / 60) % 60)}:${pad(seconds % 60)}`;
 }
