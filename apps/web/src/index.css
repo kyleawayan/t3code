@@ -323,6 +323,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
 .sidebar-chrono-button {
   position: relative;
+  cursor: pointer;
   background: color-mix(in srgb, var(--chrono-panel), black 15%);
   box-shadow:
     inset 0 1px 2px rgb(0 0 0 / 45%),
@@ -347,6 +348,17 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     box-shadow:
       inset 0 1px 1.5px rgb(0 0 0 / 30%),
       inset 0 -1px 0 rgb(255 255 255 / 70%);
+  }
+
+  @media (hover: hover) {
+    &:hover::before {
+      background: linear-gradient(to bottom, #ffffff, #dadada);
+      box-shadow: 0 1px 3px rgb(0 0 0 / 55%);
+    }
+
+    &:hover::after {
+      background: linear-gradient(to bottom, #e0e0e0, #ffffff);
+    }
   }
 
   &:active::before,
@@ -398,18 +410,27 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 }
 
-/* Trimmed to the cap height so the label's top edge meets the display's. */
-.sidebar-chrono-label {
+.sidebar-chrono-legend {
+  position: relative;
+  z-index: 1;
+  font-size: 0.5rem;
   text-box: trim-both cap alphabetic;
+  color: rgb(0 0 0 / 55%);
+}
+
+.sidebar-chrono-button:active .sidebar-chrono-legend {
+  translate: 0 0.5px;
 }
 
 /* Without antialiased smoothing, macOS thickens glyphs enough to close the gaps between
-   segments. The trim drops the font's empty descender so the digits center vertically. */
+   segments. The trim drops the font's empty descender so the digits center vertically.
+   Trimmed glyphs plus padding stand 1.25em tall, so the 1.7rem cap keeps the display no
+   taller than the 2.125rem button beside it. */
 .sidebar-chrono-digits {
   padding: 0.25em 0.15em;
   text-box: trim-both cap alphabetic;
   font-family: "7-Segment";
-  font-size: min(27cqw, 2.25rem);
+  font-size: min(27cqw, 1.7rem);
   -webkit-font-smoothing: antialiased;
   font-style: normal;
   font-weight: 400;
