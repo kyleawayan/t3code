@@ -412,7 +412,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 .sidebar-chrono-digits {
   padding: 0.3em 0.35em;
   font-family: "DSEG7 Modern";
-  font-size: min(23cqw, 2.25rem);
+  font-size: min(16cqw, 2.25rem);
   -webkit-font-smoothing: antialiased;
   font-style: italic;
   font-weight: 700;
