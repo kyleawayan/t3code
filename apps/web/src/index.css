@@ -400,9 +400,13 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 }
 
+/* Letter spacing also trails the last glyph; the matching end margin takes it back so the
+   legend centers on its key. */
 .sidebar-chrono-legend {
   position: relative;
   z-index: 1;
+  letter-spacing: 0.05em;
+  margin-inline-end: -0.05em;
   text-box: trim-both cap alphabetic;
   color: rgb(0 0 0 / 55%);
 }
