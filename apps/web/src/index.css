@@ -2376,6 +2376,11 @@ code {
   color: var(--info-foreground);
 }
 
+/* Fork: file links match other links instead of the mention chip accent. */
+.chat-markdown .chat-markdown-file-link:not([data-state]) {
+  --context-chip-accent: var(--info-foreground);
+}
+
 .chat-markdown
   a:not(
     .chat-markdown-file-link,
