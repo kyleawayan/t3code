@@ -7,13 +7,13 @@ Run from the repo root. Needs Node 26, pnpm, and Rust; on macOS also the Xcode c
 macOS (Apple Silicon), builds and opens the DMG:
 
 ```sh
-fnm use 26 && source ~/.cargo/env && export PATH="$PWD/node_modules/.bin:$PATH" && pnpm install && T3CODE_DESKTOP_VERSION=0.1.3 pnpm dist:desktop:dmg:arm64 && open "$(ls -t release/*.dmg | head -1)"
+fnm use 26 && source ~/.cargo/env && export PATH="$PWD/node_modules/.bin:$PATH" && pnpm install && T3CODE_DESKTOP_VERSION=0.1.6 pnpm dist:desktop:dmg:arm64 && open "$(ls -t release/*.dmg | head -1)"
 ```
 
 Windows (PowerShell), builds and runs the installer:
 
 ```powershell
-$env:PATH="$PWD\node_modules\.bin;$env:PATH"; $env:T3CODE_DESKTOP_VERSION="0.1.3"; pnpm install; if ($?) { pnpm dist:desktop:win:x64 }; if ($?) { Start-Process (Get-ChildItem release\*.exe | Sort-Object LastWriteTime | Select-Object -Last 1).FullName }
+$env:PATH="$PWD\node_modules\.bin;$env:PATH"; $env:T3CODE_DESKTOP_VERSION="0.1.6"; pnpm install; if ($?) { pnpm dist:desktop:win:x64 }; if ($?) { Start-Process (Get-ChildItem release\*.exe | Sort-Object LastWriteTime | Select-Object -Last 1).FullName }
 ```
 
 T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
