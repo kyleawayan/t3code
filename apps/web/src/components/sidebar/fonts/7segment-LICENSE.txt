@@ -1,10 +1,11 @@
-Copyright (c) 2017, keshikan (http://www.keshikan.net),
-with Reserved Font Name "DSEG".
+7-Segment, Version 3.0, designed by Jan Bobrowski
+(https://torinak.com/font/7-segment). The author publishes no copyright
+line; the font files name him as designer and state the SIL OFL.
 
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
-http://scripts.sil.org/OFL
+https://scripts.sil.org/OFL
 
 
 -----------------------------------------------------------
