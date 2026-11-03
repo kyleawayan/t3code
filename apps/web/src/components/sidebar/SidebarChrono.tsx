@@ -52,27 +52,23 @@ export const SidebarChrono = memo(function SidebarChrono() {
 
   return (
     <div className="sidebar-chrono-panel mx-(--sidebar-row-content-inset) flex items-stretch gap-1 rounded-lg border border-border/60 p-1">
-      <div className="flex flex-col items-center justify-between gap-1 px-1.5">
-        <span
-          aria-hidden
-          className="sidebar-chrono-label mt-0.5 font-semibold text-3xs text-sidebar-muted-foreground tracking-wider"
-        >
-          {state.phase === "stopped" ? "RST" : "CHR"}
-        </span>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                aria-label={actionLabel}
-                onClick={press}
-                className="sidebar-chrono-button size-6 shrink-0 rounded-full focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
-              />
-            }
-          />
-          <TooltipPopup side="top">{actionLabel}</TooltipPopup>
-        </Tooltip>
-      </div>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              aria-label={actionLabel}
+              onClick={press}
+              className="sidebar-chrono-button flex size-8.5 shrink-0 items-center justify-center rounded-sm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+            >
+              <span aria-hidden className="sidebar-chrono-legend font-semibold tracking-wider">
+                CHR
+              </span>
+            </button>
+          }
+        />
+        <TooltipPopup side="top">{actionLabel}</TooltipPopup>
+      </Tooltip>
       <div className="sidebar-chrono-display flex min-w-0 flex-1 items-center justify-center rounded-sm">
         <span
           role="timer"
