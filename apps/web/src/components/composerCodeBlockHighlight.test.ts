@@ -12,7 +12,7 @@ import { composerCodeBlockHighlight, tokenizeBlock } from "./composerCodeBlockHi
 
 vi.mock("~/lib/syntaxHighlighting", () => ({ getSyntaxHighlighterPromise: vi.fn() }));
 
-const THEME = "pierre-dark" as DiffThemeName;
+const THEME = "xcode-hc-dark" as DiffThemeName;
 
 function fakeHighlighter(colorFor: (content: string) => string | undefined) {
   return {
