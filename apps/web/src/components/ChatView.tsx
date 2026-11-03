@@ -3800,7 +3800,8 @@ export default function ChatView(props: ChatViewProps) {
                             )}
                           </div>
                         </ComposerSurface.Host>
-                        <div className="min-h-0">
+                        {/* Opaque so timeline text scrolling under the bare context row can't collide with it. */}
+                        <div className="min-h-0 bg-background">
                           <div
                             data-terminal-open={terminalUiState.terminalOpen ? "true" : undefined}
                             className="relative z-0"
@@ -3874,7 +3875,10 @@ export default function ChatView(props: ChatViewProps) {
                       </ComposerSurface.Shell>
                       <div
                         aria-hidden
-                        className="h-[calc(env(safe-area-inset-bottom)+1rem)] sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]"
+                        className={cn(
+                          "h-[calc(env(safe-area-inset-bottom)+1rem)] sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]",
+                          showComposerContextStrip && "bg-background",
+                        )}
                       />
                     </div>
                   </div>
