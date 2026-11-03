@@ -19,8 +19,8 @@ const CHRONO_ACTION_LABEL = {
   stopped: "Reset chronograph",
 } satisfies Record<ChronoState["phase"], string>;
 
-// DSEG draws "!" as a digit with no segments lit, and a space as an unlit colon.
-const CHRONO_NO_SEGMENTS = "!! !! !!";
+// Rendered invisibly so the blank display keeps the lit display's line box.
+const CHRONO_NO_SEGMENTS = "00:00:00";
 
 function useChronoNow(startedAt: number | null): number {
   const [now, setNow] = useState(Date.now);
@@ -74,7 +74,12 @@ export const SidebarChrono = memo(function SidebarChrono() {
         </Tooltip>
       </div>
       <div className="sidebar-chrono-display flex min-w-0 flex-1 items-center justify-center rounded-sm">
-        <span role="timer" aria-hidden={display === null} className="sidebar-chrono-digits">
+        <span
+          role="timer"
+          aria-hidden={display === null}
+          data-blank={display === null || undefined}
+          className="sidebar-chrono-digits"
+        >
           {display ?? CHRONO_NO_SEGMENTS}
         </span>
       </div>
