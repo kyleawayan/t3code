@@ -428,14 +428,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   line-height: 1;
   text-align: center;
   white-space: nowrap;
-  text-shadow:
-    0 0 1px color-mix(in srgb, var(--chrono-accent) 40%, white),
-    0 0 6px color-mix(in srgb, var(--chrono-accent) 70%, white);
 }
 
 .sidebar-chrono-digits[data-blank] {
   color: transparent;
-  text-shadow: none;
   user-select: none;
 }
 
