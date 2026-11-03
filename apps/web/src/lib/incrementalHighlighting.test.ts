@@ -2,7 +2,12 @@ import { toHtml } from "hast-util-to-html";
 import { disposeHighlighter, getSharedHighlighter } from "@pierre/diffs";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 
+import type { DiffThemeName } from "./diffRendering";
 import { createIncrementalHighlightedDocument } from "./incrementalHighlighting";
+
+// Pierre's bundled themes load in both engines; the app's Xcode themes are Highlights-only.
+const PIERRE_DARK = "pierre-dark" as string as DiffThemeName;
+const PIERRE_LIGHT = "pierre-light" as string as DiffThemeName;
 
 const samples = {
   typescript: "/* multi\nline comment */\nconst x = `template\n${1 + 2}`;\nconst re = /abc/;\n",
@@ -35,7 +40,7 @@ describe.each(["shiki-wasm", "highlights"] as const)(
           ...highlighterOptions,
           preferredHighlighter: engine,
         });
-        for (const theme of ["pierre-dark", "pierre-light"] as const) {
+        for (const theme of [PIERRE_DARK, PIERRE_LIGHT]) {
           const highlight = createIncrementalHighlightedDocument(highlighter, language, theme);
           for (let end = 0; end <= code.length; end++) {
             const text = code.slice(0, end);
@@ -56,7 +61,7 @@ describe.each(["shiki-wasm", "highlights"] as const)(
       const highlight = createIncrementalHighlightedDocument(
         highlighter,
         "typescript",
-        "pierre-dark",
+        PIERRE_DARK,
       );
       const inputs = [
         "/* open\ncomment\n",
@@ -82,7 +87,7 @@ describe.each(["shiki-wasm", "highlights"] as const)(
         preferredHighlighter: engine,
       });
       expect(() =>
-        createIncrementalHighlightedDocument(highlighter, "cobol", "pierre-dark").dispose(),
+        createIncrementalHighlightedDocument(highlighter, "cobol", PIERRE_DARK).dispose(),
       ).not.toThrow();
     });
 
@@ -94,7 +99,7 @@ describe.each(["shiki-wasm", "highlights"] as const)(
       const highlight = createIncrementalHighlightedDocument(
         highlighter,
         "typescript",
-        "pierre-dark",
+        PIERRE_DARK,
       );
       const code = "/* multi\r\nline */\r\nconst x = 1;\r\n";
       for (let end = 0; end <= code.length; end++) {
