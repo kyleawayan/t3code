@@ -128,10 +128,10 @@
     {
       "bundles": ["assets", "web"],
       "license": "OFL-1.1",
-      "name": "DSEG",
-      "noticeFile": "apps/web/src/components/sidebar/fonts/DSEG-LICENSE.txt",
-      "sourceUrl": "https://github.com/keshikan/DSEG",
-      "version": "0.46"
+      "name": "7-Segment",
+      "noticeFile": "apps/web/src/components/sidebar/fonts/7segment-LICENSE.txt",
+      "sourceUrl": "https://torinak.com/font/7-segment",
+      "version": "3.0"
     },
     {
       "bundles": ["ios", "mobile"],
