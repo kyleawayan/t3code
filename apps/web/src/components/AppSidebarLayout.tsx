@@ -25,7 +25,6 @@ import {
 } from "../keybindings";
 import { isEditableFocused } from "../lib/editableFocus";
 import { useStableCallback } from "../hooks/useStableCallback";
-import { THREAD_SIDEBAR_FLOATING_MEDIA_QUERY } from "../rightPanelLayout";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
@@ -463,7 +462,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         className="h-dvh! min-h-0!"
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
         defaultOpen
-        mobileMediaQuery={THREAD_SIDEBAR_FLOATING_MEDIA_QUERY}
+        // Fork: docked at every width; narrow windows shrink it instead of floating it.
+        mobileMediaQuery="not all"
         style={sidebarProviderStyle}
       >
         <SidebarBrandWidthProbe isElectron={isElectron} onWidthChange={setBrandWidth} />
@@ -473,12 +473,6 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         <Sidebar
           side="right"
           collapsible="offcanvas"
-          // The thread list owns Mod+1-9 thread jumps, a desktop-only shortcut that must work
-          // while the floating sidebar is closed.
-          keepMobileSheetMounted={isElectron}
-          // Fixed like the docked sidebar; without a definite width the drawer grows to fit its
-          // longest thread title.
-          mobileWidth={`min(${Math.max(sidebarMinimumWidth, sidebarWidth)}px, 100vw - 0.75rem)`}
           data-app-sidebar=""
           {...sidebarArea}
           role="navigation"
