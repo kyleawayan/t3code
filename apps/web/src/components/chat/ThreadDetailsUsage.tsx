@@ -22,6 +22,7 @@ import type { ContextWindowSnapshot } from "@t3tools/client-runtime/state/contex
 import { formatContextWindowTokens } from "../../lib/contextWindow";
 import { cn } from "../../lib/utils";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
+import { SquishText, THREAD_TITLE_SQUISH_SCALE } from "../SquishText";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatContextWindowCompactionMessage } from "./compaction.logic";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
@@ -154,12 +155,15 @@ export function ThreadDetailsContext({ usage }: { readonly usage: ContextWindowS
   );
 }
 
-function LimitRow({
+export function LimitRow({
   window,
   now,
+  stacked = false,
 }: {
   readonly window: ServerProviderUsageWindow;
   readonly now: number;
+  /** Fork: the label and value over a full-width bar, for the narrow sidebar. */
+  readonly stacked?: boolean;
 }) {
   const gt = useGT();
   const m = useMessages();
@@ -171,6 +175,7 @@ function LimitRow({
   return (
     <UsageRow
       label={window.label}
+      stacked={stacked}
       fill={left}
       tone={left <= 10 ? "error" : left <= 20 ? "warning" : null}
       tick={timeLeft}
@@ -212,8 +217,10 @@ function UsageRow({
   tooltip,
   muted = false,
   opensUsage = false,
+  stacked = false,
 }: {
   readonly label: string;
+  readonly stacked?: boolean;
   /** Bar fill from 0 to 100. Null hides the bar. */
   readonly fill: number | null;
   readonly tone: UsageTone;
@@ -229,7 +236,10 @@ function UsageRow({
   const rowProps = {
     "aria-label": gt("{label}: {value}", { label, value: ariaValue }),
     className: cn(
-      "col-span-3 grid h-6 grid-cols-subgrid items-center rounded-lg px-2.5 outline-none hover:bg-black/[0.035] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-popup-open:bg-black/[0.035] dark:hover:bg-white/[0.08] dark:data-popup-open:bg-white/[0.08]",
+      "grid items-center rounded-lg px-2.5 outline-none hover:bg-black/[0.035] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-popup-open:bg-black/[0.035] dark:hover:bg-white/[0.08] dark:data-popup-open:bg-white/[0.08]",
+      stacked
+        ? "grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-1 py-1"
+        : "col-span-3 h-6 grid-cols-subgrid",
       opensUsage
         ? "group cursor-pointer active:bg-black/[0.06] dark:active:bg-white/[0.12]"
         : "cursor-default",
@@ -242,11 +252,20 @@ function UsageRow({
           opensUsage ? <Link to="/usage" {...rowProps} /> : <div tabIndex={0} {...rowProps} />
         }
       >
-        <span className="max-w-28 truncate text-muted-foreground group-hover:text-foreground">
+        <SquishText
+          className={cn("text-muted-foreground group-hover:text-foreground", !stacked && "max-w-28")}
+          // The card's capped column ends long labels in an ellipsis after a light squish.
+          {...(stacked ? {} : { ellipsisScale: THREAD_TITLE_SQUISH_SCALE })}
+        >
           {label}
-        </span>
+        </SquishText>
         {fill !== null ? (
-          <span className="relative h-[3px] rounded-full bg-muted-foreground/30 dark:bg-muted-foreground/20">
+          <span
+            className={cn(
+              "relative h-[3px] rounded-full bg-muted-foreground/30 dark:bg-muted-foreground/20",
+              stacked && "col-span-2 row-start-2",
+            )}
+          >
             {fill > 0 ? (
               <span
                 className={cn(
