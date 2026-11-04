@@ -1929,10 +1929,32 @@ html[data-theme-id="t3-chat"] [data-app-sidebar] {
   }
 }
 
-/* Fork: no thread breadcrumb in the chat header; rename and the thread menu live on the sidebar
-   rows. It still shows while the header's context menu renames the thread in place. */
-nav[aria-label="Thread breadcrumb"]:not(:has(input)) {
-  visibility: hidden;
+/* Fork: the thread breadcrumb gets its own row under the header's controls, so the quick
+   actions can't squeeze it out in a narrow chat. The first row keeps the titlebar height. */
+[data-chat-header] {
+  --chat-breadcrumb-row-height: 1.75rem;
+  box-sizing: content-box;
+  padding-bottom: var(--chat-breadcrumb-row-height);
+}
+
+[data-chat-header] nav[aria-label="Thread breadcrumb"] {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  height: var(--chat-breadcrumb-row-height);
+  padding-inline: var(--workspace-gutter-start) var(--workspace-gutter-end);
+}
+
+/* Without the breadcrumb in the flow, the quick actions would slide to the row's start. */
+[data-chat-header] > div:has(> nav[aria-label="Thread breadcrumb"]) {
+  justify-content: flex-end;
+}
+
+/* The project name gives way first, so the thread title stays readable. */
+[data-chat-header] nav[aria-label="Thread breadcrumb"] li:first-child:not([aria-current]) {
+  max-width: 40%;
 }
 
 /* Recompute contrast wherever a subtree owns its own semantic color palette. */

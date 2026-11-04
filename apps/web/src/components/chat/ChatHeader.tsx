@@ -22,7 +22,6 @@ import {
 } from "react";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { Badge } from "../ui/badge";
-import { MiddleTruncate } from "../ui/middle-truncate";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
@@ -33,6 +32,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import { ProjectFavicon } from "../ProjectFavicon";
+import { SquishText, THREAD_TITLE_SQUISH_SCALE } from "../SquishText";
 import {
   WorkspaceBreadcrumb,
   WorkspaceBreadcrumbItem,
@@ -131,12 +131,18 @@ export const ChatHeader = memo(function ChatHeader({
         (total, item) => {
           const label = item.querySelector('[data-slot="workspace-breadcrumb-text"]');
           const ellipsis = item.querySelector("[data-parent-breadcrumb-ellipsis]");
+          // Fork: a squished title needs its text at the squish floor, not its clipped box.
+          const squished = label?.querySelector("[data-squish-text-content]");
+          const labelOverflow =
+            !label || getComputedStyle(label).maxWidth !== "none"
+              ? 0
+              : squished
+                ? Math.max(0, squished.scrollWidth * THREAD_TITLE_SQUISH_SCALE - label.clientWidth)
+                : label.scrollWidth - label.clientWidth;
           return (
             total +
             (item.firstElementChild?.getBoundingClientRect().width ?? 0) +
-            (label && getComputedStyle(label).maxWidth === "none"
-              ? label.scrollWidth - label.clientWidth
-              : 0) -
+            labelOverflow -
             (ellipsis?.getBoundingClientRect().width ?? 0)
           );
         },
@@ -278,12 +284,11 @@ export const ChatHeader = memo(function ChatHeader({
                   }
                 >
                   <ProjectFavicon project={activeProject} className="size-3.5" />
-                  <MiddleTruncate
-                    data-slot="workspace-breadcrumb-text"
-                    value={activeProjectName ?? ""}
-                    showTitle={false}
-                    variant="cap-aligned"
-                  />
+                  <WorkspaceBreadcrumbText className="max-w-40">
+                    <SquishText ellipsisScale={THREAD_TITLE_SQUISH_SCALE} className="w-full">
+                      {activeProjectName ?? ""}
+                    </SquishText>
+                  </WorkspaceBreadcrumbText>
                 </TooltipTrigger>
                 <TooltipPopup side="top">New thread in {activeProjectName}</TooltipPopup>
               </Tooltip>
@@ -364,7 +369,11 @@ export const ChatHeader = memo(function ChatHeader({
                 }
               >
                 <h2 className="min-w-0" dir={textDirection(activeThreadTitle)}>
-                  <WorkspaceBreadcrumbText>{activeThreadTitle}</WorkspaceBreadcrumbText>
+                  <WorkspaceBreadcrumbText>
+                    <SquishText ellipsisScale={THREAD_TITLE_SQUISH_SCALE} className="w-full">
+                      {activeThreadTitle}
+                    </SquishText>
+                  </WorkspaceBreadcrumbText>
                 </h2>
                 <ChevronDownIcon
                   aria-hidden
@@ -385,7 +394,11 @@ export const ChatHeader = memo(function ChatHeader({
                   />
                 }
               >
-                <WorkspaceBreadcrumbText>{activeThreadTitle}</WorkspaceBreadcrumbText>
+                <WorkspaceBreadcrumbText>
+                  <SquishText ellipsisScale={THREAD_TITLE_SQUISH_SCALE} className="w-full">
+                    {activeThreadTitle}
+                  </SquishText>
+                </WorkspaceBreadcrumbText>
               </TooltipTrigger>
               <TooltipPopup side="top">{activeThreadTitle}</TooltipPopup>
             </Tooltip>
