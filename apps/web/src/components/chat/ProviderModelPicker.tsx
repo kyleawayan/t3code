@@ -23,6 +23,7 @@ import {
 import { SQUISH_TEXT_TIGHT_MIN_SCALE, SquishText } from "../SquishText";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
 import { ComposerControl, type ComposerControlSize } from "./ComposerControl";
+import type { ComposerEffortWord } from "./ComposerModelEffort";
 import { takeOpenTarget, useComposerMenuProps } from "./composerEventScope";
 import { shortcutLabelForCommand } from "../../keybindings";
 
@@ -104,6 +105,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
   getModelDisabledReason?: (instanceId: ProviderInstanceId, model: string) => string | null;
   onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
+  /** Squished with the model name as one label, so both narrow together. */
+  triggerWord?: ComposerEffortWord | null;
   /** Shown after the model name inside the same trigger, such as the effort level. */
   triggerSuffix?: ReactNode;
   /** Names the suffix for the tooltip and screen readers. */
@@ -240,19 +243,44 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     className: "flex min-w-min flex-1",
     "data-chat-provider-model-picker-label": "true",
   } as const;
+  const modelForms =
+    props.triggerLabel === undefined && !multipleLabel && activeEntry
+      ? [
+          triggerText,
+          getShortTriggerModelLabel(triggerTitle, activeEntry.driverKind),
+          getTightTriggerModelLabel(triggerTitle, activeEntry.driverKind),
+        ]
+      : [triggerText];
+  const word = props.triggerWord;
+  const wordForms = word ? [word.label, ...word.variants] : [];
+  const triggerForms = Array.from(
+    { length: Math.max(modelForms.length, wordForms.length) },
+    (_, index) => {
+      const model = modelForms[Math.min(index, modelForms.length - 1)] ?? triggerText;
+      const effort = wordForms[Math.min(index, wordForms.length - 1)];
+      return { model, effort, text: effort === undefined ? model : `${model} ${effort}` };
+    },
+  );
   const triggerTextContent = (
     <SquishText
       minScale={SQUISH_TEXT_TIGHT_MIN_SCALE}
-      variants={
-        props.triggerLabel === undefined && !multipleLabel && activeEntry
-          ? [
-              getShortTriggerModelLabel(triggerTitle, activeEntry.driverKind),
-              getTightTriggerModelLabel(triggerTitle, activeEntry.driverKind),
-            ]
+      variants={triggerForms.slice(1).map((form) => form.text)}
+      renderForm={
+        word
+          ? (text) => {
+              const form = triggerForms.find((candidate) => candidate.text === text);
+              return form ? (
+                <>
+                  {form.model} <span className={word.className}>{form.effort}</span>
+                </>
+              ) : (
+                text
+              );
+            }
           : undefined
       }
     >
-      {triggerText}
+      {triggerForms[0]?.text ?? triggerText}
     </SquishText>
   );
 
