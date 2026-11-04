@@ -1,8 +1,11 @@
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { ClientSettings } from "@t3tools/contracts/settings";
 
-import completionUrl from "./assets/notification-completion.mp3";
-import inputUrl from "./assets/notification-input.mp3";
+import {
+  activeNotificationSoundKeys,
+  notificationSoundFor,
+  type NotificationSoundEvent,
+} from "./notificationSounds";
 
 type NotificationMode = ClientSettings["notificationMode"];
 export const NOTIFICATION_MODE_LABELS = {
@@ -88,34 +91,45 @@ const playingUntil = new Map<string, number>();
 /** Called from a gesture so browsers allow later background playback. */
 export function unlockNotificationAudio() {
   audioContext ??= new AudioContext();
-  void audioContext.resume().catch(() => undefined);
+  return audioContext.resume().catch(() => undefined);
+}
+
+export async function checkNotificationSoundDuration(file: Blob) {
+  audioContext ??= new AudioContext();
+  const decoded = await audioContext
+    .decodeAudioData(await file.arrayBuffer())
+    .catch(() => Promise.reject(new Error("This audio file could not be played.")));
+  if (decoded.duration > 30) throw new Error("Choose a sound no longer than 30 seconds.");
 }
 
 export async function playNotificationSound(
-  kind: "completion" | "input",
+  event: NotificationSoundEvent,
   shouldPlay: () => boolean,
 ) {
   if (!audioContext || audioContext.state !== "running") return;
   const context = audioContext;
-  const url = kind === "completion" ? completionUrl : inputUrl;
+  const sound = notificationSoundFor(event);
+  if (!sound) return;
+  const { key } = sound;
   try {
-    let buffer = buffers.get(url);
+    let buffer = buffers.get(key);
     if (!buffer) {
-      buffer = fetch(url)
-        .then((response) => response.arrayBuffer())
-        .then((data) => context.decodeAudioData(data));
-      buffers.set(url, buffer);
+      // Decoded custom files are large, so drop the ones no event uses anymore.
+      const active = activeNotificationSoundKeys();
+      for (const cached of buffers.keys()) if (!active.has(cached)) buffers.delete(cached);
+      buffer = sound.load().then((data) => context.decodeAudioData(data));
+      buffers.set(key, buffer);
     }
     const decoded = await buffer;
     if (!shouldPlay() || context.state !== "running") return;
-    // Coalesce same-sound bursts after decode to avoid clipping; input and completion alerts keep separate slots.
-    if (context.currentTime < (playingUntil.get(url) ?? 0)) return;
+    // Coalesce same-sound bursts after decode to avoid clipping; different sounds keep separate slots.
+    if (context.currentTime < (playingUntil.get(key) ?? 0)) return;
     const source = context.createBufferSource();
     source.buffer = decoded;
     source.connect(context.destination);
     source.start();
-    playingUntil.set(url, context.currentTime + decoded.duration);
+    playingUntil.set(key, context.currentTime + decoded.duration);
   } catch {
-    buffers.delete(url);
+    buffers.delete(key);
   }
 }

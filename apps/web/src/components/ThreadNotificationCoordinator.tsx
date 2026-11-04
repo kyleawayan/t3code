@@ -32,6 +32,7 @@ import {
 import { resolveSidebarThreadStatus, type SidebarThreadStatus } from "./Sidebar.logic";
 import {
   createThreadNotificationGate,
+  threadNotificationSoundEvent,
   type ThreadNotificationKind,
   type ThreadNotificationObservation,
 } from "./ThreadNotificationCoordinator.logic";
@@ -98,7 +99,7 @@ export function startThreadNotifications(
                 ? "Guest request"
                 : "Input needed";
     if (hasNotificationSound(mode)) {
-      void playNotificationSound(kind, () =>
+      void playNotificationSound(threadNotificationSoundEvent(kind, status), () =>
         hasNotificationSound(getClientSettings().notificationMode),
       );
     }

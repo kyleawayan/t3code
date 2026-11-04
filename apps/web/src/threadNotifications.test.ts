@@ -29,9 +29,12 @@ class FakeAudioContext {
 
 async function loadUnlocked() {
   const notifications = await import("./threadNotifications");
-  notifications.unlockNotificationAudio();
-  return notifications;
+  await notifications.unlockNotificationAudio();
+  return { ...notifications, ...(await import("./notificationSounds")) };
 }
+
+const fetchedSounds = () =>
+  vi.mocked(fetch).mock.calls.map(([url]) => String(url).match(/notification-(\w+)/)?.[1]);
 
 beforeEach(() => {
   vi.resetModules();
@@ -74,6 +77,38 @@ describe("playNotificationSound", () => {
 
     await playNotificationSound("completion", () => true);
 
+    expect(audio.started).toBe(1);
+  });
+
+  it("plays the sound chosen for each event", async () => {
+    const { playNotificationSound, setNotificationSoundChoice } = await loadUnlocked();
+    await setNotificationSoundChoice("approval", "chime");
+
+    await playNotificationSound("approval", () => true);
+    await playNotificationSound("failed", () => true);
+
+    expect(fetchedSounds()).toEqual(["completion", "input"]);
+    expect(audio.started).toBe(2);
+  });
+
+  it("keeps a silenced event quiet without muting the others", async () => {
+    const { playNotificationSound, setNotificationSoundChoice } = await loadUnlocked();
+    await setNotificationSoundChoice("completion", "none");
+
+    await playNotificationSound("completion", () => true);
+    await playNotificationSound("input", () => true);
+
+    expect(fetchedSounds()).toEqual(["input"]);
+    expect(audio.started).toBe(1);
+  });
+
+  it("falls back to the event's default when its custom file is gone", async () => {
+    const { playNotificationSound, setNotificationSoundChoice } = await loadUnlocked();
+    await setNotificationSoundChoice("limited", { file: 7, name: "deleted.wav" });
+
+    await playNotificationSound("limited", () => true);
+
+    expect(fetchedSounds()).toEqual(["input"]);
     expect(audio.started).toBe(1);
   });
 });
