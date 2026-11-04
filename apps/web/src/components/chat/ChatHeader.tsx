@@ -32,6 +32,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
 import { readEnvironmentScope, useEnvironmentScope } from "../../state/session";
 import { ProjectFavicon } from "../ProjectFavicon";
+import { SquishText, THREAD_TITLE_SQUISH_SCALE } from "../SquishText";
 import {
   WorkspaceBreadcrumb,
   WorkspaceBreadcrumbItem,
@@ -132,12 +133,18 @@ export const ChatHeader = memo(function ChatHeader({
         (total, item) => {
           const label = item.querySelector('[data-slot="workspace-breadcrumb-text"]');
           const ellipsis = item.querySelector("[data-parent-breadcrumb-ellipsis]");
+          // Fork: a squished title needs its text at the squish floor, not its clipped box.
+          const squished = label?.querySelector("[data-squish-text-content]");
+          const labelOverflow =
+            !label || getComputedStyle(label).maxWidth !== "none"
+              ? 0
+              : squished
+                ? Math.max(0, squished.scrollWidth * THREAD_TITLE_SQUISH_SCALE - label.clientWidth)
+                : label.scrollWidth - label.clientWidth;
           return (
             total +
             (item.firstElementChild?.getBoundingClientRect().width ?? 0) +
-            (label && getComputedStyle(label).maxWidth === "none"
-              ? label.scrollWidth - label.clientWidth
-              : 0) -
+            labelOverflow -
             (ellipsis?.getBoundingClientRect().width ?? 0)
           );
         },
@@ -312,7 +319,9 @@ export const ChatHeader = memo(function ChatHeader({
                 >
                   <ProjectFavicon project={activeProject} className="size-3.5" />
                   <WorkspaceBreadcrumbText className="max-w-40">
-                    {activeProjectName}
+                    <SquishText ellipsisScale={THREAD_TITLE_SQUISH_SCALE} className="w-full">
+                      {activeProjectName ?? ""}
+                    </SquishText>
                   </WorkspaceBreadcrumbText>
                 </TooltipTrigger>
                 <TooltipPopup side="top">New thread in {activeProjectName}</TooltipPopup>
@@ -396,7 +405,11 @@ export const ChatHeader = memo(function ChatHeader({
                 }
               >
                 <h2 className="min-w-0" dir={textDirection(activeThreadTitle)}>
-                  <WorkspaceBreadcrumbText>{activeThreadTitle}</WorkspaceBreadcrumbText>
+                  <WorkspaceBreadcrumbText>
+                    <SquishText ellipsisScale={THREAD_TITLE_SQUISH_SCALE} className="w-full">
+                      {activeThreadTitle}
+                    </SquishText>
+                  </WorkspaceBreadcrumbText>
                 </h2>
                 <ChevronDownIcon
                   aria-hidden
@@ -417,7 +430,11 @@ export const ChatHeader = memo(function ChatHeader({
                   />
                 }
               >
-                <WorkspaceBreadcrumbText>{activeThreadTitle}</WorkspaceBreadcrumbText>
+                <WorkspaceBreadcrumbText>
+                  <SquishText ellipsisScale={THREAD_TITLE_SQUISH_SCALE} className="w-full">
+                    {activeThreadTitle}
+                  </SquishText>
+                </WorkspaceBreadcrumbText>
               </TooltipTrigger>
               <TooltipPopup side="top">{activeThreadTitle}</TooltipPopup>
             </Tooltip>
