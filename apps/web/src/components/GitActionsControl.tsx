@@ -1685,7 +1685,35 @@ function CheckoutGitActionsControl({
 
   return (
     <>
-      {!showActions ? null : !isRepo ? (
+      {!showActions ? null : !isRepo && toolbar ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <ThreadDetailsControl
+                size="xs"
+                variant="outline"
+                part="row"
+                panel={false}
+                className="w-7 sm:w-6 @3xl/header-actions:w-auto!"
+                aria-label={gt("Initialize Git")}
+                data-toolbar-control=""
+                aria-disabled={!canWriteSourceControl || initAction.isPending || undefined}
+                {...(!canWriteSourceControl || initAction.isPending
+                  ? {}
+                  : { onClick: initializeGit })}
+              />
+            }
+          >
+            <GitBranchPlusIcon className="size-3.5" aria-hidden />
+            <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
+              {initAction.isPending ? <T>Initializing...</T> : <T>Initialize Git</T>}
+            </span>
+          </TooltipTrigger>
+          <TooltipPopup side="top">
+            <T>Initialize Git</T>
+          </TooltipPopup>
+        </Tooltip>
+      ) : !isRepo ? (
         <ThreadDetailsControl
           size="xs"
           variant="ghost"
@@ -1701,7 +1729,7 @@ function CheckoutGitActionsControl({
         </ThreadDetailsControl>
       ) : quietEmptyDraft ||
         (compact && !gitActionProgress && !visibleInlineSuccess) ? null : toolbar ? (
-        <Group role="group" aria-label="Git actions" className="shrink-0">
+        <Group role="group" aria-label={gt("Git actions")} className="shrink-0">
           <Tooltip>
             <TooltipTrigger
               render={
@@ -1735,7 +1763,7 @@ function CheckoutGitActionsControl({
             <MenuTrigger
               render={
                 <ThreadDetailsControl
-                  aria-label="Git action options"
+                  aria-label={gt("Git action options")}
                   size="icon-xs"
                   variant="outline"
                   part="secondary"
