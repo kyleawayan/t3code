@@ -378,9 +378,16 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 }
 
+/* A full-width band like the thread list's group rules, with its key on the rows' text column.
+   A narrow sidebar narrows the key first, down to a rectangle that still fits its legend; the
+   digits shrink only after that. */
+.sidebar-chrono {
+  container-type: inline-size;
+  padding-inline: calc(var(--sidebar-content-inset) + var(--sidebar-row-content-inset));
+}
+
 .sidebar-chrono-display {
   --chrono-accent: var(--app-theme-accent, var(--color-ring));
-  container-type: inline-size;
   background:
     linear-gradient(to bottom, rgb(255 255 255 / 40%), rgb(255 255 255 / 0%) 45%),
     color-mix(in srgb, var(--chrono-accent) 10%, var(--color-sidebar));
@@ -417,13 +424,13 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
 /* Without antialiased smoothing, macOS thickens glyphs enough to close the gaps between
    segments. The trim drops the font's empty descender so the digits center vertically.
-   Trimmed glyphs plus padding stand 1.25em tall, so the 1.7rem cap keeps the display no
-   taller than the 2.125rem button beside it. */
+   The padded digits span 1/0.27em, so they fill what the 1.75rem key and gap leave, and the
+   row (key included) is as tall as they are. The cap keeps the key square at 2.125rem. */
 .sidebar-chrono-digits {
-  padding: 0.25em 0.15em;
+  padding: 0.25em 0.27em;
   text-box: trim-both cap alphabetic;
   font-family: "7-Segment";
-  font-size: min(27cqw, 1.7rem);
+  font-size: min(1.69rem, (100cqw - 2rem) * 0.27);
   -webkit-font-smoothing: antialiased;
   font-style: normal;
   font-weight: 400;
