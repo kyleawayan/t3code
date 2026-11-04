@@ -214,6 +214,7 @@ export function ComposerControlsBar(props: {
         MODEL_TRIGGER_STATES,
         composerControlsCollapsed ? "min-w-13 shrink text-xs!" : "min-w-13",
       )}
+      triggerWord={effort.word}
       triggerSuffix={effort.suffix}
       triggerDetail={effort.detail}
       triggerShortcuts={

@@ -32,7 +32,6 @@ import {
   ULTRATHINK_IN_BODY_NOTE,
   useTraitsSelection,
 } from "./TraitsPicker";
-import { SQUISH_TEXT_TIGHT_MIN_SCALE, SquishText } from "../SquishText";
 
 const EFFORT_LABEL_ABBREVIATIONS = {
   short: { "Extra High": "XHigh", Medium: "Med", Minimal: "Min" },
@@ -95,6 +94,17 @@ function columnControls(
   return { effort, others: controls.filter((control) => control !== effort) };
 }
 
+const EFFORT_TEXT_CLASS =
+  "text-muted-foreground group-hover/model-trigger:text-foreground group-data-pressed/model-trigger:text-foreground group-data-popup-open/model-trigger:text-foreground";
+
+/** The effort word, which the trigger squishes together with the model name as one label. */
+export interface ComposerEffortWord {
+  label: string;
+  /** Shorter forms, longest first, matching the model name's short and tight forms. */
+  variants: readonly [string, string];
+  className: string;
+}
+
 /**
  * What the model trigger shows after the model name: the effort word (or bars, per the
  * Appearance setting), a bolt for Fast, a workflow icon for Ultracode, and other traits such as a
@@ -104,10 +114,10 @@ export function describeComposerEffort(
   traits: TraitsSelectionInput | null,
   effortDisplay: EffortDisplay,
   size: ComposerControlSize,
-): { suffix: ReactNode; detail: string | null } {
-  if (!traits) return { suffix: null, detail: null };
+): { word: ComposerEffortWord | null; suffix: ReactNode; detail: string | null } {
+  if (!traits) return { word: null, suffix: null, detail: null };
   const visibility = getTraitsSectionVisibility(traits);
-  if (!visibility.hasAnyControls) return { suffix: null, detail: null };
+  if (!visibility.hasAnyControls) return { word: null, suffix: null, detail: null };
   const modelSelection =
     traits.instanceId && traits.model
       ? { instanceId: traits.instanceId, model: traits.model, options: traits.modelOptions ?? [] }
@@ -157,45 +167,43 @@ export function describeComposerEffort(
       modelSelection,
       traits.reportedModelSelection,
     );
-  if (!word && !glyph && !fast && !display.ultracode && !contextWindow)
-    return { suffix: null, detail: display.label };
+  const showBars = !word && glyph !== null;
   return {
     detail: display.label,
-    suffix: (
-      <span
-        className={cn(
-          "flex min-w-min shrink items-center gap-1.5 text-muted-foreground group-hover/model-trigger:text-foreground group-data-pressed/model-trigger:text-foreground group-data-popup-open/model-trigger:text-foreground",
-          // A word space after the model name: the regular trigger's gap is wider than one.
-          size === "sm" && "-ms-0.5",
-        )}
-      >
-        {word !== null ? (
-          <SquishText
-            data-composer-control-label=""
-            minScale={SQUISH_TEXT_TIGHT_MIN_SCALE}
-            variants={[compactEffortLabel(word, "short"), compactEffortLabel(word, "tight")]}
-          >
-            {word}
-          </SquishText>
-        ) : glyph ? (
-          <EffortGlyph count={glyph.count} filled={glyph.filled} size={size} />
-        ) : null}
-        {fast ? <FastBolt ultra={display.speedLabel === "Ultrafast"} /> : null}
-        {display.ultracode ? (
-          <WorkflowIcon aria-hidden="true" data-composer-control-icon className="size-3" />
-        ) : null}
-        {contextWindow ? (
-          <span
-            // A label, so icon-only footers drop it; compacted rows drop it before the model.
-            data-composer-control-label
-            data-composer-secondary-trait
-            className="max-w-24 truncate text-xs"
-          >
-            {contextWindow}
-          </span>
-        ) : null}
-      </span>
-    ),
+    word: word
+      ? {
+          label: word,
+          variants: [compactEffortLabel(word, "short"), compactEffortLabel(word, "tight")],
+          className: EFFORT_TEXT_CLASS,
+        }
+      : null,
+    suffix:
+      !showBars && !fast && !display.ultracode && !contextWindow ? null : (
+        <span
+          className={cn(
+            "flex min-w-min shrink items-center gap-1.5",
+            EFFORT_TEXT_CLASS,
+            // A word space after the model name: the regular trigger's gap is wider than one.
+            size === "sm" && "-ms-0.5",
+          )}
+        >
+          {showBars ? <EffortGlyph count={glyph.count} filled={glyph.filled} size={size} /> : null}
+          {fast ? <FastBolt ultra={display.speedLabel === "Ultrafast"} /> : null}
+          {display.ultracode ? (
+            <WorkflowIcon aria-hidden="true" data-composer-control-icon className="size-3" />
+          ) : null}
+          {contextWindow ? (
+            <span
+              // A label, so icon-only footers drop it; compacted rows drop it before the model.
+              data-composer-control-label
+              data-composer-secondary-trait
+              className="max-w-24 truncate text-xs"
+            >
+              {contextWindow}
+            </span>
+          ) : null}
+        </span>
+      ),
   };
 }
 
