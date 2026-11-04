@@ -27,7 +27,6 @@ import {
 } from "../keybindings";
 import { isEditableFocused } from "../lib/editableFocus";
 import { useStableCallback } from "../hooks/useStableCallback";
-import { THREAD_SIDEBAR_FLOATING_MEDIA_QUERY } from "../rightPanelLayout";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
@@ -55,7 +54,6 @@ import {
   resolveThreadSidebarMaximumWidth,
   resolveThreadSidebarMinimumWidth,
   THREAD_MAIN_CONTENT_MIN_WIDTH,
-  THREAD_SIDEBAR_DEFAULT_WIDTH,
   THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
 } from "./threadSidebarWidth";
 import {
@@ -487,7 +485,8 @@ export function AppSidebarLayout({
         className="h-dvh! min-h-0!"
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
         storageKey="chat_thread_sidebar_open"
-        mobileMediaQuery={THREAD_SIDEBAR_FLOATING_MEDIA_QUERY}
+        // Fork: docked at every width; narrow windows shrink it instead of floating it.
+        mobileMediaQuery="not all"
         style={sidebarProviderStyle}
       >
         {showSidebar ? (
@@ -500,9 +499,6 @@ export function AppSidebarLayout({
           <Sidebar
             side="right"
             collapsible="offcanvas"
-            // Fixed like the docked sidebar; without a definite width the drawer grows to fit its
-            // longest thread title.
-            mobileWidth={`min(${Math.max(sidebarMinimumWidth, sidebarWidth)}px, 100vw - 0.75rem)`}
             data-app-sidebar=""
             {...sidebarArea}
             role="navigation"
