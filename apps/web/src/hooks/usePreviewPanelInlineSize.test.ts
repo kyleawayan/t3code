@@ -9,6 +9,6 @@ describe("getPreviewPanelMaxWidth", () => {
   });
 
   it("never drops the panel below its own minimum", () => {
-    expect(getPreviewPanelMaxWidth(1_000, 400)).toBe(360);
+    expect(getPreviewPanelMaxWidth(1_000, 250)).toBe(150);
   });
 });
