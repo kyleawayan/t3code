@@ -2376,6 +2376,33 @@ code {
   margin-top: 0.25rem;
 }
 
+/* Fork: Obsidian-style indent guides in the Markdown file preview, a line under each parent
+   marker down the length of its nested list. The li resolves its own list's gutter, because the
+   nested list resets --list-gutter for itself. */
+[data-markdown-indent-guides] .chat-markdown li {
+  --indent-guide-start: calc(var(--list-gutter, 1.25rem) * -0.5);
+}
+
+/* A task's checkbox sits at the start of the gutter instead of the marker's place. */
+[data-markdown-indent-guides] .chat-markdown li.task-list-item {
+  --indent-guide-start: calc(var(--list-gutter, 1.25rem) * -1 + 0.5em);
+}
+
+[data-markdown-indent-guides] .chat-markdown li > :is(ul, ol) {
+  position: relative;
+}
+
+/* Spans the nested list's 0.65rem top margin and reaches up to just under the parent's marker,
+   like Obsidian. */
+[data-markdown-indent-guides] .chat-markdown li > :is(ul, ol)::before {
+  content: "";
+  position: absolute;
+  inset-block: calc(-0.65rem - 0.15em) 0;
+  inset-inline-start: calc(var(--indent-guide-start) - 0.5px);
+  border-inline-start: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  pointer-events: none;
+}
+
 /* GitHub-style task lists: the checkbox replaces the list marker. */
 .chat-markdown li.task-list-item {
   list-style-type: none;
