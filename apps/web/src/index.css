@@ -1928,6 +1928,12 @@ html[data-theme-id="t3-chat"] [data-app-sidebar] {
   }
 }
 
+/* Fork: no thread breadcrumb in the chat header; rename and the thread menu live on the sidebar
+   rows. It still shows while the header's context menu renames the thread in place. */
+nav[aria-label="Thread breadcrumb"]:not(:has(input)) {
+  visibility: hidden;
+}
+
 /* Recompute contrast wherever a subtree owns its own semantic color palette. */
 :root,
 [data-app-sidebar] {
