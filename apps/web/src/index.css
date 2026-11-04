@@ -2506,6 +2506,12 @@ code {
   --context-chip-accent: var(--info-foreground);
 }
 
+/* Fork: file @-mentions in the composer and user messages use the link color too. The theme
+   sets the mention accent inline on the root, so body's value wins for everything inside. */
+body {
+  --context-chip-mention: var(--info-foreground);
+}
+
 .chat-markdown
   a:not(
     .chat-markdown-file-link,
