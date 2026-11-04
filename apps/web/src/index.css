@@ -3057,3 +3057,15 @@ body {
   outline: 2px solid var(--ring);
   outline-offset: -2px;
 }
+
+/* Fork: the right-docked sidebar's resize handle stays inside the sidebar instead of straddling
+   its edge, so it can't cover the overlay scrollbar of the panel beside it. It keeps the 8px it
+   had on the sidebar's side, and its hover line stays on the edge. */
+[data-slot="sidebar"][data-side="right"][data-state="expanded"] [data-slot="sidebar-rail"] {
+  translate: 0;
+  width: 0.5rem;
+}
+
+[data-slot="sidebar"][data-side="right"][data-state="expanded"] [data-slot="sidebar-rail"]::after {
+  left: 0;
+}
