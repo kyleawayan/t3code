@@ -187,4 +187,37 @@ describe("ExpandedImageDialog", () => {
     expect(pointerFraction().x).toBeCloseTo(anchor.x, 2);
     expect(pointerFraction().y).toBeCloseTo(anchor.y, 2);
   });
+
+  it("opens over its container and leaves the rest of the window usable", async () => {
+    const onClose = vi.fn();
+    const onComposerClick = vi.fn();
+    const panel = document.createElement("div");
+    panel.style.cssText = "position: fixed; top: 0; right: 0; width: 320px; height: 320px";
+    document.body.append(panel);
+    using _panel = { [Symbol.dispose]: () => panel.remove() };
+    await using _screen = await render(
+      <>
+        <button type="button" onClick={onComposerClick}>
+          Composer
+        </button>
+        <ExpandedImageDialog
+          preview={{ images: [{ src: PIXEL, name: "diagram.png" }], index: 0 }}
+          onClose={onClose}
+          container={panel}
+        />
+      </>,
+      // The dialog renders no links and reads no route.
+      { router: false },
+    );
+
+    const dialog = page.getByRole("dialog");
+    await expect.element(dialog).toBeVisible();
+    expect(panel.contains(dialog.element())).toBe(true);
+
+    // The panel is the page's first div, so screen-scoped queries can't find the render root.
+    await userEvent.click(page.getByRole("button", { name: "Composer" }));
+    expect(onComposerClick).toHaveBeenCalledOnce();
+    expect(onClose).not.toHaveBeenCalled();
+    await expect.element(dialog).toBeVisible();
+  });
 });
