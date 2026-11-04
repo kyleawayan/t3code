@@ -1,15 +1,52 @@
+import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { render } from "../../test/render";
+import { act, render } from "../../test/render";
 import { HistorySwipeNavigation } from "./HistorySwipeNavigation";
 
 const navigateHistory = vi.hoisted(() => vi.fn());
 vi.mock("../navigationHistory", () => ({ canNavigateHistory: () => true, navigateHistory }));
 
-function swipe(target: Element, deltaX: number) {
+// Fingers drift a little vertically; only a gesture with a diagonal event navigates.
+function swipe(target: Element, deltaX: number, deltaY = 1) {
   for (const delta of [deltaX, 0]) {
-    target.dispatchEvent(new WheelEvent("wheel", { deltaX: delta, bubbles: true, composed: true }));
+    target.dispatchEvent(
+      new WheelEvent("wheel", {
+        deltaX: delta,
+        deltaY: delta === 0 ? 0 : deltaY,
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      }),
+    );
   }
+}
+
+// Like the terminal and browser preview, which handle wheel events in non-passive listeners.
+function CancelingPanel() {
+  return (
+    <div
+      data-target
+      ref={(element) => {
+        if (!element) return;
+        const cancel = (event: WheelEvent) => event.preventDefault();
+        element.addEventListener("wheel", cancel, { passive: false });
+        return () => element.removeEventListener("wheel", cancel);
+      }}
+    />
+  );
+}
+
+async function swipeOver(fixture: ReactNode, deltaY?: number) {
+  navigateHistory.mockReset();
+  using _platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+  await using screen = await render(
+    <>
+      <HistorySwipeNavigation />
+      {fixture}
+    </>,
+  );
+  await act(() => swipe(screen.container.querySelector("[data-target]")!, -130, deltaY));
 }
 
 describe("HistorySwipeNavigation", () => {
@@ -69,6 +106,25 @@ describe("HistorySwipeNavigation", () => {
 
     swipe(content, -120);
 
+    expect(navigateHistory).not.toHaveBeenCalled();
+  });
+
+  it("goes back beside a dialog contained to another panel", async () => {
+    await swipeOver(
+      <>
+        <div data-target />
+        <div data-slot="dialog-backdrop" data-contained="" />
+      </>,
+    );
+    expect(navigateHistory).toHaveBeenCalledOnce();
+  });
+
+  it.each<[string, () => ReactNode, number?]>([
+    ["a mouse thumb wheel, which scrolls perfectly sideways", () => <div data-target />, 0],
+    ["a panel that cancels the wheel events it uses", () => <CancelingPanel />],
+    ["an open modal's backdrop", () => <div data-target data-slot="dialog-backdrop" />],
+  ])("leaves %s alone", async (_name, fixture, deltaY) => {
+    await swipeOver(fixture(), deltaY);
     expect(navigateHistory).not.toHaveBeenCalled();
   });
 });

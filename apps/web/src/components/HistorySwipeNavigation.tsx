@@ -11,7 +11,14 @@ const MOMENTUM_SAMPLE_SIZE = 5;
 
 type SwipeBounds = { left: number; top: number; width: number; height: number };
 type SwipeGesture =
-  | { kind: "pending"; path: EventTarget[]; y: number; sumX: number; sumY: number }
+  | {
+      kind: "pending";
+      path: EventTarget[];
+      y: number;
+      sumX: number;
+      sumY: number;
+      sawDiagonal: boolean;
+    }
   | {
       kind: "tracking";
       direction: HistoryDirection;
@@ -19,6 +26,11 @@ type SwipeGesture =
       deltas: number[];
       y: number;
       bounds: SwipeBounds;
+      /**
+       * Fingers never move perfectly sideways; a mouse thumb wheel or Shift+wheel does. Only a
+       * gesture with a diagonal event navigates, so thumb-wheel scrolling never goes back.
+       */
+      sawDiagonal: boolean;
     }
   // Not a swipe, or one already decided: the rest of its events are ignored.
   | { kind: "ignored" };
@@ -36,6 +48,11 @@ function readMainContentBounds(): SwipeBounds {
   const { left, top, width, height } = main.getBoundingClientRect();
   return { left, top, width, height };
 }
+
+// Modal dialogs and sheets only lock scrolling; wheel events over the backdrop still reach here.
+// A contained backdrop covers one panel of a non-modal dialog, so the rest still swipes.
+const MODAL_BACKDROP =
+  '[data-slot$="dialog-backdrop"]:not([data-contained]), [data-slot="sheet-backdrop"]';
 
 // `event.target` stops at a shadow host; the composed path also reaches scrollers inside it.
 function canScrollHorizontally(path: readonly EventTarget[], deltaX: number): boolean {
@@ -60,6 +77,7 @@ function lockSwipeAxis(
   if (path.some((node) => node instanceof Element && node.matches('[role="dialog"]'))) {
     return { kind: "ignored" };
   }
+  if (document.querySelector(MODAL_BACKDROP) !== null) return { kind: "ignored" };
   if (canScrollHorizontally(path, sumX)) return { kind: "ignored" };
   const direction = sumX < 0 ? "back" : "forward";
   if (!canNavigateHistory(direction)) return { kind: "ignored" };
@@ -70,6 +88,7 @@ function lockSwipeAxis(
     deltas: [],
     y: pending.y,
     bounds: readMainContentBounds(),
+    sawDiagonal: pending.sawDiagonal,
   };
 }
 
@@ -103,7 +122,11 @@ export function HistorySwipeNavigation() {
       setSwipe((current) => (current === null ? null : { ...current, tracking: false }));
     // The fingers lifted: navigate if the swipe went far enough, then ignore its momentum.
     const release = () => {
-      if (gesture?.kind === "tracking" && gesture.distance >= SWIPE_TRIGGER_DISTANCE) {
+      if (
+        gesture?.kind === "tracking" &&
+        gesture.sawDiagonal &&
+        gesture.distance >= SWIPE_TRIGGER_DISTANCE
+      ) {
         navigateHistory(gesture.direction);
       }
       gesture = { kind: "ignored" };
@@ -122,9 +145,23 @@ export function HistorySwipeNavigation() {
         gesture =
           event.ctrlKey || event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL
             ? { kind: "ignored" }
-            : { kind: "pending", path: event.composedPath(), y: event.clientY, sumX: 0, sumY: 0 };
+            : {
+                kind: "pending",
+                path: event.composedPath(),
+                y: event.clientY,
+                sumX: 0,
+                sumY: 0,
+                sawDiagonal: false,
+              };
       }
       if (gesture.kind === "ignored") return;
+      // Panels with their own wheel handling (tab strip, device viewports) cancel the events
+      // they use, so the rest of that gesture is theirs.
+      if (event.defaultPrevented) {
+        gesture = { kind: "ignored" };
+        return hideIndicator();
+      }
+      if (event.deltaX !== 0 && event.deltaY !== 0) gesture.sawDiagonal = true;
       if (gesture.kind === "pending") {
         gesture.sumX += event.deltaX;
         gesture.sumY += event.deltaY;
@@ -138,6 +175,7 @@ export function HistorySwipeNavigation() {
         if (isMomentumTail(gesture.deltas)) return release();
         gesture.distance = Math.max(0, gesture.distance + delta);
       }
+      if (!gesture.sawDiagonal) return;
       setSwipe({
         direction: gesture.direction,
         progress: Math.min(1, gesture.distance / SWIPE_TRIGGER_DISTANCE),
@@ -146,11 +184,12 @@ export function HistorySwipeNavigation() {
         tracking: true,
       });
     };
-    window.addEventListener("wheel", onWheel, { capture: true, passive: true });
+    // Bubble phase, so panels that handle a wheel event can cancel or stop it first.
+    window.addEventListener("wheel", onWheel, { passive: true });
     return () => {
       unsubscribeScrollBegin?.();
       unsubscribeScrollEnd?.();
-      window.removeEventListener("wheel", onWheel, { capture: true });
+      window.removeEventListener("wheel", onWheel);
     };
   }, []);
 
