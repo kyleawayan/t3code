@@ -1869,6 +1869,58 @@ html[data-theme-id="t3-chat"] [data-app-sidebar] {
   }
 }
 
+/* Fork: the sidebar never floats, so narrow windows squeeze it to its 10rem minimum. Below 13rem
+   (208px) its insets tighten. The query reads the content box, 1px inside the border. */
+[data-app-sidebar][data-slot="sidebar-container"] {
+  container: app-sidebar / inline-size;
+}
+
+@container app-sidebar (width < 207px) {
+  [data-slot="sidebar-inner"] {
+    --sidebar-content-inset: 0.25rem;
+    --sidebar-control-gap: 0.375rem;
+  }
+
+  /* Four 2rem footer controls overflow a 10rem sidebar with gaps between them. */
+  [data-slot="sidebar-footer"] [data-slot="sidebar-menu"] {
+    column-gap: 0;
+  }
+}
+
+/* Fork: the header row ends clear of the window's sidebar toggle. History and the dev pill drop
+   under the brand once they would reach it, tucked up into the brand row's spare height and
+   with the back arrow under the wordmark. */
+[data-sidebar-header] {
+  padding-inline-start: calc(var(--sidebar-content-inset) + var(--sidebar-row-content-inset));
+  padding-inline-end: calc(
+    var(--workspace-window-edge-right) + var(--workspace-titlebar-control-size) + 0.5rem
+  );
+}
+
+@container app-sidebar (width < 200px) {
+  [data-sidebar-header] {
+    grid-template-columns: minmax(0, 1fr);
+    padding-inline-end: 0.75rem;
+  }
+
+  [data-sidebar-header-rest] {
+    margin-block-start: -0.625rem;
+    margin-inline-start: -0.625rem;
+  }
+}
+
+@container app-sidebar (width < 242px) {
+  [data-sidebar-header]:has([data-environment-identification]) {
+    grid-template-columns: minmax(0, 1fr);
+    padding-inline-end: 0.75rem;
+  }
+
+  [data-sidebar-header]:has([data-environment-identification]) [data-sidebar-header-rest] {
+    margin-block-start: -0.625rem;
+    margin-inline-start: -0.625rem;
+  }
+}
+
 /* Recompute contrast wherever a subtree owns its own semantic color palette. */
 :root,
 [data-app-sidebar] {
