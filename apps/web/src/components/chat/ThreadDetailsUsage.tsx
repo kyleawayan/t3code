@@ -19,6 +19,7 @@ import { useNowMinute } from "../../hooks/useNowMinute";
 import { type ContextWindowSnapshot, formatContextWindowTokens } from "../../lib/contextWindow";
 import { cn } from "../../lib/utils";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
+import { SquishText, THREAD_TITLE_SQUISH_SCALE } from "../SquishText";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatContextWindowCompactionMessage } from "./ContextWindowMeter.logic";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
@@ -137,12 +138,15 @@ export function ThreadDetailsContext({ usage }: { readonly usage: ContextWindowS
   );
 }
 
-function LimitRow({
+export function LimitRow({
   window,
   now,
+  stacked = false,
 }: {
   readonly window: ServerProviderUsageWindow;
   readonly now: number;
+  /** Fork: the label and value over a full-width bar, for the narrow sidebar. */
+  readonly stacked?: boolean;
 }) {
   const timestampFormat = usePrimarySettings((settings) => settings.timestampFormat);
   const left = remainingPercent(window);
@@ -151,6 +155,7 @@ function LimitRow({
   return (
     <UsageRow
       label={window.label}
+      stacked={stacked}
       fill={left}
       tone={left <= 10 ? "error" : left <= 20 ? "warning" : null}
       value={`${left}%`}
@@ -183,8 +188,10 @@ function UsageRow({
   ariaValue = value,
   tooltip,
   muted = false,
+  stacked = false,
 }: {
   readonly label: string;
+  readonly stacked?: boolean;
   /** Bar fill from 0 to 100. Null hides the bar. */
   readonly fill: number | null;
   readonly tone: UsageTone;
@@ -202,13 +209,29 @@ function UsageRow({
           <div
             tabIndex={0}
             aria-label={`${label}: ${ariaValue}`}
-            className="col-span-3 grid h-6 cursor-default grid-cols-subgrid items-center rounded-lg px-2.5 outline-none hover:bg-black/[0.035] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-popup-open:bg-black/[0.035] dark:hover:bg-white/[0.08] dark:data-popup-open:bg-white/[0.08]"
+            className={cn(
+              "grid cursor-default items-center rounded-lg px-2.5 outline-none hover:bg-black/[0.035] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring data-popup-open:bg-black/[0.035] dark:hover:bg-white/[0.08] dark:data-popup-open:bg-white/[0.08]",
+              stacked
+                ? "grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-1 py-1"
+                : "col-span-3 h-6 grid-cols-subgrid",
+            )}
           />
         }
       >
-        <span className="max-w-28 truncate text-muted-foreground">{label}</span>
+        <SquishText
+          className={cn("text-muted-foreground", !stacked && "max-w-28")}
+          // The card's capped column ends long labels in an ellipsis after a light squish.
+          {...(stacked ? {} : { ellipsisScale: THREAD_TITLE_SQUISH_SCALE })}
+        >
+          {label}
+        </SquishText>
         {fill !== null ? (
-          <span className="relative h-[3px] rounded-full bg-muted-foreground/30 dark:bg-muted-foreground/20">
+          <span
+            className={cn(
+              "relative h-[3px] rounded-full bg-muted-foreground/30 dark:bg-muted-foreground/20",
+              stacked && "col-span-2 row-start-2",
+            )}
+          >
             {fill > 0 ? (
               <span
                 className={cn(
