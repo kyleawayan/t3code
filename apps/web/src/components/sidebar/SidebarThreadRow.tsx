@@ -160,18 +160,25 @@ function JumpHintBadge(props: { label: string }) {
 const JUMP_HINT_SLOT_CLASS_NAME =
   "[&>:not([data-jump-hint])]:invisible [&>:not([data-jump-hint])]:absolute";
 
-function WorkingDuration(props: { startedAt: string | null }) {
-  const startedMs = props.startedAt !== null ? Date.parse(props.startedAt) : Number.NaN;
-  if (Number.isNaN(startedMs)) return null;
-  return <WorkingDurationLabel startedMs={startedMs} />;
+// Fork: the status squishes once the project name has given up its room, so "Working 11m"
+// stays inside the row's padding at the sidebar's minimum width.
+function SquishedStatusLabel(props: { label: string; startedAt?: string | null | undefined }) {
+  const startedMs = props.startedAt ? Date.parse(props.startedAt) : Number.NaN;
+  if (Number.isNaN(startedMs)) return <SquishText>{props.label}</SquishText>;
+  return <SquishedTimedStatusLabel label={props.label} startedMs={startedMs} />;
 }
 
-// Self-ticking so only this span re-renders each second, not the whole row;
+// Self-ticking so only this label re-renders each second, not the whole row;
 // the shared tick lands every working row's update in the same frame.
-function WorkingDurationLabel(props: { startedMs: number }) {
-  const nowMs = useNowSecond();
+function SquishedTimedStatusLabel(props: { label: string; startedMs: number }) {
+  const duration = formatWorkingDurationLabel(useNowSecond() - props.startedMs);
+  // Past the squish floor, the duration alone shows instead of a clipped "Workin". The ticking
+  // text stays hidden from assistive tech, which reads only the label.
   return (
-    <span className="tabular-nums">{formatWorkingDurationLabel(nowMs - props.startedMs)}</span>
+    <>
+      <span className="sr-only">{props.label}</span>
+      <SquishText aria-hidden variants={[duration]}>{`${props.label} ${duration}`}</SquishText>
+    </>
   );
 }
 
@@ -1389,7 +1396,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           {accessibleTitle}
           <div
             className={cn(
-              "relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)",
+              // Fork: centered, because the narrow sidebar's tighter insets leave the fixed
+              // height's spare room under the last line.
+              "relative z-10 flex h-[4.875rem] flex-col justify-center px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)",
               metaLineEmpty && "h-auto",
             )}
           >
@@ -1426,7 +1435,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   data-sidebar-status-slot=""
                   data-controls-open={snoozeMenuOpen ? "true" : undefined}
                   className={cn(
-                    "group/sidebar-status-slot relative ml-auto flex h-5 min-w-8 shrink-0 items-stretch justify-end text-xs",
+                    "group/sidebar-status-slot relative ml-auto flex h-5 min-w-8 shrink items-stretch justify-end text-xs",
                     props.sweepAction !== null && "hidden",
                     jumpHintLabel && JUMP_HINT_SLOT_CLASS_NAME,
                   )}
@@ -1438,7 +1447,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         : // Fades in place so the slot keeps its width: the controls overlay it
                           // instead of reflowing the top line.
                           "pointer-events-none group-has-[:focus-visible]/sidebar-status-slot:opacity-0 group-any-hover/sidebar-row:opacity-0",
-                      "flex items-center self-center justify-self-end tabular-nums text-secondary-label",
+                      "flex min-w-0 items-center self-center justify-self-end tabular-nums text-secondary-label",
                       snoozeMenuOpen && "pointer-events-none opacity-0",
                     )}
                   >
@@ -1466,7 +1475,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       ) : (
                         <span
                           className={cn(
-                            "inline-flex items-center gap-1 font-medium",
+                            "inline-flex min-w-0 items-center gap-1 font-medium",
                             topStatus.className,
                           )}
                         >
@@ -1474,16 +1483,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           {/* Not a live region: a collapsed sidebar is inert, so
                             BackgroundThreadAnnouncer and the open thread's
                             timeline speak status changes instead. */}
-                          {topStatus.label}
-                          {status === "preparing" || status === "working" ? (
-                            <span aria-hidden>
-                              <WorkingDuration startedAt={resolveWorkingStartedAt(thread)} />
-                            </span>
-                          ) : status === "waiting" ? (
-                            <span aria-hidden>
-                              <WorkingDuration startedAt={thread.latestRun?.completedAt ?? null} />
-                            </span>
-                          ) : null}
+                          <SquishedStatusLabel
+                            label={topStatus.label}
+                            startedAt={
+                              status === "preparing" || status === "working"
+                                ? resolveWorkingStartedAt(thread)
+                                : status === "waiting"
+                                  ? (thread.latestRun?.completedAt ?? null)
+                                  : null
+                            }
+                          />
                         </span>
                       )
                     ) : (
