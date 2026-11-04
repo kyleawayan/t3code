@@ -25,26 +25,24 @@ export function FileMarkdownPreview(props: {
       ? resolvePathLinkTarget(props.relativePath.slice(0, lastSeparator), props.cwd)
       : props.cwd;
 
-  const markdown = (
-    <ChatMarkdown
-      text={maskMarkdownFrontmatter(props.text)}
-      cwd={props.cwd}
-      imageBaseDir={imageBaseDir}
-      threadRef={props.threadRef}
-      workspaceMutationId={props.workspaceMutationId}
-      {...(props.title ? {} : { className: "mx-auto max-w-4xl px-6 py-5" })}
-      onTaskListChange={props.onTaskListChange}
-    />
-  );
-  if (!props.title) return markdown;
   return (
-    <div className="mx-auto max-w-4xl px-6 py-5">
+    // Fork: indent guides like Obsidian's, styled in index.css. Chat messages keep plain lists.
+    <div data-markdown-indent-guides className="mx-auto max-w-4xl px-6 py-5">
       {/* Kept out of the markdown source, whose offsets the task checkboxes write back to.
           As its wrapper's only child the h1 loses its bottom margin, so the wrapper spaces it. */}
-      <div className="chat-markdown mb-4">
-        <h1 dir="auto">{props.title}</h1>
-      </div>
-      {markdown}
+      {props.title ? (
+        <div className="chat-markdown mb-4">
+          <h1 dir="auto">{props.title}</h1>
+        </div>
+      ) : null}
+      <ChatMarkdown
+        text={maskMarkdownFrontmatter(props.text)}
+        cwd={props.cwd}
+        imageBaseDir={imageBaseDir}
+        threadRef={props.threadRef}
+        workspaceMutationId={props.workspaceMutationId}
+        onTaskListChange={props.onTaskListChange}
+      />
     </div>
   );
 }
