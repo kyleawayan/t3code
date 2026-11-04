@@ -67,7 +67,7 @@ export const SidebarChrono = memo(function SidebarChrono() {
   const actionLabel = CHRONO_ACTION_LABEL[state.phase];
 
   return (
-    <div className="mx-(--sidebar-row-content-inset) flex items-stretch gap-1 rounded-lg border border-border/60 p-1">
+    <div className="sidebar-chrono -mx-(--sidebar-content-inset) flex items-stretch gap-1 border-y border-sidebar-foreground/15 py-2">
       <Tooltip
         onOpenChange={(open) => {
           if (open) setTooltipOpenedAt(Date.now());
@@ -79,7 +79,7 @@ export const SidebarChrono = memo(function SidebarChrono() {
               type="button"
               aria-label={actionLabel}
               onClick={press}
-              className="sidebar-chrono-button flex size-8.5 shrink-0 items-center justify-center rounded-sm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+              className="sidebar-chrono-button flex w-8.5 min-w-7 items-center justify-center rounded-sm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
             >
               <span aria-hidden className="sidebar-chrono-legend font-semibold text-4xs">
                 CHR
@@ -94,7 +94,7 @@ export const SidebarChrono = memo(function SidebarChrono() {
           </div>
         </TooltipPopup>
       </Tooltip>
-      <div className="sidebar-chrono-display flex min-w-0 flex-1 items-center justify-center rounded-sm">
+      <div className="sidebar-chrono-display flex shrink-0 grow items-center justify-center rounded-sm">
         <span
           role="timer"
           aria-hidden={display === null}
