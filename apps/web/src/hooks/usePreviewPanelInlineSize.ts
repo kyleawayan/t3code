@@ -11,7 +11,8 @@ export interface PreviewPanelInlineSize {
 }
 
 const PREVIEW_PANEL_WIDTH_STORAGE_KEY = "t3code:preview-panel-width";
-export const PREVIEW_PANEL_MIN_WIDTH = 360;
+/** Fork: the panel narrows as far as the chat column beside it. */
+export const PREVIEW_PANEL_MIN_WIDTH = 150;
 const PREVIEW_PANEL_MAX_WIDTH_FRACTION = 0.7;
 /**
  * Floor for the column beside the panel, kept small so diffs get the room. Below about 300px
