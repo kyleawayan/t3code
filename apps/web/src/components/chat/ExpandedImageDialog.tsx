@@ -29,6 +29,8 @@ import { registerThreadOverlay } from "./threadOverlayRetention";
 interface ExpandedImageDialogProps {
   preview: ExpandedImagePreview;
   onClose: () => void;
+  /** Fork: zoom over this element, such as the right panel, and leave the rest usable. */
+  container?: HTMLElement | null | undefined;
 }
 
 const EXPANDED_MEDIA_STATE_CLASS_NAME =
@@ -70,6 +72,7 @@ function ExpandedVideo({ item }: { readonly item: ExpandedImageItem }) {
 export const ExpandedImageDialog = memo(function ExpandedImageDialog({
   preview,
   onClose,
+  container,
 }: ExpandedImageDialogProps) {
   const [imageOffset, setImageOffset] = useState(0);
   const [failedImageSrc, setFailedImageSrc] = useState<string | null>(null);
@@ -149,6 +152,8 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
   return (
     <Dialog
       open
+      modal={!container}
+      disablePointerDismissal={Boolean(container)}
       onOpenChange={(open, eventDetails) => {
         if (open) return;
         // Escape belongs to an open context menu first.
@@ -164,7 +169,12 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
         variant="media"
         showCloseButton={false}
         bottomStickOnMobile={false}
-        className="row-start-1 h-full max-h-[92vh] w-[92vw] max-w-[92vw] items-center justify-center overflow-visible [--media-width:92vw] [--media-height:min(calc((100vh-var(--native-titlebar-height,0px))*0.86),calc(100vh-var(--native-titlebar-height,0px)-160px))] sm:[--media-width:calc(92vw-96px)]"
+        container={container}
+        className={
+          container
+            ? "row-start-1 h-full max-h-full w-full max-w-full items-center justify-center overflow-visible [container-type:size] [--media-width:100cqw] [--media-height:calc(100cqh-3rem)]"
+            : "row-start-1 h-full max-h-[92vh] w-[92vw] max-w-[92vw] items-center justify-center overflow-visible [--media-width:92vw] [--media-height:min(calc((100vh-var(--native-titlebar-height,0px))*0.86),calc(100vh-var(--native-titlebar-height,0px)-160px))] sm:[--media-width:calc(92vw-96px)]"
+        }
         onKeyDown={onKeyDown}
         initialFocus={closeButtonRef}
         finalFocus={() => returnFocusTarget}

@@ -486,6 +486,13 @@ function resolveFileLinkSources(
   return { markdownFileLinkMetaByHref, inlineCodeFileLinkMetaByText, fileLinkParentSuffixByPath };
 }
 
+/** The element an absolutely positioned overlay inside `element` would cover. */
+function positionedAncestor(element: HTMLElement | null): HTMLElement | null {
+  for (let current = element; current; current = current.parentElement) {
+    if (getComputedStyle(current).position !== "static") return current;
+  }
+  return null;
+}
 function useChatMarkdownState({
   text,
   inline = false,
@@ -519,12 +526,21 @@ function useChatMarkdownState({
   const [localMedia, setLocalMedia] = useState<{
     scope: string;
     preview: ExpandedImagePreview;
+    container: HTMLElement | null;
   } | null>(null);
-  const localMediaPreview = localMedia?.scope === mediaScopeKey ? localMedia.preview : null;
+  const localMediaPreview = localMedia?.scope === mediaScopeKey ? localMedia : null;
   const closeLocalMediaPreview = () => setLocalMedia(null);
   const expandMedia =
     onImageExpand ??
-    ((preview: ExpandedImagePreview) => setLocalMedia({ scope: mediaScopeKey, preview }));
+    ((preview: ExpandedImagePreview) =>
+      setLocalMedia({
+        scope: mediaScopeKey,
+        preview,
+        // Fork: markdown in the right panel zooms over the panel, so the chat stays usable.
+        container: positionedAncestor(
+          markdownRef.current?.closest<HTMLElement>("[data-right-panel-surface-content]") ?? null,
+        ),
+      }));
   const [mediaScope, setMediaScope] = useState(mediaScopeKey);
   if (mediaScope !== mediaScopeKey) {
     setMediaScope(mediaScopeKey);
@@ -1786,7 +1802,11 @@ function ChatMarkdown({
         ))}
       </ChatMarkdownRendererContext>
       {localMediaPreview ? (
-        <ExpandedImageDialog preview={localMediaPreview} onClose={closeLocalMediaPreview} />
+        <ExpandedImageDialog
+          preview={localMediaPreview.preview}
+          onClose={closeLocalMediaPreview}
+          container={localMediaPreview.container}
+        />
       ) : null}
     </Root>
   );
