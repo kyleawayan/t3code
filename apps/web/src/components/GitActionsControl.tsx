@@ -1556,7 +1556,33 @@ export default function GitActionsControl({
 
   return (
     <>
-      {!showActions ? null : !isRepo ? (
+      {!showActions ? null : !isRepo && toolbar ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <ThreadDetailsControl
+                size="xs"
+                variant="outline"
+                part="row"
+                panel={false}
+                className="w-7 sm:w-6 @3xl/header-actions:w-auto!"
+                aria-label="Initialize Git"
+                data-toolbar-control=""
+                aria-disabled={!canWriteSourceControl || initAction.isPending || undefined}
+                {...(!canWriteSourceControl || initAction.isPending
+                  ? {}
+                  : { onClick: initializeGit })}
+              />
+            }
+          >
+            <GitBranchPlusIcon className="size-3.5" aria-hidden />
+            <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
+              {initAction.isPending ? "Initializing..." : "Initialize Git"}
+            </span>
+          </TooltipTrigger>
+          <TooltipPopup side="top">Initialize Git</TooltipPopup>
+        </Tooltip>
+      ) : !isRepo ? (
         <ThreadDetailsControl
           size="xs"
           variant="ghost"
