@@ -1,4 +1,4 @@
-import { type ComponentProps, useLayoutEffect, useRef } from "react";
+import { type ComponentProps, type ReactNode, useLayoutEffect, useRef } from "react";
 
 import { observeResize } from "~/lib/observeResize";
 import { cn } from "~/lib/utils";
@@ -196,12 +196,15 @@ export function SquishText({
   ellipsisScale,
   minScale = SQUISH_TEXT_MIN_SCALE,
   variants,
+  renderForm,
   ...props
 }: Omit<ComponentProps<"span">, "children" | "ref"> & {
   children: string;
   ellipsisScale?: number;
   minScale?: number;
   variants?: readonly string[] | undefined;
+  /** Styles parts of a shown form; it must keep the form's text, which sets the widths. */
+  renderForm?: ((form: string) => ReactNode) | undefined;
 }) {
   const rootRef = useRef<HTMLSpanElement>(null);
   const textBoxRef = useRef<HTMLSpanElement>(null);
@@ -291,7 +294,7 @@ export function SquishText({
               ellipsisScale !== undefined && "overflow-hidden text-ellipsis align-top",
             )}
           >
-            {form}
+            {renderForm ? renderForm(form) : form}
           </span>
         ))}
       </span>
