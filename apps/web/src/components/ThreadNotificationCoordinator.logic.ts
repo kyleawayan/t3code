@@ -2,8 +2,23 @@ import {
   effectiveSnoozed,
   type ThreadSnoozeShell,
 } from "@t3tools/client-runtime/state/thread-settled";
+import type { NotificationSoundEvent } from "../notificationSounds";
+import type { SidebarThreadStatus } from "./Sidebar.logic";
 
 export type ThreadNotificationKind = "input" | "completion";
+
+export function threadNotificationSoundEvent(
+  kind: ThreadNotificationKind,
+  status: SidebarThreadStatus,
+): NotificationSoundEvent {
+  if (kind === "completion") return "completion";
+  return status === "approval" ||
+    status === "failed" ||
+    status === "limited" ||
+    status === "request"
+    ? status
+    : "input";
+}
 
 export interface ThreadNotificationObservation {
   /** Status and request key, or status and run without a request, while the thread needs attention. */
