@@ -1,4 +1,20 @@
+import type { NotificationSoundEvent } from "../notificationSounds";
+import type { SidebarThreadStatus } from "./Sidebar.logic";
+
 export type ThreadNotificationKind = "input" | "completion";
+
+export function threadNotificationSoundEvent(
+  kind: ThreadNotificationKind,
+  status: SidebarThreadStatus,
+): NotificationSoundEvent {
+  if (kind === "completion") return "completion";
+  return status === "approval" ||
+    status === "failed" ||
+    status === "limited" ||
+    status === "request"
+    ? status
+    : "input";
+}
 
 export interface ThreadNotificationObservation {
   /** Run, status and request key while the thread needs attention, otherwise null. */
