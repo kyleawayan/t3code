@@ -114,12 +114,15 @@ function DialogPopup({
   bottomStickOnMobile = true,
   variant = "default",
   mediaControlsPlacement = "outside",
+  container,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
   bottomStickOnMobile?: boolean;
   variant?: "default" | "media";
   mediaControlsPlacement?: "inside" | "outside";
+  /** Fork: covers only this positioned element instead of the window. Pair with `modal={false}`. */
+  container?: HTMLElement | null | undefined;
 }) {
   const gt = useGT();
   const { popupRef, initialFocus } = useDialogActionInitialFocus();
@@ -155,9 +158,13 @@ function DialogPopup({
   // macOS has no CSS window-controls overlay, so use the platform titlebar height.
   const nativeTitlebarHeight = useNativeTitlebarHeight();
   return (
-    <DialogPortal>
+    <DialogPortal container={container ?? undefined}>
       {/* Media opens from inside other overlays (a composer chip, a popover), so it sits above them. */}
-      <DialogBackdrop className={variant === "media" ? "z-[60]" : undefined} variant={variant} />
+      <DialogBackdrop
+        className={cn(variant === "media" && "z-[60]", container && "absolute")}
+        variant={variant}
+        data-contained={container ? "" : undefined}
+      />
       <DialogViewport
         className={cn(
           bottomStickOnMobile && "max-sm:grid-rows-[1fr_auto] max-sm:p-0 max-sm:pt-12",
@@ -166,6 +173,7 @@ function DialogPopup({
           variant === "media" &&
             mediaControlsPlacement === "inside" &&
             "pt-[min(calc(var(--media-dialog-titlebar-height,0px)+1.5rem),50dvh)]",
+          container && "absolute pt-6",
         )}
         style={
           variant === "media"
