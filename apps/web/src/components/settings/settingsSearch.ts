@@ -534,6 +534,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["notification sound alert completion input approval desktop"],
   },
   {
+    id: "notification-sounds",
+    title: "Notification sounds",
+    to: "/settings/general",
+    searchTerms: [
+      "custom audio file chime alert silent preview completed input approval failed usage limit guest request",
+    ],
+  },
+  {
     id: "in-app-notifications",
     title: "In-app notifications",
     to: "/settings/general",
