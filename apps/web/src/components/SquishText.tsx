@@ -163,6 +163,13 @@ function fitPendingSquishTargets(): void {
   }
 }
 
+function queueSquishFit(target: SquishTarget): void {
+  pendingFits.add(target);
+  if (fitQueued) return;
+  fitQueued = true;
+  queueMicrotask(fitPendingSquishTargets);
+}
+
 /** Keep a SquishText's form and scale fitted until the returned cleanup runs. */
 export function observeSquishTarget(target: SquishTarget): () => void {
   // Watches the root for room and the text (or its measured copies) for natural width.
@@ -170,12 +177,7 @@ export function observeSquishTarget(target: SquishTarget): () => void {
   const watched = [target.root, target.measureBox ?? firstText].filter(
     (element): element is Element => element !== null && element !== undefined,
   );
-  const stop = observeResize(watched, () => {
-    pendingFits.add(target);
-    if (fitQueued) return;
-    fitQueued = true;
-    queueMicrotask(fitPendingSquishTargets);
-  });
+  const stop = observeResize(watched, () => queueSquishFit(target));
   return () => {
     stop();
     pendingFits.delete(target);
@@ -209,8 +211,10 @@ export function SquishText({
   const rootRef = useRef<HTMLSpanElement>(null);
   const textBoxRef = useRef<HTMLSpanElement>(null);
   const measureBoxRef = useRef<HTMLSpanElement>(null);
+  const targetRef = useRef<SquishTarget | null>(null);
   const forms = [children, ...(variants ?? []).filter((variant) => variant !== children)];
   const formCount = forms.length;
+  const formsKey = forms.join("\n");
 
   // Forms are keyed by position, so their boxes stay put while the text changes; the observer
   // re-subscribes only when the number of forms (and so the boxes) changes.
@@ -219,14 +223,28 @@ export function SquishText({
     const root = rootRef.current;
     const textBox = textBoxRef.current;
     if (!root || !textBox) return;
-    return observeSquishTarget({
+    const target: SquishTarget = {
       root,
       textBox,
       measureBox: formCount > 1 ? measureBoxRef.current : null,
       ellipsisScale,
       minScale,
-    });
+    };
+    targetRef.current = target;
+    const stop = observeSquishTarget(target);
+    return () => {
+      stop();
+      targetRef.current = null;
+    };
   }, [ellipsisScale, minScale, formCount]);
+
+  // Fork: an ellipsized form has a fixed width, so new text (a rename) resizes nothing the
+  // observer watches. Refit on text changes without re-subscribing.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- refits the measured text after it changes.
+  useLayoutEffect(() => {
+    if (targetRef.current) queueSquishFit(targetRef.current);
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- formsKey is the trigger; see above.
+  }, [formsKey]);
 
   const runs = splitSquishTextParts(forms.at(-1) ?? children, Math.ceil(1 / minScale));
   return (
