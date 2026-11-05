@@ -1,3 +1,4 @@
+import { WORKING_EXIT_GRACE_MS } from "@t3tools/client-runtime/state/thread-inbox";
 import type { AnyRouter } from "@tanstack/react-router";
 import { EnvironmentId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -5,7 +6,7 @@ import * as Option from "effect/Option";
 import { Atom, AtomRegistry } from "effect/reactivity";
 import { expect, it, vi } from "vite-plus/test";
 
-import { stubGlobal } from "../../test/render";
+import { fakeTimers, stubGlobal } from "../../test/render";
 
 const state = vi.hoisted(() => ({
   mode: "notifications",
@@ -244,17 +245,27 @@ it.each(["hasPendingApprovals", "hasPendingUserInput"] as const)(
   },
 );
 
-it("presents completion notifications and sound as soon as the shell completes", async () => {
+it("holds a completion and its sound through a continuation gap until it settles", async () => {
   await using app = setup();
   state.mode = "notifications-and-sound";
   app.start();
+  using _timers = fakeTimers();
+  const finished = (turnId: string, completedAt: string) => ({
+    latestTurn: { turnId, state: "completed", completedAt },
+  });
+  state.shells.set("one", shell(finished("turn-1", "2026-09-13T07:00:01.000Z")));
   state.shells.set(
     "one",
-    shell({
-      latestTurn: { turnId: "turn", state: "completed", completedAt: "2026-09-13T07:00:01.000Z" },
-    }),
+    shell({ latestTurn: { turnId: "turn-2", state: "running", completedAt: null } }),
   );
+  state.shells.set("one", shell(finished("turn-2", "2026-09-13T07:00:02.000Z")));
+  expect(TestNotification.sent).toEqual([]);
+  await vi.advanceTimersByTimeAsync(WORKING_EXIT_GRACE_MS - 1);
+  expect(TestNotification.sent).toEqual([]);
+  expect(state.sound).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);
   expect(TestNotification.sent.map((sent) => sent.title)).toEqual(["Thread completed"]);
+  expect(state.sound).toHaveBeenCalledOnce();
   expect(state.sound).toHaveBeenCalledWith("completion", expect.any(Function));
 });
 
@@ -262,6 +273,7 @@ it("stays quiet when a snoozed thread completes, but still alerts approvals and 
   await using app = setup();
   state.mode = "notifications-and-sound";
   app.start();
+  using _timers = fakeTimers();
   // The agent snoozed its own thread, then finished its reply.
   const snoozed = {
     snoozedUntil: "2999-01-01T00:00:00.000Z",
@@ -274,6 +286,7 @@ it("stays quiet when a snoozed thread completes, but still alerts approvals and 
       latestTurn: { turnId: "turn", state: "completed", completedAt: "2026-09-13T07:00:01.000Z" },
     }),
   );
+  await vi.advanceTimersByTimeAsync(WORKING_EXIT_GRACE_MS);
   expect(TestNotification.sent).toEqual([]);
   expect(state.sound).not.toHaveBeenCalled();
   state.shells.set(
@@ -312,6 +325,7 @@ it.each(["hasPendingApprovals", "hasPendingUserInput"] as const)(
     };
     state.shells.set("one", shell({ id: "working" }, { id: "asking" }, { id: "offline" }, done));
     app.start();
+    using _timers = fakeTimers();
     state.shells.set("one", shell({ id: "working" }, asking, { id: "offline" }, done));
     state.shells.set("one", {
       ...shell({ id: "working" }, asking, { id: "offline" }, done),
@@ -330,31 +344,37 @@ it.each(["hasPendingApprovals", "hasPendingUserInput"] as const)(
 
     expect(TestNotification.sent.map(({ title }) => title)).toEqual([
       "Approval needed",
-      "Thread completed",
       flag === "hasPendingApprovals" ? "Approval needed" : "Input needed",
     ]);
+    await vi.advanceTimersByTimeAsync(WORKING_EXIT_GRACE_MS);
     state.shells.set("one", { ...shell(completed, asking, offline, done), status: "cached" });
     state.shells.set("one", shell(completed, asking, offline, done));
+    await vi.advanceTimersByTimeAsync(WORKING_EXIT_GRACE_MS);
     expect(TestNotification.sent.map(({ title }) => title)).toEqual([
       "Approval needed",
-      "Thread completed",
       flag === "hasPendingApprovals" ? "Approval needed" : "Input needed",
+      "Thread completed",
     ]);
   },
 );
 
 it.each([false, true])(
-  "does not replay a notified completion after reconnect (continued: %s)",
+  "rechecks a pending completion after reconnect (continued: %s)",
   async (continued) => {
     await using app = setup();
     app.start();
+    using _timers = fakeTimers();
     const completed = shell({
       latestTurn: { turnId: "turn", state: "completed", completedAt: "2026-09-13T07:05:00.000Z" },
     });
     state.shells.set("one", completed);
     state.shells.set("one", { ...completed, status: "cached" });
-    expect(TestNotification.sent.map(({ title }) => title)).toEqual(["Thread completed"]);
+    await vi.advanceTimersByTimeAsync(WORKING_EXIT_GRACE_MS);
+    expect(TestNotification.sent).toEqual([]);
     state.shells.set("one", continued ? shell() : completed);
-    expect(TestNotification.sent.map(({ title }) => title)).toEqual(["Thread completed"]);
+    await vi.advanceTimersByTimeAsync(WORKING_EXIT_GRACE_MS);
+    expect(TestNotification.sent.map(({ title }) => title)).toEqual(
+      continued ? [] : ["Thread completed"],
+    );
   },
 );
