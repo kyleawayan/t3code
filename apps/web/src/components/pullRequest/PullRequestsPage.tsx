@@ -1432,6 +1432,12 @@ export function PullRequestsPage() {
     event.stopPropagation();
     if (!event.repeat) closeSurface(activePullRequestSurface);
   });
+  const closeOtherSurfacesFromShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (activePullRequestSurface === null || rightPanelState.surfaces.length <= 1) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!event.repeat) closeOtherSurfaces(activePullRequestSurface);
+  });
   const toggleRightPanelFromShortcut = useEffectEvent((event: KeyboardEvent) => {
     if (!rightPanelAvailable) return;
     event.preventDefault();
@@ -1452,6 +1458,7 @@ export function PullRequestsPage() {
         context: getShortcutContext(),
       });
       if (command === "rightPanel.close") closeActiveSurfaceFromShortcut(event);
+      if (command === "rightPanel.closeOthers") closeOtherSurfacesFromShortcut(event);
       if (command === "rightPanel.toggle") toggleRightPanelFromShortcut(event);
       if (command === "rightPanel.toggleMaximized") toggleRightPanelMaximizedFromShortcut(event);
       if (command === "thread.copyReference") copyPullRequestFromShortcut(event);

@@ -2368,6 +2368,7 @@ export default function ChatView(props: ChatViewProps) {
     activeProjectCwd,
     onDiffPanelOpen,
     closeRightPanelSurface,
+    closeOtherRightPanelSurfaces: closeOtherRightPanelSurfacesStable,
   });
   const pullRequestSurfaceAvailable = supportsPullRequests && pullRequestPanelTarget !== null;
   const {
