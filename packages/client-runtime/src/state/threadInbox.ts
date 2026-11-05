@@ -131,7 +131,7 @@ type ThreadKeyInput = Pick<EnvironmentThreadShell, "environmentId" | "id">;
  * run can end moments before its continuation starts, so clients wait this long
  * before treating the thread as done.
  */
-const WORKING_EXIT_GRACE_MS = 2_000;
+export const WORKING_EXIT_GRACE_MS = 2_000;
 
 /**
  * A run that ended this long ago has no continuation about to start, so its thread gets no
