@@ -73,6 +73,8 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "threadPanel.toggle",
   "rightPanel.toggleMaximized",
   "rightPanel.close",
+  // Fork: the tab menu's "Close others".
+  "rightPanel.closeOthers",
   "view.reopenClosed",
   "pullRequest.copyNumber",
   "diff.toggle",

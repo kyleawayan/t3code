@@ -265,6 +265,22 @@ describe("thread undo shortcut", () => {
   });
 });
 
+describe("close other tabs shortcut", () => {
+  it("binds Cmd+Shift+W by default, outside the terminal", () => {
+    const input = event({ key: "W", code: "KeyW", metaKey: true, shiftKey: true });
+    assert.strictEqual(
+      resolveShortcutCommand(input, DEFAULT_RESOLVED_KEYBINDINGS, { platform: "MacIntel" }),
+      "rightPanel.closeOthers",
+    );
+    assert.isNull(
+      resolveShortcutCommand(input, DEFAULT_RESOLVED_KEYBINDINGS, {
+        platform: "MacIntel",
+        context: { terminalFocus: true },
+      }),
+    );
+  });
+});
+
 describe("fork diff shortcut", () => {
   it("opens the uncommitted diff from a user binding", () => {
     const bindings = mergeWithDefaultKeybindings(
