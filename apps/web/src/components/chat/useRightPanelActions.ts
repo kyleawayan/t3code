@@ -16,6 +16,7 @@ import { type ThreadPanelPresentation } from "../../rightPanelLayout";
 import {
   selectActiveRightPanel,
   selectThreadPanelOpen,
+  selectThreadRightPanelState,
   type RightPanelSurface,
   useRightPanelStore,
 } from "../../rightPanelStore";
@@ -60,6 +61,7 @@ interface RightPanelActionsInput {
   readonly activeProjectCwd: string | null;
   readonly onDiffPanelOpen: (() => void) | undefined;
   readonly closeRightPanelSurface: (surface: RightPanelSurface) => void;
+  readonly closeOtherRightPanelSurfaces: (surface: RightPanelSurface) => void;
 }
 
 /**
@@ -69,6 +71,7 @@ interface RightPanelActionsInput {
 export function useRightPanelActions(input: RightPanelActionsInput) {
   const {
     closeRightPanelSurface,
+    closeOtherRightPanelSurfaces,
     activeThreadRef,
     activeProject,
     activeRightPanelSurface,
@@ -339,6 +342,14 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     "rightPanel.close": ({ event }) => {
       if (!activeRightPanelSurface) return false;
       if (!event.repeat) closeRightPanelSurface(activeRightPanelSurface);
+    },
+    "rightPanel.closeOthers": ({ event }) => {
+      const { surfaces } = selectThreadRightPanelState(
+        useRightPanelStore.getState().byThreadKey,
+        activeThreadRef,
+      );
+      if (!activeRightPanelSurface || surfaces.length <= 1) return false;
+      if (!event.repeat) closeOtherRightPanelSurfaces(activeRightPanelSurface);
     },
     "diff.toggle": () => onToggleDiff(),
     "diff.openUncommitted": () => onOpenUncommittedDiff(),
