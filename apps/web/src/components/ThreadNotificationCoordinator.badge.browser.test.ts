@@ -110,6 +110,8 @@ const thread = {
   pendingRequestId: "request-1",
   session: null as { status: string } | null,
   latestTurn: { turnId: "turn", state: "running", completedAt: null as string | null },
+  snoozedUntil: null as string | null,
+  snoozedAt: null as string | null,
 };
 let focused = false;
 let visibility = "visible";
@@ -163,6 +165,8 @@ function toV2ThreadShell(input: typeof thread) {
       ? DateTime.makeUnsafe(latestTurn.completedAt)
       : undefined,
     archivedAt: input.archivedAt ? DateTime.makeUnsafe(input.archivedAt) : null,
+    snoozedUntil: input.snoozedUntil ? DateTime.makeUnsafe(input.snoozedUntil) : null,
+    snoozedAt: input.snoozedAt ? DateTime.makeUnsafe(input.snoozedAt) : null,
     settledOverride: null,
     settledAt: null,
     lastVisitedAt: null,
@@ -330,6 +334,44 @@ it.each([false, true])(
     expect(state.sound).toHaveBeenCalledTimes(2);
   },
 );
+
+it("stays quiet when a snoozed thread completes, but still alerts approvals and failures", async () => {
+  await using app = setup();
+  state.mode = "notifications-and-sound";
+  app.start();
+  // The agent snoozed its own thread, then finished its reply.
+  const snoozed = {
+    snoozedUntil: "2999-01-01T00:00:00.000Z",
+    snoozedAt: "2026-09-13T07:00:00.500Z",
+  };
+  state.shells.set(
+    "one",
+    shell({
+      ...snoozed,
+      latestTurn: { turnId: "turn", state: "completed", completedAt: "2026-09-13T07:00:01.000Z" },
+    }),
+  );
+  expect(TestNotification.sent).toEqual([]);
+  expect(state.sound).not.toHaveBeenCalled();
+  state.shells.set(
+    "one",
+    shell({
+      ...snoozed,
+      hasPendingApprovals: true,
+      latestTurn: { turnId: "turn-2", state: "running", completedAt: null },
+    }),
+  );
+  expect(TestNotification.sent.map((sent) => sent.title)).toEqual(["Approval needed"]);
+  // A failed run alerts even when the runtime itself stays healthy and the thread still reads as snoozed.
+  state.shells.set(
+    "one",
+    shell({ ...snoozed, latestTurn: { turnId: "turn-3", state: "error", completedAt: null } }),
+  );
+  expect(TestNotification.sent.map((sent) => sent.title)).toEqual([
+    "Approval needed",
+    "Thread failed",
+  ]);
+});
 
 it.each(["hasPendingApprovals", "hasPendingUserInput"] as const)(
   "notifies for offline completion and %s once across reconnects",
