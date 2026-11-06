@@ -323,7 +323,7 @@ const layerTest = Layer.mergeAll(
   Layer.provide(SqlitePersistence.layerMemory),
   Layer.provide(layerCheckpointStoreTest),
   Layer.provide(layerServerConfig),
-  Layer.provide(ServerSettings.layerTest()),
+  Layer.provideMerge(ServerSettings.layerTest()),
   Layer.provide(layerTestProviderInstanceRegistry),
   Layer.provide(layerGitWorkflowTest),
   Layer.provide(layerProjectServiceTest),
@@ -3659,6 +3659,113 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       );
       yield* watch(false, "end");
     }),
+  );
+
+  it.effect.each(["host read", "link snapshot", "settled thread", "settles on merge"] as const)(
+    "tells a working thread once that its watched pull request merged: %s",
+    (mode) =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+        const threadId = ThreadId.make(`runtime-pull-request-watch-merged-${mode}`);
+        const projectId = ProjectId.make(`pr-watch-merged-project-${mode}`);
+        yield* seedProject({
+          projectId,
+          title: "Watch merged",
+          workspaceRoot: "/workspace/watch-merged",
+          defaultModelSelection: null,
+          createdAt: "2026-10-01T00:00:00.000Z",
+        });
+        yield* orchestrator.dispatch({
+          type: "thread.create",
+          createdBy: "user",
+          creationSource: "web",
+          commandId: CommandId.make(`pr-watch-merged-create-${mode}`),
+          threadId,
+          projectId,
+          title: "Watch merged",
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+        });
+        const key = { host: "github.com", repository: "pingdotgg/t3code", number: 12 };
+        yield* orchestrator.dispatch({
+          type: "thread.pull-request.watch",
+          commandId: CommandId.make(`pr-watch-merged-start-${mode}`),
+          threadId,
+          ...key,
+          watching: true,
+          link: { url: "https://github.com/pingdotgg/t3code/pull/12", source: "agent" },
+        });
+        const at = "2026-10-02T12:00:00.000Z";
+        const hostMerged = mode === "host read";
+        if (!hostMerged) {
+          yield* orchestrator.dispatch({
+            type: "thread.pull-request-link.sync",
+            commandId: CommandId.make(`pr-watch-merged-snapshot-${mode}`),
+            threadId,
+            ...key,
+            snapshot: {
+              state: "merged",
+              title: "Watched pull request",
+              headBranch: "feature",
+              baseBranch: "main",
+              isDraft: false,
+              updatedAt: at,
+              syncedAt: at,
+            },
+            stack: null,
+          });
+        }
+        if (mode === "settled thread") {
+          yield* orchestrator.dispatch({
+            type: "thread.settle",
+            commandId: CommandId.make(`pr-watch-merged-settle-${mode}`),
+            threadId,
+          });
+        }
+        const host = Layer.mergeAll(
+          NodeServices.layer,
+          NodeCrypto.layer,
+          ServerSettings.layerTest({ sidebarAutoSettleOnMerge: mode === "settles on merge" }),
+          Layer.mock(PullRequestService.PullRequestService)({
+            detail: () =>
+              Effect.succeed({
+                ...watchedPullRequestDetail({ projectId, number: key.number, at }),
+                state: hostMerged ? ("merged" as const) : ("open" as const),
+                mergedAt: hostMerged ? at : null,
+              }),
+            activity: () =>
+              Effect.succeed({
+                comments: [],
+                commentCount: 0,
+                commentsTruncated: false,
+                reviewThreads: [],
+                commits: [],
+              }),
+          }),
+        );
+        const summaries = Effect.map(
+          orchestrator.getThreadRecords(threadId, ["messages"]),
+          ({ messages }) => messages.flatMap((message) => message.notification?.summary ?? []),
+        );
+
+        const reactor = yield* PullRequestWatchReactor.make.pipe(Effect.provide(host));
+        yield* reactor.sweep;
+        yield* worker.drain();
+        yield* TestClock.adjust("10 minutes");
+        yield* reactor.sweep;
+        yield* worker.drain();
+        assert.deepEqual(
+          yield* summaries,
+          mode === "host read" || mode === "link snapshot" ? ["#12: merged, stopped watching"] : [],
+        );
+        assert.isUndefined(
+          (yield* orchestrator.getThreadShell(threadId))?.pullRequests?.[0]?.watch,
+        );
+      }),
   );
 
   // regression: #21155 watching a pull request again repeated news the thread already got
