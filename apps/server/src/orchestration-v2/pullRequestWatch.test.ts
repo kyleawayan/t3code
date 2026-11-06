@@ -187,6 +187,68 @@ describe("evaluatePullRequestWatch", () => {
     assert.deepEqual(evaluatePullRequestWatch(green.next, botDone, noRemarks).changes, []);
   });
 
+  // regression: #30530 an early failure was the last wake, so the rest finishing never woke the agent
+  it("wakes once when the other checks finish after an early failure", () => {
+    const early = detail({
+      checks: [check("vercel", "failure"), check("e2e", "pending"), check("lint", "pending")],
+    });
+    const first = evaluatePullRequestWatch(watch(), early, noRemarks);
+    assert.deepEqual(first.changes, [
+      { kind: "checks-failed", failed: [check("vercel", "failure")] },
+    ]);
+    const halfway = detail({
+      checks: [check("vercel", "failure"), check("e2e", "pending"), check("lint", "success")],
+    });
+    const waiting = evaluatePullRequestWatch(first.next, halfway, noRemarks);
+    assert.deepEqual(waiting.changes, []);
+    const done = detail({
+      checks: [check("vercel", "failure"), check("e2e", "success"), check("lint", "success")],
+    });
+    const final = evaluatePullRequestWatch(waiting.next, done, noRemarks);
+    assert.deepEqual(final.changes, [
+      { kind: "checks-finished", count: 3, failed: [check("vercel", "failure")] },
+    ]);
+    assert.deepEqual(evaluatePullRequestWatch(final.next, done, noRemarks).changes, []);
+
+    // Every later result was told as its own failure, so finishing is not more news.
+    const allRed = detail({
+      checks: [check("vercel", "failure"), check("e2e", "failure"), check("lint", "failure")],
+    });
+    assert.deepEqual(evaluatePullRequestWatch(first.next, allRed, noRemarks).changes, [
+      { kind: "checks-failed", failed: [check("e2e", "failure"), check("lint", "failure")] },
+    ]);
+    // A failure in the finishing read is listed once.
+    const lastRed = detail({
+      checks: [check("vercel", "failure"), check("e2e", "failure"), check("lint", "success")],
+    });
+    assert.deepEqual(evaluatePullRequestWatch(first.next, lastRed, noRemarks).changes, [
+      { kind: "checks-failed", failed: [check("e2e", "failure")] },
+      { kind: "checks-finished", count: 3, failed: [check("vercel", "failure")] },
+    ]);
+
+    // A rerun of a failed check that passes is news while another failure stays.
+    const red = detail({ checks: [check("vercel", "failure"), check("e2e", "failure")] });
+    const rerun = evaluatePullRequestWatch(
+      evaluatePullRequestWatch(watch(), red, noRemarks).next,
+      detail({ checks: [check("vercel", "failure"), check("e2e", "pending")] }),
+      noRemarks,
+    );
+    assert.deepEqual(rerun.changes, []);
+    const recovered = detail({ checks: [check("vercel", "failure"), check("e2e", "success")] });
+    assert.deepEqual(evaluatePullRequestWatch(rerun.next, recovered, noRemarks).changes, [
+      { kind: "checks-finished", count: 2, failed: [check("vercel", "failure")] },
+    ]);
+
+    // Nothing was still running at the failure, so nothing is owed.
+    const settledRed = detail({ checks: [check("vercel", "failure"), check("e2e", "success")] });
+    const told = evaluatePullRequestWatch(watch(), settledRed, noRemarks);
+    assert.deepEqual(
+      told.changes.map((change) => change.kind),
+      ["checks-failed"],
+    );
+    assert.deepEqual(evaluatePullRequestWatch(told.next, settledRed, noRemarks).changes, []);
+  });
+
   it("reports an owed non-required failure once after the required notice", () => {
     const required = { ...check("test", "success"), required: true };
     const early = detail({ checks: [required, check("e2e", "pending")] });

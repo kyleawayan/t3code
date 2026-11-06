@@ -31,7 +31,9 @@ import {
   type ProviderChangeRequestWatchFingerprint,
   PullRequestProviderError,
 } from "@t3tools/source-control-core/server/PullRequestProvider";
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as PullRequestService from "../pullRequest/PullRequestService.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
@@ -199,6 +201,7 @@ export const make = Effect.gen(function* () {
   const engine = yield* Orchestrator.OrchestratorV2;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
   const pullRequests = yield* PullRequestService.PullRequestService;
+  const settingsService = yield* ServerSettings.ServerSettingsService;
   const random = yield* SecureRandom.SecureRandom;
   const bootedAt = yield* Clock.currentTimeMillis;
   const lives = new Map<string, WatchLife>();
@@ -412,13 +415,39 @@ export const make = Effect.gen(function* () {
       Effect.tap(() => ended(target, "closed")),
     );
 
+  const merged = Effect.fn("PullRequestWatchReactor.merged")(function* (target: WatchTarget) {
+    const { settings } = resolveProjectSettings(
+      yield* settingsService.getSettings,
+      target.thread.projectId,
+    );
+    // Settling on merge declares the merge the end of the work. Otherwise the agent may still owe
+    // work after it, such as checking a deploy.
+    if (settings.sidebarAutoSettleOnMerge) {
+      yield* record(target, null);
+    } else {
+      yield* record(target, null, {
+        text: `Pull request #${target.link.number} (${target.link.url}) was merged, so T3 Code stopped watching it. Finish any work that was waiting on the merge. If none was, end your turn.`,
+        notification: {
+          source: { kind: "monitor" },
+          outcome: "completed",
+          summary: `#${target.link.number}: merged, stopped watching`,
+        },
+      }).pipe(
+        Effect.tap(() => woke(target)),
+        // The thread can settle between the sweep's read and this wake, which then refuses it.
+        Effect.catch(() => record(target, null)),
+      );
+    }
+    yield* ended(target, "merged");
+  });
+
   const endsWithoutRead = ({ thread, link }: WatchTarget): WatchEndReason | undefined =>
-    link.snapshot?.state === "merged"
-      ? "merged"
-      : thread.settledOverride === "settled" || thread.settledAt !== null
-        ? "settled"
-        : thread.lineage.relationshipToParent === "subagent"
-          ? "subagent"
+    thread.settledOverride === "settled" || thread.settledAt !== null
+      ? "settled"
+      : thread.lineage.relationshipToParent === "subagent"
+        ? "subagent"
+        : link.snapshot?.state === "merged"
+          ? "merged"
           : undefined;
 
   const eachTarget = <E>(
@@ -529,9 +558,7 @@ export const make = Effect.gen(function* () {
     if (detail.state !== "open") {
       lastReads.delete(group.key);
       return yield* eachTarget(group, (target) =>
-        detail.state === "closed"
-          ? closed(target)
-          : record(target, null).pipe(Effect.tap(() => ended(target, "merged"))),
+        detail.state === "closed" ? closed(target) : merged(target),
       );
     }
 
@@ -620,8 +647,10 @@ export const make = Effect.gen(function* () {
     yield* Effect.forEach(
       ending,
       ([target, reason]) =>
-        record(target, null).pipe(
-          Effect.tap(() => ended(target, reason)),
+        (reason === "merged"
+          ? merged(target)
+          : record(target, null).pipe(Effect.tap(() => ended(target, reason)))
+        ).pipe(
           Effect.catchCause(
             logFailure("pull request watch stop failed", {
               threadId: target.thread.id,
