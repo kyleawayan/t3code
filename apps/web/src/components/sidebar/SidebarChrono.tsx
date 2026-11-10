@@ -2,6 +2,7 @@ import { memo, useEffect, useState } from "react";
 
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { onChronoSendNudge } from "./chronoSendNudge";
 import {
   CHRONO_RESET,
   ChronoElapsedTodaySchema,
@@ -26,6 +27,8 @@ const CHRONO_ACTION_LABEL = {
 
 // Rendered invisibly so the blank display keeps the lit display's line box.
 const CHRONO_NO_SEGMENTS = "00:00:00";
+// "START?" as a 7-segment display spells it, one letter per digit cell of HH:MM:SS.
+const CHRONO_NUDGE_CELLS = ["St", "Ar", "t?"] as const;
 
 function useChronoNow(startedAt: number | null): number {
   const [now, setNow] = useState(Date.now);
@@ -59,7 +62,16 @@ export const SidebarChrono = memo(function SidebarChrono() {
   const [tooltipOpenedAt, setTooltipOpenedAt] = useState(0);
   const now = useChronoNow(state.phase === "running" ? state.startedAt : null);
   const display = chronoDisplay(state, now);
+  // Each send restarts the flash, so its key changes; null shows the time again.
+  const [nudgeKey, setNudgeKey] = useState<number | null>(null);
+  const running = state.phase === "running";
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to composer sends, which happen outside this component
+  useEffect(() => {
+    if (running) return;
+    return onChronoSendNudge(() => setNudgeKey((current) => (current ?? 0) + 1));
+  }, [running]);
   const press = () => {
+    setNudgeKey(null);
     const pressedAt = Date.now();
     setElapsedToday((current) => recordChronoRun(current, state, pressedAt));
     setState((current) => pressChrono(current, pressedAt));
@@ -95,14 +107,31 @@ export const SidebarChrono = memo(function SidebarChrono() {
         </TooltipPopup>
       </Tooltip>
       <div className="sidebar-chrono-display flex shrink-0 grow items-center justify-center rounded-sm">
-        <span
-          role="timer"
-          aria-hidden={display === null}
-          data-blank={display === null || undefined}
-          className="sidebar-chrono-digits"
-        >
-          {display ?? CHRONO_NO_SEGMENTS}
-        </span>
+        {nudgeKey !== null ? (
+          <span
+            key={nudgeKey}
+            aria-hidden
+            data-nudge=""
+            className="sidebar-chrono-digits"
+            onAnimationEnd={() => setNudgeKey(null)}
+          >
+            {/* Unlit colons keep each letter on its digit cell. */}
+            {CHRONO_NUDGE_CELLS[0]}
+            <span className="text-transparent">:</span>
+            {CHRONO_NUDGE_CELLS[1]}
+            <span className="text-transparent">:</span>
+            {CHRONO_NUDGE_CELLS[2]}
+          </span>
+        ) : (
+          <span
+            role="timer"
+            aria-hidden={display === null}
+            data-blank={display === null || undefined}
+            className="sidebar-chrono-digits"
+          >
+            {display ?? CHRONO_NO_SEGMENTS}
+          </span>
+        )}
       </div>
     </div>
   );
