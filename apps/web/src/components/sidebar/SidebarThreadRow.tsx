@@ -1466,7 +1466,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                                 )}
                               >
                                 <AlarmClockIcon aria-hidden className="size-4 shrink-0" />
-                                <span role="status">{topStatus.label}</span>
+                                {/* Fork: the row controls sit beside the badge, so the word gives
+                                    them room while they show; a narrow sidebar has none to spare. */}
+                                <span
+                                  role="status"
+                                  className="group-any-hover/sidebar-row:sr-only group-has-[:focus-visible]/sidebar-status-slot:sr-only group-data-[controls-open=true]/sidebar-status-slot:sr-only"
+                                >
+                                  {topStatus.label}
+                                </span>
                               </button>
                             }
                           />
@@ -1552,7 +1559,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                             }
                           >
                             <CheckIcon className="size-3.5" />
-                            Settle
+                            {/* Fork: beside a Woke badge, a narrow sidebar fits only the icon. */}
+                            <span className={cn(isWokeStatus && "@max-[207px]/app-sidebar:hidden")}>
+                              Settle
+                            </span>
                           </TooltipTrigger>
                           <TooltipPopup>Settle thread</TooltipPopup>
                         </Tooltip>
