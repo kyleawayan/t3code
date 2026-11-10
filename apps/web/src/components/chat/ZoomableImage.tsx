@@ -6,6 +6,9 @@ import {
   windowControlsOverlayHeight,
 } from "../../lib/windowControlsOverlay";
 
+import { observeResize } from "~/lib/observeResize";
+import { cn } from "~/lib/utils";
+
 import { AttachmentImage } from "../media/AttachmentImage";
 
 const MAX_ZOOM = 8;
@@ -43,17 +46,22 @@ export function ZoomableImage({
   name,
   mimeType,
   onError,
+  fill = false,
   ref,
 }: {
   src: string;
   name: string;
   mimeType?: string | undefined;
   onError: () => void;
+  /** Fork: fill the parent and fit the image to it, instead of sizing to the window. */
+  fill?: boolean;
   ref?: Ref<ZoomableImageHandle>;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
-  const viewerSize = useSyncExternalStore(subscribeViewerSize, getViewerSize);
+  const windowViewerSize = useSyncExternalStore(subscribeViewerSize, getViewerSize);
+  const [fillSize, setFillSize] = useState<{ width: number; height: number } | null>(null);
+  const viewerSize = fill && fillSize ? fillSize : windowViewerSize;
   const [zoom, setZoom] = useState(1);
   // A resized viewer refits the image.
   const [zoomViewerSize, setZoomViewerSize] = useState(viewerSize);
@@ -68,13 +76,17 @@ export function ZoomableImage({
     left: number;
     top: number;
   } | null>(null);
-  const suppressClickRef = useRef(false);
   const [dragging, setDragging] = useState(false);
-  const maxHeight = Math.max(1, Math.min(viewerSize.height * 0.86, viewerSize.height - 160));
+  const maxHeight = fill
+    ? viewerSize.height
+    : Math.max(1, Math.min(viewerSize.height * 0.86, viewerSize.height - 160));
+  const maxWidth = fill
+    ? viewerSize.width
+    : viewerSize.width * 0.92 - (viewerSize.width >= 640 ? 96 : 0);
   // A vector scales without loss, and an SVG without width and height reports a tiny default size.
   const fit = Math.min(
     mimeType === "image/svg+xml" ? Infinity : 1,
-    (viewerSize.width * 0.92 - (viewerSize.width >= 640 ? 96 : 0)) / (naturalSize.width || 1),
+    maxWidth / (naturalSize.width || 1),
     maxHeight / (naturalSize.height || 1),
   );
   const width = naturalSize.width * fit * zoom;
@@ -125,6 +137,18 @@ export function ZoomableImage({
     const anchorY = (viewport.scrollTop + y) / zoom;
     const clientX = bounds.left + x;
     const clientY = bounds.top + y;
+    const image = fill ? viewport.querySelector("img") : null;
+    if (image) {
+      // Fork: a fitted image sits centered, so anchor on the image, not the scroll origin.
+      const before = image.getBoundingClientRect();
+      const fractionX = (clientX - before.left) / (before.width || 1);
+      const fractionY = (clientY - before.top) / (before.height || 1);
+      flushSync(() => setZoom(clamped));
+      const after = image.getBoundingClientRect();
+      viewport.scrollLeft += after.left + fractionX * after.width - clientX;
+      viewport.scrollTop += after.top + fractionY * after.height - clientY;
+      return;
+    }
     // The new size must be laid out before the scroll position can keep the anchor in place.
     flushSync(() => setZoom(clamped));
     const resized = viewport.getBoundingClientRect();
@@ -147,31 +171,58 @@ export function ZoomableImage({
       });
     };
     viewport.addEventListener("wheel", wheel, { passive: false });
+    const stopObservingSize = fill
+      ? observeResize(viewport, () => {
+          // The border box, so a scrollbar appearing on zoom doesn't refit the image.
+          const next = { width: viewport.offsetWidth, height: viewport.offsetHeight };
+          // A new size refits the image, so an unchanged one must keep its identity.
+          setFillSize((current) =>
+            current?.width === next.width && current.height === next.height ? current : next,
+          );
+        })
+      : null;
     return () => {
       viewport.removeEventListener("wheel", wheel);
+      stopObservingSize?.();
       viewportRef.current = null;
     };
   };
 
+  const image = (
+    <AttachmentImage
+      name={name}
+      mimeType={mimeType}
+      src={src}
+      alt={name}
+      draggable={false}
+      className="block max-w-none select-none"
+      style={naturalSize.width ? { width, height } : { maxWidth: "var(--media-width)", maxHeight }}
+      onLoad={(event) => {
+        setNaturalSize({
+          width: event.currentTarget.naturalWidth,
+          height: event.currentTarget.naturalHeight,
+        });
+      }}
+      onError={onError}
+    />
+  );
+
   return (
-    <div className="min-w-0">
+    <div className={fill ? "flex min-h-0 w-full flex-1" : "min-w-0"}>
       <div
         ref={attachViewport}
         role="region"
         aria-label={`${name}, zoomable image`}
-        aria-description="Click to zoom in or return to fit. Scroll to zoom, drag to pan. Use Enter to toggle zoom, plus or minus to zoom, and 0 to fit."
+        aria-description="Scroll to zoom, drag to pan. Use Enter to toggle zoom, plus or minus to zoom, and 0 to fit."
         tabIndex={0}
-        className="max-w-[var(--media-width)] overflow-auto overscroll-contain rounded-lg bg-background shadow-2xl ring-1 ring-border/70 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring"
+        className={cn(
+          "max-w-[var(--media-width)] overflow-auto overscroll-contain bg-background outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring",
+          fill ? "size-full" : "rounded-lg shadow-2xl ring-1 ring-border/70",
+        )}
         style={{
-          width: width || undefined,
-          height: height || undefined,
-          maxHeight,
-          cursor: zoom > 1 ? (dragging ? "grabbing" : "grab") : "zoom-in",
-        }}
-        onClick={(event) => {
-          // Pointer capture emits a click after dragging; preserve zoom.
-          if (suppressClickRef.current || event.detail > 1) return;
-          changeZoom(zoom > 1 ? 1 : 2, { x: event.clientX, y: event.clientY });
+          ...(fill ? {} : { width: width || undefined, height: height || undefined, maxHeight }),
+          // Fork: a click never zooms, so a drag that started at fit doesn't zoom on release.
+          cursor: zoom > 1 ? (dragging ? "grabbing" : "grab") : undefined,
         }}
         onKeyDown={(event) => {
           if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -191,7 +242,6 @@ export function ZoomableImage({
         }}
         onPointerDown={(event) => {
           if (dragRef.current) return;
-          suppressClickRef.current = false;
           if (event.pointerType !== "mouse" || event.button !== 0 || zoom <= 1) return;
           const viewport = event.currentTarget;
           const bounds = viewport.getBoundingClientRect();
@@ -213,9 +263,6 @@ export function ZoomableImage({
         onPointerMove={(event) => {
           const drag = dragRef.current;
           if (!drag || drag.pointerId !== event.pointerId) return;
-          if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 4) {
-            suppressClickRef.current = true;
-          }
           event.currentTarget.scrollLeft = drag.left - (event.clientX - drag.x);
           event.currentTarget.scrollTop = drag.top - (event.clientY - drag.y);
         }}
@@ -233,24 +280,14 @@ export function ZoomableImage({
           setDragging(false);
         }}
       >
-        <AttachmentImage
-          name={name}
-          mimeType={mimeType}
-          src={src}
-          alt={name}
-          draggable={false}
-          className="block max-w-none select-none"
-          style={
-            naturalSize.width ? { width, height } : { maxWidth: "var(--media-width)", maxHeight }
-          }
-          onLoad={(event) => {
-            setNaturalSize({
-              width: event.currentTarget.naturalWidth,
-              height: event.currentTarget.naturalHeight,
-            });
-          }}
-          onError={onError}
-        />
+        {fill ? (
+          // Centers an image smaller than the viewport; a larger one scrolls from its edge.
+          <div className="flex min-h-full w-max min-w-full items-center justify-center">
+            {image}
+          </div>
+        ) : (
+          image
+        )}
       </div>
       <span className="sr-only" aria-live="polite">
         {Math.round(zoom * 100)}% zoom

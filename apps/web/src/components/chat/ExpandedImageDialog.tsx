@@ -4,6 +4,7 @@ import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
 import { Image as ImageGlyph, Text as TextGlyph } from "lucide";
 import { Button } from "../ui/button";
 import { MorphIcon } from "~/components/MorphIcon";
+import { cn } from "~/lib/utils";
 import { Dialog, DialogPopup, DialogTitle } from "../ui/dialog";
 import type { ExpandedImageItem, ExpandedImagePreview } from "./ExpandedImagePreview";
 import { resolveExternalWebLinkHost } from "./externalLinkContextMenu";
@@ -31,7 +32,7 @@ import { mediaMimeType, mediaMimeTypeFromExtension } from "@t3tools/shared/media
 interface ExpandedImageDialogProps {
   preview: ExpandedImagePreview;
   onClose: () => void;
-  /** Fork: zoom over this element, such as the right panel, and leave the rest usable. */
+  /** Fork: fill this element, such as the right panel's body, and leave the rest usable. */
   container?: HTMLElement | null | undefined;
 }
 
@@ -184,7 +185,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
         container={container}
         className={
           container
-            ? "row-start-1 h-full max-h-full w-full max-w-full items-center justify-center overflow-visible [container-type:size] [--media-width:100cqw] [--media-height:calc(100cqh-3rem)]"
+            ? "row-start-1 h-full max-h-full w-full max-w-full overflow-hidden [container-type:size] [--media-width:100cqw] [--media-height:calc(100cqh-3rem)]"
             : "row-start-1 h-full max-h-[92vh] w-[92vw] max-w-[92vw] items-center justify-center overflow-visible [--media-width:92vw] [--media-height:min(calc((100vh-var(--native-titlebar-height,0px))*0.86),calc(100vh-var(--native-titlebar-height,0px)-160px))] sm:[--media-width:calc(92vw-96px)]"
         }
         onKeyDown={onKeyDown}
@@ -200,7 +201,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           ref={closeButtonRef}
           size="icon-sm"
           variant="media-close"
-          className="absolute right-0 top-0 z-20"
+          className={cn("absolute z-20", container ? "right-2 top-2" : "right-0 top-0")}
           onClick={close}
           aria-label={`Close ${mediaLabel} preview`}
         >
@@ -210,8 +211,11 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           <Button
             type="button"
             size="icon"
-            variant="media-navigation"
-            className="left-0 top-auto bottom-0 translate-y-0 sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2"
+            variant={container ? "ghost" : "media-navigation"}
+            className={cn(
+              "left-0 top-auto bottom-0 translate-y-0 sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2",
+              container && "absolute z-20",
+            )}
             aria-label="Previous media"
             onClick={() => navigateImage(-1)}
           >
@@ -219,7 +223,12 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           </Button>
         )}
         <MediaActions source={actionsSource} showTooltip={false}>
-          <div className="relative isolate z-10 flex max-h-full max-w-[var(--media-width)] flex-col items-center">
+          <div
+            className={cn(
+              "relative isolate z-10 flex max-h-full max-w-[var(--media-width)] flex-col items-center",
+              container && "size-full min-h-0 justify-center",
+            )}
+          >
             {item.type === "video" ? (
               <ExpandedVideo key={index} item={item} />
             ) : showingAccessibilityDetails ? (
@@ -246,9 +255,15 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
                 name={item.name}
                 mimeType={itemMimeType(item)}
                 onError={() => setFailedImageSrc(item.src)}
+                fill={Boolean(container)}
               />
             )}
-            <div className="mt-2 flex max-w-[var(--media-width)] items-center justify-center gap-1.5 text-xs text-white/80 max-sm:px-10">
+            <div
+              className={cn(
+                "mt-2 flex max-w-[var(--media-width)] items-center justify-center gap-1.5 text-xs",
+                container ? "mb-2 px-10 text-muted-foreground" : "text-white/80 max-sm:px-10",
+              )}
+            >
               <span className="truncate" aria-live="polite" aria-atomic="true">
                 {item.name}
                 {preview.images.length > 1 ? ` (${index + 1}/${preview.images.length})` : ""}
@@ -286,8 +301,11 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           <Button
             type="button"
             size="icon"
-            variant="media-navigation"
-            className="right-0 top-auto bottom-0 translate-y-0 sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2"
+            variant={container ? "ghost" : "media-navigation"}
+            className={cn(
+              "right-0 top-auto bottom-0 translate-y-0 sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2",
+              container && "absolute z-20",
+            )}
             aria-label="Next media"
             onClick={() => navigateImage(1)}
           >

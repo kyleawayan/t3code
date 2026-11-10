@@ -93,14 +93,17 @@ function DialogPopup({
   showCloseButton?: boolean;
   bottomStickOnMobile?: boolean;
   variant?: "default" | "media";
-  /** Fork: covers only this positioned element instead of the window. Pair with `modal={false}`. */
+  /**
+   * Fork: fills this positioned element, opaque, instead of floating over the window. Pair with
+   * `modal={false}`.
+   */
   container?: HTMLElement | null | undefined;
 }) {
   return (
     <DialogPortal container={container ?? undefined}>
       {/* Media opens from inside other overlays (a composer chip, a popover), so it sits above them. */}
       <DialogBackdrop
-        className={cn(variant === "media" && "z-[60]", container && "absolute")}
+        className={cn(variant === "media" && "z-[60]", container && "absolute bg-background")}
         variant={variant}
         data-contained={container ? "" : undefined}
       />
@@ -109,7 +112,7 @@ function DialogPopup({
           bottomStickOnMobile && "max-sm:grid-rows-[1fr_auto] max-sm:p-0 max-sm:pt-12",
           variant === "media" &&
             "z-[60] grid-rows-1 place-items-center px-4 pb-6 pt-[calc(var(--native-titlebar-height,0px)+1.5rem)] [-webkit-app-region:no-drag]",
-          container && "absolute pt-6",
+          container && "absolute p-0",
         )}
       >
         <DialogPrimitive.Popup
@@ -118,6 +121,7 @@ function DialogPopup({
             "row-start-2 text-popover-foreground",
             variant === "default" && "max-h-full max-w-lg",
             bottomStickOnMobile && DIALOG_MOBILE_SHEET_CLASS,
+            container && "border-0",
             className,
           )}
           data-slot="dialog-popup"
