@@ -78,6 +78,7 @@ import {
 } from "../WorkspaceBreadcrumb";
 import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { UsageLimitsSection } from "./UsageLimits";
+import { UsageProjectsOverview } from "./UsageProjects";
 import { UsagePriceOverrides } from "./UsagePriceOverrides";
 import { UsageProviderChart } from "./UsageProviderChart";
 import { SpeedPremium, UsageModelDialog } from "./UsageModelDialog";
@@ -533,6 +534,13 @@ export function UsagePage() {
                   </p>
                 ))}
               </div>
+            ) : metric === "projects" ? (
+              <UsageProjectsOverview
+                merged={merged}
+                selectedEnvironments={selectedEnvironments}
+                hiddenProviders={hiddenProviders}
+                loading={showingKept || refreshingUsage}
+              />
             ) : (
               <UsageOverview
                 merged={merged}
