@@ -10,7 +10,9 @@ import { CLAUDE_SYNTHETIC_MODEL } from "../provider/Drivers/claudeUsage.ts";
 import { mergeUsageCopies } from "./usageAggregation.ts";
 import { GUARD_LENGTH, type TranscriptParsePosition } from "./usageTranscriptReader.ts";
 
-const USAGE_SCAN_CACHE_VERSION = 17 as const;
+// Fork: v18 adds each record's folder (cwd). It stays above upstream's version, and the file name
+// below keeps it apart from upstream's.
+const USAGE_SCAN_CACHE_VERSION = 18 as const;
 const SPEED_COMPATIBLE_SINCE_VERSION = 4;
 
 /**
@@ -18,8 +20,11 @@ const SPEED_COMPATIBLE_SINCE_VERSION = 4;
  * replace it, dropping saved usage for deleted transcripts. Separate files keep
  * the newer one; older files are removed once it is saved.
  */
-export const SCAN_CACHE_FILE_NAME = "usage-scan-cache-v17.json";
+export const SCAN_CACHE_FILE_NAME = "usage-scan-cache-v18-fork.json";
 export const LEGACY_SCAN_CACHE_FILE_NAMES = [
+  // Fork: the previous fork cache, version 12, with the folder where upstream's v13 put 1h writes.
+  "usage-scan-cache-v12-fork.json",
+  "usage-scan-cache-v17.json",
   "usage-scan-cache-v16.json",
   "usage-scan-cache-v15.json",
   "usage-scan-cache-v14.json",
@@ -66,6 +71,7 @@ type SerializedRecord = readonly [
   rateModelIndex?: number | null,
   unresolvedServiceTierTurnId?: string | null,
   cacheCreation1hTokens?: number,
+  cwdIndex?: number,
 ];
 
 interface SerializedFile {
@@ -85,18 +91,28 @@ interface SerializedCache {
   readonly version: number;
   readonly models: readonly string[];
   readonly sessions: readonly string[];
+  readonly cwds?: readonly string[];
   readonly files: Readonly<Record<string, SerializedFile>>;
 }
 
 interface InternTables {
   readonly models: string[];
   readonly sessions: string[];
+  readonly cwds: string[];
   readonly modelIndex: Map<string, number>;
   readonly sessionIndex: Map<string, number>;
+  readonly cwdIndex: Map<string, number>;
 }
 
 function makeInternTables(): InternTables {
-  return { models: [], sessions: [], modelIndex: new Map(), sessionIndex: new Map() };
+  return {
+    models: [],
+    sessions: [],
+    cwds: [],
+    modelIndex: new Map(),
+    sessionIndex: new Map(),
+    cwdIndex: new Map(),
+  };
 }
 
 function intern(table: string[], index: Map<string, number>, value: string): number {
@@ -124,11 +140,17 @@ function serializeFile(entry: CachedFile, tables: InternTables): SerializedFile 
     record.rateModel === undefined
       ? null
       : intern(tables.models, tables.modelIndex, record.rateModel),
-    ...(record.cacheCreation1hTokens !== undefined
-      ? ([record.unresolvedServiceTierTurnId ?? null, record.cacheCreation1hTokens] as const)
-      : record.unresolvedServiceTierTurnId !== undefined
-        ? ([record.unresolvedServiceTierTurnId] as const)
-        : ([] as const)),
+    ...(record.cwd !== undefined
+      ? ([
+          record.unresolvedServiceTierTurnId ?? null,
+          record.cacheCreation1hTokens ?? 0,
+          intern(tables.cwds, tables.cwdIndex, record.cwd),
+        ] as const)
+      : record.cacheCreation1hTokens !== undefined
+        ? ([record.unresolvedServiceTierTurnId ?? null, record.cacheCreation1hTokens] as const)
+        : record.unresolvedServiceTierTurnId !== undefined
+          ? ([record.unresolvedServiceTierTurnId] as const)
+          : ([] as const)),
   ];
   return {
     s: entry.size,
@@ -161,6 +183,7 @@ export function makeScanCacheWriter(): (
       version: USAGE_SCAN_CACHE_VERSION,
       models: tables.models,
       sessions: tables.sessions,
+      cwds: tables.cwds,
     });
     yield `},${tail.slice(1)}`;
   }
@@ -194,8 +217,11 @@ export function decodeScanCache(
 
   if (!root.models.every((value) => typeof value === "string")) return cache;
   if (!root.sessions.every((value) => typeof value === "string")) return cache;
+  const rawCwds: unknown = root.cwds ?? [];
+  if (!isRecordArray(rawCwds) || !rawCwds.every((value) => typeof value === "string")) return cache;
   const models = root.models as readonly string[];
   const sessions = root.sessions as readonly string[];
+  const cwds = rawCwds as readonly string[];
 
   // Reject entire corrupt entries; partial survivors would appear warm and hide usage until the file changes.
   const decodeRecords = (
@@ -219,8 +245,13 @@ export function decodeScanCache(
         speedIndex,
         rateModelIndex,
         unresolvedServiceTierTurnId,
-        cacheCreation1h = 0,
+        afterTurnId,
+        lastSlot,
       ] = row as SerializedRecord;
+      // Fork: the v12 fork cache kept the folder in the slot upstream's v13 gave 1-hour cache writes.
+      const cacheCreation1h = version === 12 ? 0 : (afterTurnId ?? 0);
+      const cwdIndex = version === 12 ? afterTurnId : lastSlot;
+      const cwd = typeof cwdIndex === "number" ? cwds[cwdIndex] : undefined;
       const speed = typeof speedIndex === "number" ? SPEEDS[speedIndex] : undefined;
 
       const model = typeof modelIndex === "number" ? models[modelIndex] : undefined;
@@ -231,6 +262,7 @@ export function decodeScanCache(
         model === undefined ||
         (unresolvedServiceTierTurnId != null && typeof unresolvedServiceTierTurnId !== "string") ||
         !Number.isFinite(cacheCreation1h) ||
+        (cwdIndex !== undefined && cwd === undefined) ||
         (rateModelIndex != null && rateModel === undefined) ||
         !Number.isFinite(uncached) ||
         !Number.isFinite(cached) ||
@@ -252,6 +284,7 @@ export function decodeScanCache(
         model,
         ...(rateModel === undefined ? {} : { rateModel }),
         sessionId: (typeof sessionIndex === "number" ? sessions[sessionIndex] : undefined) ?? "",
+        ...(cwd === undefined ? {} : { cwd }),
         totals: {
           uncachedInputTokens: uncached,
           cachedInputTokens: cached,
@@ -262,7 +295,7 @@ export function decodeScanCache(
         ...(cacheCreation1h > 0 ? { cacheCreation1hTokens: cacheCreation1h } : {}),
         reportedCostUsd: typeof reportedCostUsd === "number" ? reportedCostUsd : null,
         speed,
-        ...(version >= 7 && unresolvedServiceTierTurnId != null
+        ...(version >= 7 && typeof unresolvedServiceTierTurnId === "string"
           ? { unresolvedServiceTierTurnId }
           : {}),
         dedupeKey:
@@ -313,6 +346,8 @@ export function decodeScanCache(
     // v15 repairs skipped Codex requests whose counters rewound; clean v14 entries stay served.
     // v17 keys Grok turns by time, restoring turns previously dropped as repeats.
     const legacy =
+      // Fork: v18 records carry their folder, so older Claude and Codex entries re-parse once.
+      ((entry.p === "claude" || entry.p === "codex") && version < 18) ||
       (entry.p === "claude" && version < 13) ||
       (entry.p === "grok" && version < 17) ||
       (format.state !== undefined &&

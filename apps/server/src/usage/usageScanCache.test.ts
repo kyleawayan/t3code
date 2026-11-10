@@ -71,6 +71,7 @@ describe("scan cache round trip", () => {
             dedupeKey: "msg_2:",
             model: "claude-opus-5-5",
             speed: "fast",
+            cwd: "/work/app",
             cacheCreation1hTokens: 8,
           }),
         ],
@@ -81,6 +82,7 @@ describe("scan cache round trip", () => {
         [
           record({
             sessionId: "session-b",
+            cwd: "/work/app",
             reportedCostUsd: 1.5,
             totals: {
               uncachedInputTokens: 0,
@@ -124,6 +126,7 @@ describe("scan cache round trip", () => {
         provider: "codex",
         model: "gpt-6-astra",
         sessionId: "session-c",
+        cwd: "/work/app",
         dedupeKey: null,
       }),
       unresolvedServiceTierTurnId: "native-turn",
@@ -139,6 +142,7 @@ describe("scan cache round trip", () => {
           provider: "codex",
           model: "gpt-6-astra",
           rateModel: "gpt-6",
+          cwd: "/work/other",
           dedupeKey: null,
           speed: "ultrafast",
         }),
@@ -225,15 +229,12 @@ describe("scan cache round trip", () => {
       };
 
       const restored = decodeScanCache(JSON.parse(JSON.stringify(legacy)), TEST_FORMAT_MAP);
-      expect(restored.get("/gone.jsonl")).toEqual(
-        version >= 13
-          ? original.get("/gone.jsonl")
-          : {
-              ...original.get("/gone.jsonl"),
-              size: -1,
-              position: { resumeOffset: 0, guardLength: 0, guardHash: 0, state: null },
-            },
-      );
+      // Fork: v18 re-parses every older Claude and Codex entry to read each record's folder.
+      expect(restored.get("/gone.jsonl")).toEqual({
+        ...original.get("/gone.jsonl"),
+        size: -1,
+        position: { resumeOffset: 0, guardLength: 0, guardHash: 0, state: null },
+      });
       expect(restored.get("/gone-codex.jsonl")).toEqual({
         ...original.get("/gone-codex.jsonl"),
         size: -1,
@@ -255,6 +256,28 @@ describe("scan cache round trip", () => {
       );
     },
   );
+
+  // Fork: the v12 fork cache put the folder where upstream's v13 later put 1-hour cache writes.
+  it("reads a v12 fork entry's folder without mistaking it for 1-hour cache writes", () => {
+    const original = cacheWith([["/gone.jsonl", 100, [record({ cwd: "/work/app" })]]]);
+    const encoded = parse(makeScanCacheWriter()(original, {}));
+    const entry = encoded.files["/gone.jsonl"]!;
+    const v12 = {
+      ...encoded,
+      version: 12,
+      files: {
+        "/gone.jsonl": {
+          ...entry,
+          r: entry.r.map((row: unknown[]) => [...row.slice(0, 13), ...row.slice(14)]),
+        },
+      },
+    };
+
+    const [restored] = decodeScanCache(JSON.parse(JSON.stringify(v12)), TEST_FORMAT_MAP).get(
+      "/gone.jsonl",
+    )!.records;
+    expect(restored).toEqual(original.get("/gone.jsonl")!.records[0]);
+  });
 
   it("re-parses a v14 Codex entry that skipped records and restarts a clean one when it grows", () => {
     const codex = (malformedRecords: number): CachedFile => ({
@@ -280,9 +303,10 @@ describe("scan cache round trip", () => {
       size: -1,
       position: { resumeOffset: 0, guardLength: 0, guardHash: 0, state: null },
     });
-    // Served while unchanged, but its state predates the latest snapshot time, so it cannot resume.
+    // Fork: every Codex entry before v18 re-parses to read its records' folders.
     expect(restored.get("/clean-codex.jsonl")).toEqual({
       ...codex(0),
+      size: -1,
       position: { resumeOffset: 0, guardLength: 0, guardHash: 0, state: null },
     });
     // The migrated entries persist without a state and load again under the current version.
@@ -318,10 +342,12 @@ describe("scan cache round trip", () => {
     };
     const current = parse(makeScanCacheWriter()(new Map([["/codex.jsonl", entry]]), {}));
 
+    // Fork: every Codex entry before v18 re-parses to read its records' folders.
     expect(
       decodeScanCache({ ...current, version: 15 }, TEST_FORMAT_MAP).get("/codex.jsonl"),
     ).toEqual({
       ...entry,
+      size: -1,
       position: { resumeOffset: 0, guardLength: 0, guardHash: 0, state: null },
     });
     expect(decodeScanCache(current, TEST_FORMAT_MAP).get("/codex.jsonl")).toEqual(entry);
