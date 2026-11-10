@@ -444,6 +444,35 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   user-select: none;
 }
 
+/* Four one-second blinks. The half iteration ends on the last lit half, so the time returns
+   from a lit word instead of a blank. Finite, so it never keeps repainting. */
+.sidebar-chrono-digits[data-nudge] {
+  animation: sidebar-chrono-nudge 1s linear 3.5;
+  user-select: none;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation-name: sidebar-chrono-nudge-steady;
+  }
+}
+
+@keyframes sidebar-chrono-nudge {
+  0%,
+  49.99% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Same length as the blink, so the word still clears itself. */
+@keyframes sidebar-chrono-nudge-steady {
+  to {
+    opacity: 1;
+  }
+}
+
 /* The font tokens are declared outside the inline theme so utilities reference
    the variables and Settings -> Appearance can override them at runtime. The
    default stacks are mirrored in `appearanceFonts.ts`. */
