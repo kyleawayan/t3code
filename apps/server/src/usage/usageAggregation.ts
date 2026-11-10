@@ -5,6 +5,7 @@ import type {
   UsageDay,
   UsageModelFilter,
   UsageModelSelector,
+  UsageProjectTotal,
   UsageResolution,
   UsageTokenTotals,
 } from "@t3tools/contracts";
@@ -59,6 +60,15 @@ interface MutableBucket {
   records: number;
   unpricedRecords: number;
   providerReportedRecords: number;
+  sessions: Set<string>;
+}
+
+interface MutableProjectTotal {
+  readonly cwd: string;
+  readonly provider: UsageProjectTotal["provider"];
+  totals: { -readonly [K in keyof UsageTokenTotals]: number };
+  costUsd: number;
+  records: number;
   sessions: Set<string>;
 }
 
@@ -125,6 +135,7 @@ export function canonicalModelFilter(
 
 export interface AggregateResult {
   readonly buckets: readonly UsageBucket[];
+  readonly projects: readonly UsageProjectTotal[];
   readonly duplicatesDropped: number;
   readonly outOfWindow: number;
 }
@@ -132,6 +143,7 @@ export interface AggregateResult {
 /** Deduplicates across the whole scan; Claude copies records into resumed/forked transcripts. */
 export class UsageAggregator {
   readonly #buckets = new Map<string, MutableBucket>();
+  readonly #projects = new Map<string, MutableProjectTotal>();
   readonly #seen = new Set<string>();
   readonly #toDay: (timestampMs: number) => string;
   readonly #hourlyWindow: { readonly sinceTimeMs: number; readonly untilTimeMs: number } | null;
@@ -232,7 +244,32 @@ export class UsageAggregator {
     if (priced.costSource === "unpriced") bucket.unpricedRecords += 1;
     if (priced.costSource === "providerReported") bucket.providerReportedRecords += 1;
     if (record.sessionId.length > 0) bucket.sessions.add(record.sessionId);
+    if (record.cwd !== undefined) this.#addProject(record, record.cwd, priced.costUsd);
     return true;
+  }
+
+  #addProject(record: UsageRecord, cwd: string, costUsd: number): void {
+    const key = `${cwd}\u0000${record.provider}`;
+    let project = this.#projects.get(key);
+    if (project === undefined) {
+      project = {
+        cwd,
+        provider: record.provider,
+        totals: { ...EMPTY_TOTALS },
+        costUsd: 0,
+        records: 0,
+        sessions: new Set<string>(),
+      };
+      this.#projects.set(key, project);
+    }
+    project.totals.uncachedInputTokens += record.totals.uncachedInputTokens;
+    project.totals.cachedInputTokens += record.totals.cachedInputTokens;
+    project.totals.cacheCreationTokens += record.totals.cacheCreationTokens;
+    project.totals.outputTokens += record.totals.outputTokens;
+    project.totals.reasoningTokens += record.totals.reasoningTokens;
+    project.costUsd += costUsd;
+    project.records += 1;
+    if (record.sessionId.length > 0) project.sessions.add(record.sessionId);
   }
 
   // Aliases use the target's rate, replacing provider-specific rateModel.
@@ -332,8 +369,25 @@ export class UsageAggregator {
         a.model.localeCompare(b.model),
     );
 
+    const projects = [...this.#projects.values()]
+      .map((project): UsageProjectTotal => ({
+        cwd: project.cwd,
+        provider: project.provider,
+        totals: { ...project.totals },
+        costUsd: project.costUsd,
+        records: project.records,
+        sessions: project.sessions.size,
+      }))
+      .sort(
+        (a, b) =>
+          b.costUsd - a.costUsd ||
+          a.cwd.localeCompare(b.cwd) ||
+          a.provider.localeCompare(b.provider),
+      );
+
     return {
       buckets,
+      projects,
       duplicatesDropped: this.#duplicatesDropped,
       outOfWindow: this.#outOfWindow,
     };

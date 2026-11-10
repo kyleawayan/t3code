@@ -46,6 +46,7 @@ describe("parseClaudeLine", () => {
     });
     expect(record?.dedupeKey).toBe("msg_1:");
     expect(record?.speed).toBe("standard");
+    expect(record?.cwd).toBe("/home/theo/project");
   });
 
   it("gives every content block of one message the same dedupe key", () => {

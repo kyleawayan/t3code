@@ -70,6 +70,17 @@ export const UsageBucket = Schema.Struct({
 });
 export type UsageBucket = typeof UsageBucket.Type;
 
+/** Fork: one folder's usage across the whole window, for one provider. */
+export const UsageProjectTotal = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  provider: UsageProviderKind,
+  totals: UsageTokenTotals,
+  costUsd: Schema.Number,
+  records: NonNegativeInt,
+  sessions: NonNegativeInt,
+});
+export type UsageProjectTotal = typeof UsageProjectTotal.Type;
+
 export const UsageSourceFingerprint = Schema.Struct({
   hostId: TrimmedNonEmptyString,
   provider: UsageProviderKind,
@@ -144,6 +155,8 @@ export const UsageSummary = Schema.Struct({
   sinceDay: UsageDay,
   untilDay: UsageDay,
   buckets: ForwardCompatibleArray(UsageBucket),
+  /** Fork: records whose transcript names a folder, totaled per folder and provider. */
+  projects: Schema.optional(ForwardCompatibleArray(UsageProjectTotal)),
   sources: ForwardCompatibleArray(UsageSource),
   pricing: UsagePricing,
   scanDurationMs: NonNegativeInt,
