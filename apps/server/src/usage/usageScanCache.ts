@@ -9,7 +9,8 @@ import * as Schema from "effect/Schema";
 import { CLAUDE_SYNTHETIC_MODEL } from "../provider/Drivers/claudeUsage.ts";
 import { GUARD_LENGTH, type TranscriptParsePosition } from "./usageTranscriptReader.ts";
 
-const USAGE_SCAN_CACHE_VERSION = 11 as const;
+// Fork: v12 adds each record's folder (cwd). The file name below keeps it apart from upstream's.
+const USAGE_SCAN_CACHE_VERSION = 12 as const;
 const SPEED_COMPATIBLE_SINCE_VERSION = 4;
 
 /**
@@ -17,8 +18,9 @@ const SPEED_COMPATIBLE_SINCE_VERSION = 4;
  * replace it, dropping saved usage for deleted transcripts. Separate files keep
  * the newer one; older files are removed once it is saved.
  */
-export const SCAN_CACHE_FILE_NAME = "usage-scan-cache-v11.json";
+export const SCAN_CACHE_FILE_NAME = "usage-scan-cache-v12-fork.json";
 export const LEGACY_SCAN_CACHE_FILE_NAMES = [
+  "usage-scan-cache-v11.json",
   "usage-scan-cache-v10.json",
   "usage-scan-cache-v9.json",
   "usage-scan-cache-v8.json",
@@ -57,7 +59,8 @@ type SerializedRecord = readonly [
   reportedCostUsd: number | null,
   speed: number,
   rateModelIndex?: number | null,
-  unresolvedServiceTierTurnId?: string,
+  unresolvedServiceTierTurnId?: string | null,
+  cwdIndex?: number,
 ];
 
 interface SerializedFile {
@@ -77,18 +80,28 @@ interface SerializedCache {
   readonly version: number;
   readonly models: readonly string[];
   readonly sessions: readonly string[];
+  readonly cwds?: readonly string[];
   readonly files: Readonly<Record<string, SerializedFile>>;
 }
 
 interface InternTables {
   readonly models: string[];
   readonly sessions: string[];
+  readonly cwds: string[];
   readonly modelIndex: Map<string, number>;
   readonly sessionIndex: Map<string, number>;
+  readonly cwdIndex: Map<string, number>;
 }
 
 function makeInternTables(): InternTables {
-  return { models: [], sessions: [], modelIndex: new Map(), sessionIndex: new Map() };
+  return {
+    models: [],
+    sessions: [],
+    cwds: [],
+    modelIndex: new Map(),
+    sessionIndex: new Map(),
+    cwdIndex: new Map(),
+  };
 }
 
 function intern(table: string[], index: Map<string, number>, value: string): number {
@@ -116,9 +129,14 @@ function serializeFile(entry: CachedFile, tables: InternTables): SerializedFile 
     record.rateModel === undefined
       ? null
       : intern(tables.models, tables.modelIndex, record.rateModel),
-    ...(record.unresolvedServiceTierTurnId === undefined
-      ? ([] as const)
-      : ([record.unresolvedServiceTierTurnId] as const)),
+    ...(record.cwd !== undefined
+      ? ([
+          record.unresolvedServiceTierTurnId ?? null,
+          intern(tables.cwds, tables.cwdIndex, record.cwd),
+        ] as const)
+      : record.unresolvedServiceTierTurnId === undefined
+        ? ([] as const)
+        : ([record.unresolvedServiceTierTurnId] as const)),
   ];
   return {
     s: entry.size,
@@ -151,6 +169,7 @@ export function makeScanCacheWriter(): (
       version: USAGE_SCAN_CACHE_VERSION,
       models: tables.models,
       sessions: tables.sessions,
+      cwds: tables.cwds,
     });
     yield `},${tail.slice(1)}`;
   }
@@ -184,8 +203,11 @@ export function decodeScanCache(
 
   if (!root.models.every((value) => typeof value === "string")) return cache;
   if (!root.sessions.every((value) => typeof value === "string")) return cache;
+  const rawCwds: unknown = root.cwds ?? [];
+  if (!isRecordArray(rawCwds) || !rawCwds.every((value) => typeof value === "string")) return cache;
   const models = root.models as readonly string[];
   const sessions = root.sessions as readonly string[];
+  const cwds = rawCwds as readonly string[];
 
   // Reject entire corrupt entries; partial survivors would appear warm and hide usage until the file changes.
   const decodeRecords = (
@@ -209,7 +231,9 @@ export function decodeScanCache(
         speedIndex,
         rateModelIndex,
         unresolvedServiceTierTurnId,
+        cwdIndex,
       ] = row as SerializedRecord;
+      const cwd = typeof cwdIndex === "number" ? cwds[cwdIndex] : undefined;
       const speed = typeof speedIndex === "number" ? SPEEDS[speedIndex] : undefined;
 
       const model = typeof modelIndex === "number" ? models[modelIndex] : undefined;
@@ -218,8 +242,8 @@ export function decodeScanCache(
         typeof timestampMs !== "number" ||
         !Number.isFinite(timestampMs) ||
         model === undefined ||
-        (unresolvedServiceTierTurnId !== undefined &&
-          typeof unresolvedServiceTierTurnId !== "string") ||
+        (unresolvedServiceTierTurnId != null && typeof unresolvedServiceTierTurnId !== "string") ||
+        (cwdIndex !== undefined && cwd === undefined) ||
         (rateModelIndex != null && rateModel === undefined) ||
         !Number.isFinite(uncached) ||
         !Number.isFinite(cached) ||
@@ -241,6 +265,7 @@ export function decodeScanCache(
         model,
         ...(rateModel === undefined ? {} : { rateModel }),
         sessionId: (typeof sessionIndex === "number" ? sessions[sessionIndex] : undefined) ?? "",
+        ...(cwd === undefined ? {} : { cwd }),
         totals: {
           uncachedInputTokens: uncached,
           cachedInputTokens: cached,
@@ -250,7 +275,7 @@ export function decodeScanCache(
         },
         reportedCostUsd: typeof reportedCostUsd === "number" ? reportedCostUsd : null,
         speed,
-        ...(version >= 7 && unresolvedServiceTierTurnId !== undefined
+        ...(version >= 7 && typeof unresolvedServiceTierTurnId === "string"
           ? { unresolvedServiceTierTurnId }
           : {}),
         dedupeKey: typeof dedupeKey === "string" ? dedupeKey : null,
@@ -290,7 +315,9 @@ export function decodeScanCache(
     // Keep history for deleted rollouts, but re-parse incompatible reducer state.
     // v9 and v11 repair skipped Codex requests; clean v8+ entries stay served while unchanged.
     // v10 adds Claude advisor calls, which no older Claude entry holds.
+    // Fork: v12 records carry their folder, so older Claude and Codex entries re-parse once.
     const legacy =
+      ((entry.p === "claude" || entry.p === "codex") && version < 12) ||
       (entry.p === "claude" && version < 10) ||
       (format.state !== undefined &&
         (version < 6 ||

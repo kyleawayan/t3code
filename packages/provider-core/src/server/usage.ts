@@ -17,6 +17,8 @@ export interface UsageRecord {
   readonly model: string;
   readonly rateModel?: string;
   readonly sessionId: string;
+  /** Fork: the folder the session ran in, where the transcript records one. */
+  readonly cwd?: string;
   readonly totals: UsageTokenTotals;
   readonly reportedCostUsd: number | null;
   readonly speed: UsageSpeed;
