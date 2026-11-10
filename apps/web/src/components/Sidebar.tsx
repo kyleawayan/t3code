@@ -1,4 +1,5 @@
 import { attachSidebarTree } from "../lib/sidebarTree";
+import { SquishText } from "./SquishText";
 import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
@@ -3876,11 +3877,26 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         >
                           {/* Plus means "add", so revealing more uses a chevron. */}
                           <ChevronDownIcon aria-hidden className="size-4 shrink-0" />
-                          {olderSettledShelf.loading
-                            ? "Loading"
-                            : olderSettledShelf.failed
-                              ? "Could not load older threads. Retry"
-                              : `Show ${Math.min(hiddenSettledCount, SETTLED_TAIL_PAGE_COUNT)} more`}
+                          {/* Fork: squished, not wrapped, so a narrow sidebar keeps the row's height. */}
+                          {olderSettledShelf.loading ? (
+                            <SquishText className="min-w-0">Loading</SquishText>
+                          ) : olderSettledShelf.failed ? (
+                            <SquishText
+                              className="min-w-0"
+                              variants={["Load failed. Retry", "Retry"]}
+                            >
+                              Could not load older threads. Retry
+                            </SquishText>
+                          ) : (
+                            <SquishText
+                              className="min-w-0"
+                              variants={[
+                                `${Math.min(hiddenSettledCount, SETTLED_TAIL_PAGE_COUNT)} more`,
+                              ]}
+                            >
+                              {`Show ${Math.min(hiddenSettledCount, SETTLED_TAIL_PAGE_COUNT)} more`}
+                            </SquishText>
+                          )}
                         </button>
                       </li>
                     ) : null}
