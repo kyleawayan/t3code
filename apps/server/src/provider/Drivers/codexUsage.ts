@@ -137,6 +137,8 @@ export const CodexScanState = Schema.Struct({
   model: Schema.mutableKey(Schema.String),
   speed: Schema.mutableKey(CodexSpeed),
   sessionId: Schema.mutableKey(Schema.String),
+  // Fork: optional so scan states cached before this field existed stay valid.
+  cwd: Schema.mutableKey(Schema.optionalKey(Schema.String)),
   lastUsageSignature: Schema.mutableKey(Schema.NullOr(Schema.String)),
   lastCumulativeUsage: Schema.mutableKey(Schema.NullOr(CodexTokenUsage)),
   // Optional so scan states cached before these fields existed stay valid.
@@ -229,6 +231,7 @@ function parseCodexRecord(parsed: unknown, state: CodexScanState): readonly Usag
     state.sawSessionMeta = true;
     const id = payloadRecord["id"] ?? payloadRecord["session_id"];
     if (typeof id === "string") state.sessionId = id;
+    if (typeof payloadRecord["cwd"] === "string") state.cwd = payloadRecord["cwd"];
     if (typeof payloadRecord["model_provider"] === "string") {
       state.modelProvider = payloadRecord["model_provider"];
     }
@@ -243,6 +246,7 @@ function parseCodexRecord(parsed: unknown, state: CodexScanState): readonly Usag
   if (record["type"] === "turn_context") {
     state.requestLedgerActive = false;
     if (typeof payloadRecord["model"] === "string") state.model = payloadRecord["model"];
+    if (typeof payloadRecord["cwd"] === "string") state.cwd = payloadRecord["cwd"];
     // Model carry is useful for usage, but history recovery needs this context's own identity.
     state.turnId =
       typeof payloadRecord["turn_id"] === "string" &&
@@ -459,6 +463,7 @@ function codexRequestRecord(
     timestampMs,
     model,
     sessionId: state.sessionId,
+    ...(state.cwd ? { cwd: state.cwd } : {}),
     totals,
     reportedCostUsd: null,
     speed,
@@ -487,6 +492,7 @@ export const codexUsageFormat: TranscriptUsageFormat<CodexScanState> = {
       type: true,
       id: true,
       session_id: true,
+      cwd: true,
       model_provider: true,
       turn_id: true,
       response_id: true,

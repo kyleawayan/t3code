@@ -167,6 +167,26 @@ describe("UsageAggregator", () => {
     }
   });
 
+  it("totals each folder per provider and leaves folderless records out", () => {
+    const { projects } = aggregate([
+      record({ cwd: "/work/app" }),
+      record({ cwd: "/work/app", sessionId: "session-b" }),
+      record({ cwd: "/work/app", provider: "codex" }),
+      record({ cwd: "/work/site" }),
+      record(),
+    ]);
+
+    expect(
+      projects.map(({ cwd, provider, records, sessions }) => [cwd, provider, records, sessions]),
+    ).toEqual([
+      ["/work/app", "claude", 2, 2],
+      ["/work/app", "codex", 1, 1],
+      ["/work/site", "claude", 1, 1],
+    ]);
+    expect(projects[0]?.totals.outputTokens).toBe(100);
+    expect(projects[0]?.costUsd).toBeCloseTo(0.01125);
+  });
+
   it("does not count a key whose first copy fell outside the window", () => {
     const result = aggregate([
       record({ dedupeKey: "msg_1:", timestampMs: Date.parse("2026-07-01T12:00:00Z") }),
