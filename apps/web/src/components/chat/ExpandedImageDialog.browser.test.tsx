@@ -188,7 +188,7 @@ describe("ExpandedImageDialog", () => {
     expect(pointerFraction().y).toBeCloseTo(anchor.y, 2);
   });
 
-  it("opens over its container and leaves the rest of the window usable", async () => {
+  it("fills its container, ignores clicks, and leaves the rest of the window usable", async () => {
     const onClose = vi.fn();
     const onComposerClick = vi.fn();
     const panel = document.createElement("div");
@@ -213,6 +213,17 @@ describe("ExpandedImageDialog", () => {
     const dialog = page.getByRole("dialog");
     await expect.element(dialog).toBeVisible();
     expect(panel.contains(dialog.element())).toBe(true);
+    const panelBox = panel.getBoundingClientRect();
+    const viewport = page.getByRole("region", { name: "diagram.png, zoomable image" });
+    await vi.waitFor(() => {
+      const viewportBox = viewport.element().getBoundingClientRect();
+      expect(viewportBox.width).toBe(panelBox.width);
+      expect(viewportBox.top).toBe(panelBox.top);
+    });
+
+    // A drag habit releases as a click; it must not zoom.
+    await userEvent.click(viewport);
+    await expect.element(page.getByText("100% zoom")).toBeInTheDocument();
 
     // The panel is the page's first div, so screen-scoped queries can't find the render root.
     await userEvent.click(page.getByRole("button", { name: "Composer" }));

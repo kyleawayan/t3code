@@ -1533,7 +1533,8 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
           />
         ) : null}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col" data-right-panel-surface-content>
+      {/* Fork: relative so zoomed markdown media fills the body and leaves the tabs usable. */}
+      <div className="relative flex min-h-0 flex-1 flex-col" data-right-panel-surface-content>
         {props.activeSurfaceId === null ? (
           <RightPanelEmptyState
             onAddBrowser={props.onAddBrowser}

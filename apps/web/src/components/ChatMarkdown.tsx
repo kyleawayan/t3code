@@ -483,13 +483,6 @@ function resolveFileLinkSources(
   return { markdownFileLinkMetaByHref, inlineCodeFileLinkMetaByText, fileLinkParentSuffixByPath };
 }
 
-/** The element an absolutely positioned overlay inside `element` would cover. */
-function positionedAncestor(element: HTMLElement | null): HTMLElement | null {
-  for (let current = element; current; current = current.parentElement) {
-    if (getComputedStyle(current).position !== "static") return current;
-  }
-  return null;
-}
 function useChatMarkdownState({
   text,
   inline = false,
@@ -534,10 +527,10 @@ function useChatMarkdownState({
       setLocalMedia({
         scope: mediaScopeKey,
         preview,
-        // Fork: markdown in the right panel zooms over the panel, so the chat stays usable.
-        container: positionedAncestor(
+        // Fork: markdown in the right panel zooms into the panel's body, so the chat and the
+        // panel's tabs stay usable.
+        container:
           markdownRef.current?.closest<HTMLElement>("[data-right-panel-surface-content]") ?? null,
-        ),
       }));
   const [mediaScope, setMediaScope] = useState(mediaScopeKey);
   if (mediaScope !== mediaScopeKey) {
