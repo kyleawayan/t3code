@@ -81,6 +81,18 @@ export const UsageProjectTotal = Schema.Struct({
 });
 export type UsageProjectTotal = typeof UsageProjectTotal.Type;
 
+/** Fork: one folder's usage for one provider in one bucket period, for the Projects chart. */
+export const UsageProjectPeriod = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  provider: UsageProviderKind,
+  day: UsageDay,
+  hourStart: Schema.optional(TrimmedNonEmptyString),
+  costUsd: Schema.Number,
+  /** Input, cached input, cache creation and output; reasoning is part of output. */
+  totalTokens: Schema.Number,
+});
+export type UsageProjectPeriod = typeof UsageProjectPeriod.Type;
+
 export const UsageSourceFingerprint = Schema.Struct({
   hostId: TrimmedNonEmptyString,
   provider: UsageProviderKind,
@@ -157,6 +169,8 @@ export const UsageSummary = Schema.Struct({
   buckets: ForwardCompatibleArray(UsageBucket),
   /** Fork: records whose transcript names a folder, totaled per folder and provider. */
   projects: Schema.optional(ForwardCompatibleArray(UsageProjectTotal)),
+  /** Fork: the same records split by bucket period, so each project's usage can be charted. */
+  projectPeriods: Schema.optional(ForwardCompatibleArray(UsageProjectPeriod)),
   sources: ForwardCompatibleArray(UsageSource),
   pricing: UsagePricing,
   scanDurationMs: NonNegativeInt,

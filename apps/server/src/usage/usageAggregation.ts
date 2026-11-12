@@ -5,6 +5,7 @@ import type {
   UsageDay,
   UsageModelFilter,
   UsageModelSelector,
+  UsageProjectPeriod,
   UsageProjectTotal,
   UsageResolution,
   UsageTokenTotals,
@@ -72,6 +73,11 @@ interface MutableProjectTotal {
   sessions: Set<string>;
 }
 
+interface MutableProjectPeriod extends Omit<UsageProjectPeriod, "costUsd" | "totalTokens"> {
+  costUsd: number;
+  totalTokens: number;
+}
+
 export interface AggregateOptions {
   readonly timeZone: string;
   readonly sinceDay: string;
@@ -136,6 +142,7 @@ export function canonicalModelFilter(
 export interface AggregateResult {
   readonly buckets: readonly UsageBucket[];
   readonly projects: readonly UsageProjectTotal[];
+  readonly projectPeriods: readonly UsageProjectPeriod[];
   readonly duplicatesDropped: number;
   readonly outOfWindow: number;
 }
@@ -144,6 +151,16 @@ export interface AggregateResult {
 export class UsageAggregator {
   readonly #buckets = new Map<string, MutableBucket>();
   readonly #projects = new Map<string, MutableProjectTotal>();
+  readonly #projectPeriods = new Map<string, MutableProjectPeriod>();
+  // Like #lastBucket: time-ordered records usually repeat the previous folder and period.
+  #lastProject: { readonly key: string; readonly project: MutableProjectTotal } | null = null;
+  #lastPeriod: {
+    readonly cwd: string;
+    readonly provider: string;
+    readonly day: string;
+    readonly hourIndex: number;
+    readonly period: MutableProjectPeriod;
+  } | null = null;
   readonly #seen = new Set<string>();
   readonly #toDay: (timestampMs: number) => string;
   readonly #hourlyWindow: { readonly sinceTimeMs: number; readonly untilTimeMs: number } | null;
@@ -244,23 +261,78 @@ export class UsageAggregator {
     if (priced.costSource === "unpriced") bucket.unpricedRecords += 1;
     if (priced.costSource === "providerReported") bucket.providerReportedRecords += 1;
     if (record.sessionId.length > 0) bucket.sessions.add(record.sessionId);
-    if (record.cwd !== undefined) this.#addProject(record, record.cwd, priced.costUsd);
+    if (record.cwd !== undefined) {
+      this.#addProject(record, record.cwd, priced.costUsd);
+      this.#addProjectPeriod(record, record.cwd, day, hourIndex, priced.costUsd);
+    }
     return true;
   }
 
+  #addProjectPeriod(
+    record: UsageRecord,
+    cwd: string,
+    day: string,
+    hourIndex: number,
+    costUsd: number,
+  ): void {
+    const last = this.#lastPeriod;
+    let period =
+      last !== null &&
+      last.cwd === cwd &&
+      last.provider === record.provider &&
+      last.day === day &&
+      last.hourIndex === hourIndex
+        ? last.period
+        : undefined;
+    if (period === undefined) {
+      const key = `${cwd}\u0000${record.provider}\u0000${day}\u0000${hourIndex}`;
+      period = this.#projectPeriods.get(key);
+      if (period === undefined) {
+        const window = this.#hourlyWindow;
+        period = {
+          cwd,
+          provider: record.provider,
+          day: day as UsageDay,
+          ...(window === null
+            ? {}
+            : { hourStart: new Date(window.sinceTimeMs + hourIndex * HOUR_MS).toISOString() }),
+          costUsd: 0,
+          totalTokens: 0,
+        };
+        this.#projectPeriods.set(key, period);
+      }
+      this.#lastPeriod = { cwd, provider: record.provider, day, hourIndex, period };
+    }
+    period.costUsd += costUsd;
+    // Reasoning tokens are already part of output.
+    period.totalTokens +=
+      record.totals.uncachedInputTokens +
+      record.totals.cachedInputTokens +
+      record.totals.cacheCreationTokens +
+      record.totals.outputTokens;
+  }
+
   #addProject(record: UsageRecord, cwd: string, costUsd: number): void {
-    const key = `${cwd}\u0000${record.provider}`;
-    let project = this.#projects.get(key);
+    const last = this.#lastProject;
+    let project =
+      last !== null && last.project.cwd === cwd && last.project.provider === record.provider
+        ? last.project
+        : undefined;
     if (project === undefined) {
-      project = {
-        cwd,
-        provider: record.provider,
-        totals: { ...EMPTY_TOTALS },
-        costUsd: 0,
-        records: 0,
-        sessions: new Set<string>(),
-      };
-      this.#projects.set(key, project);
+      const key = `${cwd}\u0000${record.provider}`;
+      project = this.#projects.get(key);
+      if (project === undefined) {
+        project = {
+          cwd,
+          provider: record.provider,
+          totals: { ...EMPTY_TOTALS },
+          costUsd: 0,
+          records: 0,
+          sessions: new Set<string>(),
+        };
+        this.#projects.set(key, project);
+      }
+      this.#lastProject = { key, project };
     }
     project.totals.uncachedInputTokens += record.totals.uncachedInputTokens;
     project.totals.cachedInputTokens += record.totals.cachedInputTokens;
@@ -385,9 +457,20 @@ export class UsageAggregator {
           a.provider.localeCompare(b.provider),
       );
 
+    const projectPeriods = [...this.#projectPeriods.values()]
+      .map((period): UsageProjectPeriod => ({ ...period, costUsd: roundUsd(period.costUsd) }))
+      .sort(
+        (a, b) =>
+          a.day.localeCompare(b.day) ||
+          (a.hourStart ?? "").localeCompare(b.hourStart ?? "") ||
+          a.cwd.localeCompare(b.cwd) ||
+          a.provider.localeCompare(b.provider),
+      );
+
     return {
       buckets,
       projects,
+      projectPeriods,
       duplicatesDropped: this.#duplicatesDropped,
       outOfWindow: this.#outOfWindow,
     };

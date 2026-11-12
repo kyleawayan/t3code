@@ -503,6 +503,30 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 }
 
+/* Fork: the Usage Projects chart's series, validated for color-vision deficiency on each
+   surface. Light slots 3-5 sit under 3:1, so the project table below the chart names them. */
+:root {
+  --usage-project-1: #2a78d6;
+  --usage-project-2: #eb6834;
+  --usage-project-3: #1baf7a;
+  --usage-project-4: #eda100;
+  --usage-project-5: #e87ba4;
+  --usage-project-6: #008300;
+  --usage-project-7: #6250d6;
+  --usage-project-8: #e34948;
+
+  @variant dark {
+    --usage-project-1: #3987e5;
+    --usage-project-2: #d95926;
+    --usage-project-3: #199e70;
+    --usage-project-4: #c98500;
+    --usage-project-5: #d55181;
+    --usage-project-6: #008300;
+    --usage-project-7: #9085e9;
+    --usage-project-8: #e66767;
+  }
+}
+
 /* The font tokens are declared outside the inline theme so utilities reference
    the variables and Settings -> Appearance can override them at runtime. The
    default stacks are mirrored in `appearanceFonts.ts`. */

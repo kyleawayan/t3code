@@ -1,6 +1,7 @@
 import type {
   EnvironmentId,
   UsageBucket,
+  UsageProjectPeriod,
   UsageProjectTotal,
   UsageProviderKind,
   UsageTokenTotals,
@@ -10,6 +11,8 @@ export interface UsageProjectSource {
   readonly environmentId: EnvironmentId;
   readonly environmentLabel: string;
   readonly totals: readonly UsageProjectTotal[];
+  /** The same usage by bucket period; servers before this field send none. */
+  readonly periods?: readonly UsageProjectPeriod[];
   /** The environment's own usage, so what no folder covers comes from the same data. */
   readonly buckets: readonly Pick<UsageBucket, "provider" | "costUsd" | "totals">[];
 }
@@ -37,6 +40,8 @@ export interface UsageProjectRow {
   readonly totalTokens: number;
   readonly sessions: number;
   readonly costByProvider: ReadonlyMap<UsageProviderKind, number>;
+  /** Cost by day, or by hour start in an hourly window. */
+  readonly costByPeriod: ReadonlyMap<string, number>;
 }
 
 // Worktrees whose path names the repository folder: T3 Code's <T3 home>/worktrees/<repo>/<id>, and
@@ -202,6 +207,7 @@ export function buildUsageProjectTable({
       totalTokens: number;
       sessions: number;
       costByProvider: Map<UsageProviderKind, number>;
+      costByPeriod: Map<string, number>;
     }
   >();
   let unfiledCostUsd = 0;
@@ -224,8 +230,8 @@ export function buildUsageProjectTable({
       projects.filter((project) => project.environmentId === source.environmentId),
       worktrees.filter((worktree) => worktree.environmentId === source.environmentId),
     );
-    for (const total of totals) {
-      const folder = trimTrailingSlash(total.cwd);
+    const rowFor = (cwd: string) => {
+      const folder = trimTrailingSlash(cwd);
       const owner = owners.get(folder) ?? folderOwner(folder);
       const key = `${source.environmentId}\u0000${owner.key}`;
       let row = rows.get(key);
@@ -238,9 +244,14 @@ export function buildUsageProjectTable({
           totalTokens: 0,
           sessions: 0,
           costByProvider: new Map(),
+          costByPeriod: new Map(),
         };
         rows.set(key, row);
       }
+      return row;
+    };
+    for (const total of totals) {
+      const row = rowFor(total.cwd);
       row.costUsd += total.costUsd;
       row.totalTokens += tokenTotal(total.totals);
       row.sessions += total.sessions;
@@ -248,6 +259,12 @@ export function buildUsageProjectTable({
         total.provider,
         (row.costByProvider.get(total.provider) ?? 0) + total.costUsd,
       );
+    }
+    for (const period of source.periods ?? []) {
+      if (hiddenProviders.has(period.provider)) continue;
+      const row = rowFor(period.cwd);
+      const at = period.hourStart ?? period.day;
+      row.costByPeriod.set(at, (row.costByPeriod.get(at) ?? 0) + period.costUsd);
     }
   }
   return {
@@ -260,4 +277,56 @@ export function buildUsageProjectTable({
     unfiledCostUsd,
     unfiledTokens,
   };
+}
+
+export interface UsageProjectSeries {
+  readonly key: string;
+  readonly label: string;
+  /** A palette slot for the most expensive projects; null for a focused row past them, or Other. */
+  readonly slot: number | null;
+  readonly other: boolean;
+  /** One value per period, in period order. */
+  readonly values: readonly number[];
+}
+
+/**
+ * The most expensive projects each get a series and the rest fold into Other. A focused
+ * project past them gets its own series too, and leaves Other so nothing counts twice.
+ */
+export function buildUsageProjectSeries(
+  rows: readonly UsageProjectRow[],
+  periods: readonly string[],
+  slots: number,
+  focusedKey: string | null,
+): readonly UsageProjectSeries[] {
+  const charted = rows.filter((row) => row.costByPeriod.size > 0);
+  const valuesOf = (members: readonly UsageProjectRow[]) =>
+    periods.map((period) =>
+      members.reduce((sum, row) => sum + (row.costByPeriod.get(period) ?? 0), 0),
+    );
+  const ranked = charted.slice(0, slots);
+  const focused = charted.slice(slots).find((row) => row.key === focusedKey);
+  const rest = charted.slice(slots).filter((row) => row !== focused);
+  const own = (row: UsageProjectRow, slot: number | null): UsageProjectSeries => ({
+    key: row.key,
+    label: row.label,
+    slot,
+    other: false,
+    values: valuesOf([row]),
+  });
+  return [
+    ...ranked.map((row, index) => own(row, index)),
+    ...(focused === undefined ? [] : [own(focused, null)]),
+    ...(rest.length === 0
+      ? []
+      : [
+          {
+            key: "other",
+            label: `${rest.length} other ${rest.length === 1 ? "project" : "projects"}`,
+            slot: null,
+            other: true,
+            values: valuesOf(rest),
+          },
+        ]),
+  ];
 }

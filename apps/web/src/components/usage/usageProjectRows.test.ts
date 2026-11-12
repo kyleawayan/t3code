@@ -1,7 +1,17 @@
-import type { EnvironmentId, UsageProjectTotal, UsageProviderKind } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  UsageDay,
+  UsageProjectTotal,
+  UsageProviderKind,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildUsageProjectTable, type UsageKnownProject } from "./usageProjectRows";
+import {
+  buildUsageProjectSeries,
+  buildUsageProjectTable,
+  type UsageKnownProject,
+  type UsageProjectRow,
+} from "./usageProjectRows";
 
 const LOCAL = "env-local" as EnvironmentId;
 const REMOTE = "env-remote" as EnvironmentId;
@@ -68,6 +78,36 @@ describe("buildUsageProjectTable", () => {
             total("/src/t3code-mobile", 0.5),
             total("/work/app", 64, "cursor"),
           ],
+          periods: [
+            {
+              cwd: "/work/app",
+              provider: "claude",
+              day: "2026-11-01" as UsageDay,
+              costUsd: 0.4,
+              totalTokens: 1,
+            },
+            {
+              cwd: "/work/app/",
+              provider: "claude",
+              day: "2026-11-02" as UsageDay,
+              costUsd: 0.6,
+              totalTokens: 1,
+            },
+            {
+              cwd: "/work/app/packages/ui",
+              provider: "codex",
+              day: "2026-11-02" as UsageDay,
+              costUsd: 2,
+              totalTokens: 1,
+            },
+            {
+              cwd: "/work/app",
+              provider: "cursor",
+              day: "2026-11-01" as UsageDay,
+              costUsd: 64,
+              totalTokens: 1,
+            },
+          ],
           // OpenCode records no folder, so its usage is the No folder row.
           buckets: [
             bucket("claude", 136, 550),
@@ -110,5 +150,47 @@ describe("buildUsageProjectTable", () => {
       ["claude", 1],
       ["codex", 10],
     ]);
+    expect([...(app?.costByPeriod ?? [])]).toEqual([
+      ["2026-11-01", 0.4],
+      ["2026-11-02", 2.6],
+    ]);
+  });
+});
+
+describe("buildUsageProjectSeries", () => {
+  const row = (key: string, costs: readonly number[]): UsageProjectRow => ({
+    key,
+    label: key,
+    path: `/work/${key}`,
+    environmentLabel: "This Mac",
+    costUsd: costs.reduce((sum, cost) => sum + cost, 0),
+    totalTokens: 0,
+    sessions: 0,
+    costByProvider: new Map(),
+    costByPeriod: new Map(costs.map((cost, index) => [`day-${index}`, cost])),
+  });
+  const rows = [row("a", [5, 5]), row("b", [3, 1]), row("c", [1, 2]), row("d", [0, 1])];
+  const periods = ["day-0", "day-1"];
+  const shape = (focusedKey: string | null) =>
+    buildUsageProjectSeries(rows, periods, 2, focusedKey).map((entry) => [
+      entry.key,
+      entry.slot,
+      entry.label,
+      entry.values,
+    ]);
+
+  it("folds projects past the palette into Other, and a focused one leaves it", () => {
+    expect(shape(null)).toEqual([
+      ["a", 0, "a", [5, 5]],
+      ["b", 1, "b", [3, 1]],
+      ["other", null, "2 other projects", [1, 3]],
+    ]);
+    expect(shape("c")).toEqual([
+      ["a", 0, "a", [5, 5]],
+      ["b", 1, "b", [3, 1]],
+      ["c", null, "c", [1, 2]],
+      ["other", null, "1 other project", [0, 1]],
+    ]);
+    expect(shape("a")).toEqual(shape(null));
   });
 });

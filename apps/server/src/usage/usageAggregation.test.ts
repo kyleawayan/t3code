@@ -85,24 +85,42 @@ describe("UsageAggregator", () => {
     expect(bucket).not.toHaveProperty("ultrafastCostUsd");
   });
 
-  it("totals each folder per provider and leaves folderless records out", () => {
-    const { projects } = aggregate([
+  it("totals each folder per provider and per period, and leaves folderless records out", () => {
+    const { projects, projectPeriods } = aggregate([
       record({ cwd: "/work/app" }),
       record({ cwd: "/work/app", sessionId: "session-b" }),
       record({ cwd: "/work/app", provider: "codex" }),
       record({ cwd: "/work/site" }),
+      record({ cwd: "/work/app", timestampMs: Date.parse("2026-08-08T10:00:00.000Z") }),
       record(),
     ]);
 
     expect(
       projects.map(({ cwd, provider, records, sessions }) => [cwd, provider, records, sessions]),
     ).toEqual([
-      ["/work/app", "claude", 2, 2],
+      ["/work/app", "claude", 3, 2],
       ["/work/app", "codex", 1, 1],
       ["/work/site", "claude", 1, 1],
     ]);
-    expect(projects[0]?.totals.outputTokens).toBe(100);
-    expect(projects[0]?.costUsd).toBeCloseTo(0.01125);
+    expect(projects[0]?.totals.outputTokens).toBe(150);
+    expect(projects[0]?.costUsd).toBeCloseTo(0.016875);
+    expect(
+      projectPeriods.map(({ cwd, provider, day, totalTokens }) => [
+        cwd,
+        provider,
+        day,
+        totalTokens,
+      ]),
+    ).toEqual([
+      ["/work/app", "claude", "2026-08-07", 2320],
+      ["/work/app", "codex", "2026-08-07", 1160],
+      ["/work/site", "claude", "2026-08-07", 1160],
+      ["/work/app", "claude", "2026-08-08", 1160],
+    ]);
+    expect(projectPeriods[0]?.costUsd).toBeCloseTo(0.01125);
+    expect(
+      aggregate([record({ cwd: "/work/app" })], "UTC", "hour").projectPeriods[0]?.hourStart,
+    ).toBe("2026-08-07T03:37:00.000Z");
   });
 
   it("keeps only the first record for a repeated dedupe key", () => {
