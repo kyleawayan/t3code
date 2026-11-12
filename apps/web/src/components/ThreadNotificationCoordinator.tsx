@@ -22,6 +22,7 @@ import {
 
 import { getClientSettings, subscribeClientSettings } from "../hooks/useSettings";
 import { isWindowsPlatform } from "../lib/utils";
+import { isMtgInhibited } from "../mtgInhibit";
 import { environmentSummaries } from "../state/presentation";
 import { environmentShell } from "../state/shell";
 import { environmentThreadShells } from "../state/threads";
@@ -159,8 +160,9 @@ export function startThreadNotifications(
                 ? m(msg("Guest request"))
                 : m(msg("Input needed"));
     if (hasNotificationSound(mode)) {
-      void playNotificationSound(threadNotificationSoundEvent(kind, status), () =>
-        hasNotificationSound(getClientSettings().notificationMode),
+      void playNotificationSound(
+        threadNotificationSoundEvent(kind, status),
+        () => hasNotificationSound(getClientSettings().notificationMode) && !isMtgInhibited(),
       );
     }
     if (
