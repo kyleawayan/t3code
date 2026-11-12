@@ -7,6 +7,7 @@ import { Atom, AtomRegistry } from "effect/reactivity";
 import { expect, it, vi } from "vite-plus/test";
 
 import { fakeTimers, stubGlobal } from "../../test/render";
+import { MTG_INHIBIT_STORAGE_KEY } from "../mtgInhibit";
 import { RELEASED_COMPLETION_GRACE_MS } from "./ThreadNotificationCoordinator.logic";
 
 const state = vi.hoisted(() => ({
@@ -281,6 +282,12 @@ it("holds a completion and its sound through a continuation gap until it settles
   expect(TestNotification.sent.map((sent) => sent.title)).toEqual(["Thread completed"]);
   expect(state.sound).toHaveBeenCalledOnce();
   expect(state.sound).toHaveBeenCalledWith("completion", expect.any(Function));
+  const shouldPlay = state.sound.mock.calls[0]![1] as () => boolean;
+  expect(shouldPlay()).toBe(true);
+  // MTG INHIBIT also silences a sound still loading when it is pressed.
+  localStorage.setItem(MTG_INHIBIT_STORAGE_KEY, "true");
+  using _inhibit = { [Symbol.dispose]: () => localStorage.removeItem(MTG_INHIBIT_STORAGE_KEY) };
+  expect(shouldPlay()).toBe(false);
 });
 
 it.each([false, true])(

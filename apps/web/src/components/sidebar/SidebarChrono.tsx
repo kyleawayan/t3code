@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from "react";
 
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { MTG_INHIBIT_STORAGE_KEY, MtgInhibitSchema } from "../../mtgInhibit";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { onChronoSendNudge } from "./chronoSendNudge";
 import {
@@ -79,60 +80,94 @@ export const SidebarChrono = memo(function SidebarChrono() {
   const actionLabel = CHRONO_ACTION_LABEL[state.phase];
 
   return (
-    <div className="sidebar-chrono -mx-(--sidebar-content-inset) flex items-stretch gap-1 border-y border-sidebar-foreground/15 py-2">
-      <Tooltip
-        onOpenChange={(open) => {
-          if (open) setTooltipOpenedAt(Date.now());
-        }}
-      >
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              aria-label={actionLabel}
-              onClick={press}
-              className="sidebar-chrono-button flex w-8.5 min-w-7 items-center justify-center rounded-sm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+    <div className="sidebar-chrono -mx-(--sidebar-content-inset) flex flex-col gap-1.5 border-y border-sidebar-foreground/15 py-2">
+      <div className="flex items-stretch gap-1">
+        <Tooltip
+          onOpenChange={(open) => {
+            if (open) setTooltipOpenedAt(Date.now());
+          }}
+        >
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                aria-label={actionLabel}
+                onClick={press}
+                className="sidebar-chrono-button flex w-8.5 min-w-7 items-center justify-center rounded-sm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+              >
+                <span aria-hidden className="sidebar-chrono-legend font-semibold text-4xs">
+                  CHR
+                </span>
+              </button>
+            }
+          />
+          <TooltipPopup side="top">
+            <div>{actionLabel}</div>
+            <div className="text-muted-foreground tabular-nums">
+              ET {elapsedTodayDisplay(elapsedToday, state, Math.max(now, tooltipOpenedAt))}
+            </div>
+          </TooltipPopup>
+        </Tooltip>
+        <div className="sidebar-chrono-display flex shrink-0 grow items-center justify-center rounded-sm">
+          {nudgeKey !== null ? (
+            <span
+              key={nudgeKey}
+              aria-hidden
+              data-nudge=""
+              className="sidebar-chrono-digits"
+              onAnimationEnd={() => setNudgeKey(null)}
             >
-              <span aria-hidden className="sidebar-chrono-legend font-semibold text-4xs">
-                CHR
-              </span>
-            </button>
-          }
-        />
-        <TooltipPopup side="top">
-          <div>{actionLabel}</div>
-          <div className="text-muted-foreground tabular-nums">
-            ET {elapsedTodayDisplay(elapsedToday, state, Math.max(now, tooltipOpenedAt))}
-          </div>
-        </TooltipPopup>
-      </Tooltip>
-      <div className="sidebar-chrono-display flex shrink-0 grow items-center justify-center rounded-sm">
-        {nudgeKey !== null ? (
-          <span
-            key={nudgeKey}
-            aria-hidden
-            data-nudge=""
-            className="sidebar-chrono-digits"
-            onAnimationEnd={() => setNudgeKey(null)}
-          >
-            {/* Unlit colons keep each letter on its digit cell. */}
-            {CHRONO_NUDGE_CELLS[0]}
-            <span className="text-transparent">:</span>
-            {CHRONO_NUDGE_CELLS[1]}
-            <span className="text-transparent">:</span>
-            {CHRONO_NUDGE_CELLS[2]}
-          </span>
-        ) : (
-          <span
-            role="timer"
-            aria-hidden={display === null}
-            data-blank={display === null || undefined}
-            className="sidebar-chrono-digits"
-          >
-            {display ?? CHRONO_NO_SEGMENTS}
-          </span>
-        )}
+              {/* Unlit colons keep each letter on its digit cell. */}
+              {CHRONO_NUDGE_CELLS[0]}
+              <span className="text-transparent">:</span>
+              {CHRONO_NUDGE_CELLS[1]}
+              <span className="text-transparent">:</span>
+              {CHRONO_NUDGE_CELLS[2]}
+            </span>
+          ) : (
+            <span
+              role="timer"
+              aria-hidden={display === null}
+              data-blank={display === null || undefined}
+              className="sidebar-chrono-digits"
+            >
+              {display ?? CHRONO_NO_SEGMENTS}
+            </span>
+          )}
+        </div>
       </div>
+      <MtgInhibitButton />
     </div>
   );
 });
+
+/** Fork: a wide key under the chrono that silences alert sounds, lit purple while it does. */
+function MtgInhibitButton() {
+  const [inhibited, setInhibited] = useLocalStorage(
+    MTG_INHIBIT_STORAGE_KEY,
+    false,
+    MtgInhibitSchema,
+  );
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label="MTG INHIBIT"
+            aria-pressed={inhibited}
+            onClick={() => setInhibited((current) => !current)}
+            className="sidebar-chrono-button sidebar-mtg-inhibit flex h-5.5 items-center justify-center rounded-sm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+          >
+            <span aria-hidden className="sidebar-chrono-legend font-semibold text-4xs">
+              MTG INHIBIT
+            </span>
+          </button>
+        }
+      />
+      <TooltipPopup side="top">
+        {inhibited ? "Alert sounds muted. Press to unmute" : "Mute alert sounds"}
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
