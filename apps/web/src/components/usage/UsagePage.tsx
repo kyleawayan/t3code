@@ -540,6 +540,10 @@ export function UsagePage() {
                 selectedEnvironments={selectedEnvironments}
                 hiddenProviders={hiddenProviders}
                 loading={showingKept || refreshingUsage}
+                shownWindow={shownWindow}
+                days={days}
+                hours={hours}
+                hour12={hour12}
               />
             ) : (
               <UsageOverview

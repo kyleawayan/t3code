@@ -1165,6 +1165,9 @@ export const make = Effect.gen(function* () {
       untilDay: input.untilDay,
       buckets: aggregated.buckets,
       ...(aggregated.projects.length === 0 ? {} : { projects: aggregated.projects }),
+      ...(aggregated.projectPeriods.length === 0
+        ? {}
+        : { projectPeriods: aggregated.projectPeriods }),
       sources,
       pricing: summaryPricing,
       scanDurationMs: Math.max(0, finishedAtMs - startedAtMs),
