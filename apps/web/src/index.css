@@ -422,6 +422,36 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   translate: 0 0.5px;
 }
 
+/* Lit like the E/WD's magenta T.O INHIBIT memo while alert sounds are muted. Static, so it never
+   repaints. Declared after the key's hover and active faces so the light wins over them. */
+.sidebar-mtg-inhibit[aria-pressed="true"] {
+  --mtg-inhibit-light: oklch(0.68 0.25 318);
+
+  /* The glow stays inside the key's 3px well. */
+  &::before {
+    background: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--mtg-inhibit-light) 55%, white),
+      var(--mtg-inhibit-light)
+    );
+    box-shadow: 0 0 3px var(--mtg-inhibit-light);
+  }
+
+  &::after {
+    background: radial-gradient(
+      closest-side,
+      color-mix(in oklab, var(--mtg-inhibit-light) 40%, white),
+      color-mix(in oklab, var(--mtg-inhibit-light) 85%, white)
+    );
+    box-shadow: inset 0 0 2px rgb(255 255 255 / 60%);
+  }
+
+  .sidebar-chrono-legend {
+    color: white;
+    text-shadow: 0 0 3px color-mix(in oklab, var(--mtg-inhibit-light) 60%, black);
+  }
+}
+
 /* Without antialiased smoothing, macOS thickens glyphs enough to close the gaps between
    segments. The trim drops the font's empty descender so the digits center vertically.
    The padded digits span 1/0.27em, so they fill what the 1.75rem key and gap leave, and the

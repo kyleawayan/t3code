@@ -4,6 +4,7 @@ import { CircleAlertIcon, CircleCheckIcon } from "lucide-react";
 import { AsyncResult, type AtomRegistry } from "effect/reactivity";
 
 import { getClientSettings } from "~/hooks/useSettings";
+import { isMtgInhibited } from "~/mtgInhibit";
 import { observedPullRequestTitle, pullRequestEnvironment } from "~/state/pullRequests";
 import {
   hasDesktopNotifications,
@@ -110,8 +111,9 @@ function watchGuideRun(
     };
     const mode = getClientSettings().notificationMode;
     if (hasNotificationSound(mode)) {
-      void playNotificationSound(failure === null ? "completion" : "failed", () =>
-        hasNotificationSound(getClientSettings().notificationMode),
+      void playNotificationSound(
+        failure === null ? "completion" : "failed",
+        () => hasNotificationSound(getClientSettings().notificationMode) && !isMtgInhibited(),
       );
     }
     if (looking) {
