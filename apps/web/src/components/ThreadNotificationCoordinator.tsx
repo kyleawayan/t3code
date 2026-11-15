@@ -145,6 +145,9 @@ export function startThreadNotifications(
         .has(threadKey({ environmentId, threadId: thread.id }))
     )
       return;
+    // An agent's own settle lands just after its turn ends, inside the completion grace, so a
+    // settled thread finishes quietly. Requests and failures still alert.
+    if (kind === "completion" && thread.settledOverride === "settled") return;
     const { notificationMode: mode, inAppNotificationsEnabled } = getClientSettings();
     const active = activeThread();
     const title =
