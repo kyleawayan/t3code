@@ -114,6 +114,7 @@ const thread = {
   latestTurn: { turnId: "turn", state: "running", completedAt: null as string | null },
   snoozedUntil: null as string | null,
   snoozedAt: null as string | null,
+  settledAt: null as string | null,
 };
 let focused = false;
 let visibility = "visible";
@@ -169,8 +170,8 @@ function toV2ThreadShell(input: typeof thread) {
     archivedAt: input.archivedAt ? DateTime.makeUnsafe(input.archivedAt) : null,
     snoozedUntil: input.snoozedUntil ? DateTime.makeUnsafe(input.snoozedUntil) : null,
     snoozedAt: input.snoozedAt ? DateTime.makeUnsafe(input.snoozedAt) : null,
-    settledOverride: null,
-    settledAt: null,
+    settledOverride: input.settledAt ? ("settled" as const) : null,
+    settledAt: input.settledAt ? DateTime.makeUnsafe(input.settledAt) : null,
     lastVisitedAt: null,
     deletedAt: null,
   };
@@ -355,45 +356,59 @@ it.each([false, true])(
   },
 );
 
-it("stays quiet when a snoozed thread completes, but still alerts approvals and failures", async () => {
-  await using app = setup();
-  state.mode = "notifications-and-sound";
-  app.start();
-  using _timers = fakeTimers();
-  // The agent snoozed its own thread, then finished its reply.
-  const snoozed = {
-    snoozedUntil: "2999-01-01T00:00:00.000Z",
-    snoozedAt: "2026-09-13T07:00:00.500Z",
-  };
-  state.shells.set(
-    "one",
-    shell({
-      ...snoozed,
+// The agent snoozes itself before it replies; its own settle lands just after the turn ends.
+it.each([
+  {
+    name: "snoozed",
+    atCompletion: {
+      snoozedUntil: "2999-01-01T00:00:00.000Z",
+      snoozedAt: "2026-09-13T07:00:00.500Z",
+    },
+    afterCompletion: {
+      snoozedUntil: "2999-01-01T00:00:00.000Z",
+      snoozedAt: "2026-09-13T07:00:00.500Z",
+    },
+  },
+  { name: "settled", atCompletion: {}, afterCompletion: { settledAt: "2026-09-13T07:00:01.500Z" } },
+])(
+  "stays quiet when a $name thread completes, but still alerts approvals and failures",
+  async ({ atCompletion, afterCompletion }) => {
+    await using app = setup();
+    state.mode = "notifications-and-sound";
+    app.start();
+    using _timers = fakeTimers();
+    const completed = {
       latestTurn: { turnId: "turn", state: "completed", completedAt: "2026-09-13T07:00:01.000Z" },
-    }),
-  );
-  await vi.advanceTimersByTimeAsync(WORKING_EXIT_GRACE_MS);
-  expect(TestNotification.sent).toEqual([]);
-  expect(state.sound).not.toHaveBeenCalled();
-  state.shells.set(
-    "one",
-    shell({
-      ...snoozed,
-      hasPendingApprovals: true,
-      latestTurn: { turnId: "turn-2", state: "running", completedAt: null },
-    }),
-  );
-  expect(TestNotification.sent.map((sent) => sent.title)).toEqual(["Approval needed"]);
-  // A failed run alerts even when the runtime itself stays healthy and the thread still reads as snoozed.
-  state.shells.set(
-    "one",
-    shell({ ...snoozed, latestTurn: { turnId: "turn-3", state: "error", completedAt: null } }),
-  );
-  expect(TestNotification.sent.map((sent) => sent.title)).toEqual([
-    "Approval needed",
-    "Thread failed",
-  ]);
-});
+    };
+    state.shells.set("one", shell({ ...atCompletion, ...completed }));
+    await vi.advanceTimersByTimeAsync(WORKING_EXIT_GRACE_MS - 1);
+    state.shells.set("one", shell({ ...afterCompletion, ...completed }));
+    await vi.advanceTimersByTimeAsync(1);
+    expect(TestNotification.sent).toEqual([]);
+    expect(state.sound).not.toHaveBeenCalled();
+    state.shells.set(
+      "one",
+      shell({
+        ...afterCompletion,
+        hasPendingApprovals: true,
+        latestTurn: { turnId: "turn-2", state: "running", completedAt: null },
+      }),
+    );
+    expect(TestNotification.sent.map((sent) => sent.title)).toEqual(["Approval needed"]);
+    // A failed run alerts even when the runtime itself stays healthy and the thread still reads as quiet.
+    state.shells.set(
+      "one",
+      shell({
+        ...afterCompletion,
+        latestTurn: { turnId: "turn-3", state: "error", completedAt: null },
+      }),
+    );
+    expect(TestNotification.sent.map((sent) => sent.title)).toEqual([
+      "Approval needed",
+      "Thread failed",
+    ]);
+  },
+);
 
 it.each(["hasPendingApprovals", "hasPendingUserInput"] as const)(
   "notifies for offline completion and %s once across reconnects",
