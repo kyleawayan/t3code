@@ -776,9 +776,9 @@ function LinearSubIssues(props: {
                     style={{ paddingInlineStart: `${ROW_INSET_REM + row.depth * INDENT_REM}rem` }}
                     onClick={() => props.onOpen(row.issue.identifier)}
                   >
-                    <span className="hidden w-14 shrink-0 text-muted-foreground tabular-nums @sm:inline">
+                    <SquishText className="hidden w-14 shrink-0 text-muted-foreground tabular-nums @sm:inline-grid">
                       {row.issue.identifier}
-                    </span>
+                    </SquishText>
                     <LinearStatusIcon state={row.issue.state} />
                     <SquishText ellipsisScale={SQUISH_TEXT_MIN_SCALE} className="min-w-0 flex-1">
                       {row.issue.title}
