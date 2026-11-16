@@ -29,6 +29,22 @@ export interface ResizableWidthHandlers {
   readonly onLostPointerCapture: (event: ReactPointerEvent<HTMLElement>) => void;
 }
 
+/** One glow on the handle's line (its first child) as a drag lands on a snap width. */
+function pulseSnapLine(handle: HTMLElement) {
+  const line = handle.firstElementChild;
+  if (!line || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  line.animate(
+    [
+      {
+        backgroundColor: "var(--primary)",
+        boxShadow: "0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent)",
+      },
+      { boxShadow: "0 0 0 6px transparent" },
+    ],
+    { duration: 450, easing: "ease-out" },
+  );
+}
+
 /** Uses the current default until a width is chosen; persists on drag end, not every frame. */
 export function useResizableWidth(options: UseResizableWidthOptions): {
   readonly width: number;
@@ -73,7 +89,8 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
   };
 
   const drag = useResizeDrag<HTMLElement>((event) => {
-    const host = event.currentTarget.parentElement;
+    const handle = event.currentTarget;
+    const host = handle.parentElement;
     // Disable drag transitions through transition-property; the host renders transition-duration.
     host?.style.setProperty("transition-property", "none");
     // The drag commits to the key and width it started from, even if the panel
@@ -85,6 +102,7 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
       edge,
       bounds: { min: minWidth, max: maxWidth },
       snap: options.snapWidths?.() ?? [],
+      onSnap: () => pulseSnapLine(handle),
       resize(nextWidth) {
         host?.style.setProperty(RESIZABLE_WIDTH_PROPERTY, `${nextWidth}px`);
         return nextWidth;
