@@ -122,6 +122,7 @@ it("renders an issue page from Linear's data", async () => {
       .all()
       .map((item) => item.element().textContent),
   ).toEqual([
+    expect.stringContaining("Linear moved from Cycle 9 to Cycle 10"),
     expect.stringContaining("Second comment"),
     expect.stringContaining("First comment"),
     expect.stringContaining("added related issue ENG-5"),
