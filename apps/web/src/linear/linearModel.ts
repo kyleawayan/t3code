@@ -384,6 +384,8 @@ export type LinearActivityItem =
       readonly at: string;
       readonly actor: LinearUser | null;
       readonly actorName: string;
+      /** No person or integration: Linear itself. The created line shows its logo for this. */
+      readonly byLinear: boolean;
       readonly text: string;
       readonly icon: LinearActivityIcon;
     }
@@ -502,6 +504,7 @@ export function activityItems(
       at: issue.createdAt,
       actor: issue.creator,
       actorName: issue.creator?.displayName ?? "Linear",
+      byLinear: issue.creator === null,
       text: "created the issue",
       icon: { kind: "created" },
     },
@@ -514,6 +517,7 @@ export function activityItems(
         at: entry.createdAt,
         actor: entry.botActor ? null : entry.actor,
         actorName: entry.botActor?.name ?? entry.actor?.displayName ?? "Linear",
+        byLinear: !entry.botActor?.name && !entry.actor,
         text,
         icon,
       });

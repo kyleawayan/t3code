@@ -49,6 +49,7 @@ import {
   LinearBlockingIcon,
   LinearColorDot,
   LinearEstimateIcon,
+  LinearLogo,
   LinearPriorityIcon,
   LinearProgressRing,
   LinearStateFractionsContext,
@@ -942,10 +943,12 @@ function ActivityItem(props: {
     return (
       <div className="flex min-w-0 items-start gap-2 text-xs/4 text-muted-foreground">
         <span className="flex size-4 shrink-0 items-center justify-center">
-          {item.icon.kind === "created" ? (
-            <LinearAvatar user={item.actor ?? { displayName: item.actorName, avatarUrl: null }} />
-          ) : (
+          {item.icon.kind !== "created" ? (
             <ActivityGlyph icon={item.icon} />
+          ) : item.byLinear ? (
+            <LinearLogo />
+          ) : (
+            <LinearAvatar user={item.actor ?? { displayName: item.actorName, avatarUrl: null }} />
           )}
         </span>
         <span className="min-w-0">

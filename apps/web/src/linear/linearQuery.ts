@@ -6,13 +6,13 @@ fragment LinearIssueRef on Issue { identifier title state { ...LinearState } }
 fragment LinearRelatedIssue on Issue {
   ...LinearIssueRef
   priority
-  assignee { displayName avatarUrl }
+  assignee { displayName avatarUrl avatarBackgroundColor }
 }
 fragment LinearSubIssue on Issue {
   ...LinearIssueRef
   subIssueSortOrder
   estimate
-  assignee { displayName avatarUrl }
+  assignee { displayName avatarUrl avatarBackgroundColor }
   labels(first: 10) { nodes { name color } }
   cycle { number }
   relations(first: 10) { nodes { type relatedIssue { ...LinearRelatedIssue } } }
@@ -34,8 +34,8 @@ query LinearIssue($id: String!) {
     identifier title description url branchName priority priorityLabel estimate dueDate createdAt
     state { ...LinearState }
     team { issueEstimationType states(first: 50) { nodes { name type position } } }
-    creator { displayName avatarUrl }
-    assignee { displayName avatarUrl }
+    creator { displayName avatarUrl avatarBackgroundColor }
+    assignee { displayName avatarUrl avatarBackgroundColor }
     labels(first: 25) { nodes { name color } }
     cycle { number name startsAt endsAt }
     project { name color }
@@ -74,13 +74,13 @@ query LinearIssue($id: String!) {
     comments(first: 50) {
       nodes {
         id body createdAt parent { id }
-        user { displayName avatarUrl } botActor { name } externalUser { name }
+        user { displayName avatarUrl avatarBackgroundColor } botActor { name } externalUser { name }
       }
     }
     history(first: 50) {
       nodes {
         id createdAt
-        actor { displayName avatarUrl } botActor { name }
+        actor { displayName avatarUrl avatarBackgroundColor } botActor { name }
         fromState { ...LinearState } toState { ...LinearState }
         addedLabels { name color } removedLabels { name color }
         fromAssignee { displayName } toAssignee { displayName }
