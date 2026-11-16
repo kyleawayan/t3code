@@ -179,9 +179,14 @@ const RELATION_TEXT: Record<LinearRelationKind, { heading: string; chip: (n: num
     "duplicated-by": { heading: "Duplicates", chip: (n) => `${n} duplicate${n === 1 ? "" : "s"}` },
   };
 
-/** `relations` are stored on this issue; `inverseRelations` on the other one, so they read backward. */
+/**
+ * `relations` are stored on this issue; `inverseRelations` on the other one, so they read backward.
+ * Like Linear, a block whose blocker is done reads as related on both issues.
+ */
 export function relationGroups(
-  issue: Pick<LinearIssue, "relations" | "inverseRelations">,
+  issue: Pick<LinearIssue, "relations" | "inverseRelations"> & {
+    readonly state: { readonly type: string };
+  },
 ): LinearRelationGroup[] {
   const byKind = new Map<LinearRelationKind, LinearRelatedIssue[]>();
   const add = (kind: LinearRelationKind | null, ref: LinearRelatedIssue) => {
@@ -193,7 +198,9 @@ export function relationGroups(
   for (const relation of issue.relations.nodes) {
     add(
       relation.type === "blocks"
-        ? "blocking"
+        ? isDoneStateType(issue.state.type)
+          ? "related"
+          : "blocking"
         : relation.type === "related"
           ? "related"
           : relation.type === "duplicate"
@@ -205,7 +212,9 @@ export function relationGroups(
   for (const relation of issue.inverseRelations.nodes) {
     add(
       relation.type === "blocks"
-        ? "blocked-by"
+        ? isDoneStateType(relation.issue.state.type)
+          ? "related"
+          : "blocked-by"
         : relation.type === "related"
           ? "related"
           : relation.type === "duplicate"

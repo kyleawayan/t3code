@@ -97,7 +97,9 @@ describe("startedStateFractions", () => {
 
 describe("relationGroups", () => {
   it("reads inverse relations backward and orders the groups", () => {
+    const done = { name: "Done", type: "completed", color: "#5e6ad2" };
     const groups = relationGroups({
+      state: LINEAR_FIXTURE_NESTED.state,
       relations: {
         nodes: [
           { type: "blocks", relatedIssue: { ...LINEAR_FIXTURE_NESTED, identifier: "ENG-4" } },
@@ -108,19 +110,33 @@ describe("relationGroups", () => {
       inverseRelations: {
         nodes: [
           { type: "blocks", issue: { ...LINEAR_FIXTURE_NESTED, identifier: "ENG-8" } },
+          {
+            type: "blocks",
+            issue: { ...LINEAR_FIXTURE_NESTED, identifier: "ENG-12", state: done },
+          },
           { type: "related", issue: { ...LINEAR_FIXTURE_NESTED, identifier: "ENG-5" } },
           { type: "duplicate", issue: { ...LINEAR_FIXTURE_NESTED, identifier: "ENG-11" } },
         ],
       },
     });
-    expect(
-      groups.map((group) => [group.label, group.issues.map((issue) => issue.identifier)]),
-    ).toEqual([
+    const summary = (list: typeof groups) =>
+      list.map((group) => [group.label, group.issues.map((issue) => issue.identifier)]);
+    expect(summary(groups)).toEqual([
       ["1 blocked by", ["ENG-8"]],
       ["1 blocking", ["ENG-4"]],
-      ["1 related", ["ENG-5"]],
+      ["2 related", ["ENG-5", "ENG-12"]],
       ["1 duplicate", ["ENG-11"]],
     ]);
+    const blockerDone = relationGroups({
+      state: done,
+      relations: {
+        nodes: [
+          { type: "blocks", relatedIssue: { ...LINEAR_FIXTURE_NESTED, identifier: "ENG-4" } },
+        ],
+      },
+      inverseRelations: { nodes: [] },
+    });
+    expect(summary(blockerDone)).toEqual([["1 related", ["ENG-4"]]]);
   });
 });
 
