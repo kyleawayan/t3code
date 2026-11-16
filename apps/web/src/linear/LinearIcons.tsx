@@ -207,7 +207,18 @@ export function LinearColorDot(props: { readonly color: string; readonly classNa
   );
 }
 
-/** Linear's progress ring: a faint track with the done share drawn clockwise from the top. */
+// Linear's ring, measured from its SVG: the done arc starts 14° past the top, two 24.5° gaps
+// split it from the track, and the two share what is left. Even 0 done shows a 4° dot.
+const RING_ARC_START = 14 / 360;
+const RING_GAP = 24.5 / 360;
+const RING_SHARED = 1 - 2 * RING_GAP;
+const RING_MIN_ARC = 4 / 360;
+
+/**
+ * Linear's progress ring: the done share clockwise from the top, the rest as a light gray track,
+ * with a gap at each seam. The track mixes the text color into the page, so it stays light in
+ * high-contrast themes, where the muted color is black and would hide the arc.
+ */
 export function LinearProgressRing(props: {
   readonly done: number;
   readonly total: number;
@@ -216,32 +227,38 @@ export function LinearProgressRing(props: {
   const radius = 5.25;
   const circumference = 2 * Math.PI * radius;
   const fraction = props.total === 0 ? 0 : Math.min(props.done / props.total, 1);
+  const arc = Math.max(RING_MIN_ARC, fraction * RING_SHARED);
+  // Dash lengths and offsets in the ring's own length, from the top (the svg turns -90°).
+  const segment = (start: number, length: number) => ({
+    strokeDasharray: `${length * circumference} ${circumference}`,
+    strokeDashoffset: -start * circumference,
+  });
   return (
     <svg
       viewBox="0 0 14 14"
       aria-hidden="true"
       className={cn("size-3.5 shrink-0 -rotate-90 text-primary", props.className)}
     >
-      <circle
-        cx="7"
-        cy="7"
-        r={radius}
-        fill="none"
-        className="stroke-muted-foreground/30"
-        strokeWidth="1.5"
-      />
-      {fraction > 0 ? (
+      {fraction < 1 ? (
         <circle
           cx="7"
           cy="7"
           r={radius}
           fill="none"
-          stroke="currentColor"
+          style={{ stroke: "color-mix(in srgb, var(--foreground) 15%, var(--background))" }}
           strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeDasharray={`${circumference * fraction} ${circumference}`}
+          {...segment(RING_ARC_START + arc + RING_GAP, RING_SHARED - arc)}
         />
       ) : null}
+      <circle
+        cx="7"
+        cy="7"
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        {...(fraction < 1 ? segment(RING_ARC_START, arc) : {})}
+      />
     </svg>
   );
 }
