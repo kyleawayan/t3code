@@ -15,9 +15,10 @@ const ROW = 'button[data-type="item"]';
 const NAME_BOX = ':scope > [data-item-section="content"] > :first-child';
 const NAME_HEAD = ':scope > [data-truncate-segment-priority="2"]';
 const NAME_TEXT = '[data-truncate-content="visible"]';
-// Pierre truncates a name's head away whole before touching its tail, dropping the
-// ellipsis too, so "background" read as "round". A head this long keeps at least its
-// first letter and ellipsis; a shorter one, like the "." of ".trash", stays as is.
+// Pierre truncates a name's head away whole, ellipsis too ("background" read as "round"),
+// so a head this long keeps its first letter and ellipsis; a shorter one, like the "." of
+// ".trash", stays as is. The minimum never exceeds the head's own text, or a narrow head
+// ("lin" of "linear") leaves a gap before its tail.
 const NAME_HEAD_MIN_EM = 1.25;
 const NAME_HEAD_MIN_CHARACTERS = 3;
 
@@ -45,20 +46,23 @@ function fitNames(boxes: readonly HTMLElement[]): void {
     const available = box.parentElement?.clientWidth ?? 0;
     const natural = naturalNameWidth(box);
     const head = box.querySelector<HTMLElement>(NAME_HEAD);
-    const headText = head?.querySelector(NAME_TEXT)?.textContent ?? "";
+    const headContent = head?.querySelector<HTMLElement>(NAME_TEXT);
     const scale = resolveSquishScale(available, natural, FILE_TREE_NAME_SQUISH_SCALE);
     return {
       box,
       head,
-      keepHead: Array.from(headText).length >= NAME_HEAD_MIN_CHARACTERS,
+      headMinWidth:
+        Array.from(headContent?.textContent ?? "").length >= NAME_HEAD_MIN_CHARACTERS
+          ? `min(${NAME_HEAD_MIN_EM}em, ${(headContent?.scrollWidth ?? 0) + 1}px)`
+          : "",
       scale,
       width: resolveSquishEllipsisWidth(available, natural, scale) ?? natural,
     };
   });
-  for (const { box, head, keepHead, scale, width } of fits) {
+  for (const { box, head, headMinWidth, scale, width } of fits) {
     box.style.transform = scale === 1 ? "" : `scaleX(${scale})`;
     box.style.width = scale === 1 ? "" : `${width}px`;
-    if (head) head.style.minWidth = keepHead ? `${NAME_HEAD_MIN_EM}em` : "";
+    if (head) head.style.minWidth = headMinWidth;
   }
 }
 
