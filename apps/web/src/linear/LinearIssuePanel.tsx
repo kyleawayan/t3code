@@ -439,7 +439,12 @@ function LinearIssueView(props: {
         {props.error ? (
           <p className="mb-3 text-xs text-muted-foreground">Showing the last copy: {props.error}</p>
         ) : null}
-        <h1 className="text-xl font-semibold text-balance select-text">{issue.title}</h1>
+        <div className="flex items-start gap-1">
+          <h1 className="min-w-0 text-xl font-semibold text-balance select-text">{issue.title}</h1>
+          <span className="mt-0.5 shrink-0">
+            <OpenInLinearButton url={issue.url} threadRef={props.threadRef} />
+          </span>
+        </div>
         {issue.parent ? (
           <div className="mt-1.5 flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
             <span className="shrink-0">Sub-issue of</span>
