@@ -63,6 +63,7 @@ import {
   workEntryIconName,
 } from "./TimelineWorkEntryRow.logic";
 import { formatWorkingTimerNow } from "./TimelineWorkGroupRows.logic";
+import { useHoldToOpen } from "./timelineActivityPrefs";
 
 export const WorkGroupSection = memo(function WorkGroupSection({
   anchorKey,
@@ -433,6 +434,10 @@ export function ThinkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind:
   const ctx = use(TimelineRowCtx);
   const { isCompacting, isPreparingWorktree, liveAnswerPreview, providerStartingLabel } =
     use(TimelineRowActivityCtx);
+  const { groupId } = row;
+  const disclosureHandlers = useHoldToOpen(row.holdToOpen === true, () => {
+    if (groupId !== undefined) ctx.onToggleWorkGroup(groupId, row.id);
+  });
   if (isPreparingWorktree || isCompacting) return <WorkLogRow label="" />;
   // A failed group keeps this disclosure while an approval waits, but nothing is thinking then.
   const live = ctx.pendingApprovals.size === 0;
@@ -444,14 +449,13 @@ export function ThinkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind:
       shimmer={live}
     />
   );
-  const { groupId } = row;
   if (groupId === undefined) return activity;
   return (
     <button
       type="button"
       className="group/live-work flex min-h-6 w-full max-w-full cursor-pointer items-center rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
       aria-expanded={row.expanded === true}
-      onClick={() => ctx.onToggleWorkGroup(groupId, row.id)}
+      {...disclosureHandlers}
     >
       {activity}
     </button>
@@ -575,6 +579,9 @@ export function LiveWorkEntryTimelineRow({
   const item = row.entry.projectedItem?.item;
   const pendingApproval =
     item?.type === "approval_request" ? ctx.pendingApprovals.get(item.requestId) : undefined;
+  const disclosureHandlers = useHoldToOpen(row.holdToOpen === true, () =>
+    ctx.onToggleWorkGroup(row.groupId, row.id),
+  );
   if (pendingApproval) return <TimelinePendingApprovalRow approval={pendingApproval} />;
 
   const failed = workEntryDisplayIndicatesToolFailure(row.entry);
@@ -597,7 +604,7 @@ export function LiveWorkEntryTimelineRow({
           : undefined
       }
       aria-expanded={row.expanded}
-      onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
+      {...disclosureHandlers}
     >
       {thoughtLine ? (
         <WorkLogRow
@@ -666,6 +673,9 @@ export function WorkGroupToggleTimelineRow({
   row: Extract<TimelineRow, { kind: "work-toggle" }>;
 }) {
   const ctx = use(TimelineRowCtx);
+  const disclosureHandlers = useHoldToOpen(row.holdToOpen === true, () =>
+    ctx.onToggleWorkGroup(row.groupId, row.id),
+  );
   return (
     <WorkGroupHeader
       label={row.summary}
@@ -675,7 +685,7 @@ export function WorkGroupToggleTimelineRow({
       expanded={row.expanded}
       createdAt={row.createdAt}
       timestampFormat={ctx.timestampFormat}
-      onToggle={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
+      disclosureHandlers={disclosureHandlers}
     />
   );
 }
@@ -688,13 +698,13 @@ function WorkGroupHeader(props: {
   expanded: boolean;
   createdAt: string;
   timestampFormat: TimestampFormat;
-  onToggle: () => void;
+  disclosureHandlers: ReturnType<typeof useHoldToOpen>;
 }) {
   return (
     <WorkLogButton
       aria-label={props.failed ? `${props.label}, tool call failed` : props.label}
       aria-expanded={props.expanded}
-      onClick={props.onToggle}
+      {...props.disclosureHandlers}
       icon={
         <ToolActivityIconView
           icon={props.toolIcon}

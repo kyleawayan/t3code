@@ -114,7 +114,7 @@ import { searchableSetting, type SettingsSearchItemId } from "./settingsSearch";
 import { nativeLanguageName, SYSTEM_LANGUAGE } from "@t3tools/client-runtime/locales";
 import { SUPPORTED_LOCALES } from "../../i18n/locales";
 import { BackgroundActivitySettingsRow } from "./BackgroundActivitySettings";
-import { useOpenToolGroups } from "../chat/timelineActivityPrefs";
+import { useHoldToOpenWork, useOpenToolGroups } from "../chat/timelineActivityPrefs";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { PullRequestLinksOpenInAppSetting } from "./IntegrationsSettings";
 import { LinearSettingsSection } from "../../linear/LinearSettingsSection"; // Fork: Linear tab
@@ -1314,6 +1314,7 @@ export function ChatSettingsPanel() {
       <SettingsSection id="activity" title="Activity">
         <ToolCallVisibilityRow />
         <OpenToolGroupsRow />
+        <HoldToOpenWorkRow />
       </SettingsSection>
 
       <SettingsSection id="screen-reader" title="Screen reader">
@@ -1386,6 +1387,24 @@ function OpenToolGroupsRow() {
       }
       control={
         <Switch checked={open} onCheckedChange={setOpen} aria-label="Open tool call groups" />
+      }
+    />
+  );
+}
+
+function HoldToOpenWorkRow() {
+  const [hold, setHold] = useHoldToOpenWork();
+  return (
+    <SettingsRow
+      {...searchableSetting("hold-to-open-work")}
+      description="While an agent works, its live activity line and closed tool call groups open only when you press and hold for half a second, so a stray click doesn't open them. Enter and Space still open them."
+      resetAction={
+        hold ? (
+          <SettingResetButton label="hold to open running work" onClick={() => setHold(false)} />
+        ) : null
+      }
+      control={
+        <Switch checked={hold} onCheckedChange={setHold} aria-label="Hold to open running work" />
       }
     />
   );
