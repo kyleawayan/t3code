@@ -116,6 +116,17 @@ it("renders an issue page from Linear's data", async () => {
   await expect.element(activity.getByText(/added related issue ENG-5/)).toBeVisible();
   await expect.element(activity.getByText("via MCP")).toBeVisible();
   await expect.element(activity.getByText("A threaded reply to the first comment.")).toBeVisible();
+  expect(
+    activity
+      .getByRole("listitem")
+      .all()
+      .map((item) => item.element().textContent),
+  ).toEqual([
+    expect.stringContaining("Second comment"),
+    expect.stringContaining("First comment"),
+    expect.stringContaining("added related issue ENG-5"),
+    expect.stringContaining("created the issue"),
+  ]);
 });
 
 it("navigates into sub-issues and relations, and back with the keyboard", async () => {
