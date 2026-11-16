@@ -16,6 +16,8 @@ export interface UseResizableWidthOptions {
   readonly minWidth: number;
   readonly maxWidth: number;
   readonly edge: "left" | "right";
+  /** Read when a drag starts: widths it snaps to, such as half the row. */
+  readonly snapWidths?: (() => readonly number[]) | undefined;
 }
 
 export interface ResizableWidthHandlers {
@@ -82,6 +84,7 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
       width: startWidth,
       edge,
       bounds: { min: minWidth, max: maxWidth },
+      snap: options.snapWidths?.() ?? [],
       resize(nextWidth) {
         host?.style.setProperty(RESIZABLE_WIDTH_PROPERTY, `${nextWidth}px`);
         return nextWidth;
