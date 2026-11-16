@@ -105,6 +105,8 @@ export interface TimelineRowSharedState {
   onWorktreeSetupWorkLocally: (() => void) | null;
   onOpenWorktreeSetupTerminal: ((terminalId: string) => void) | null;
   workGroupViewState: WorkGroupViewState;
+  /** Fork: tool call rows start open (Settings → Chat → Open tool call groups). */
+  openToolCallsByDefault: boolean;
 }
 
 export interface TimelineRowActivityState {
@@ -128,7 +130,10 @@ export const TimelineRowActivityCtx = createContext<TimelineRowActivityState>(nu
 
 export interface WorkGroupViewState {
   scrollPositions: Map<string, WorkGroupScrollAnchor>;
+  /** Entries open now, whether by a click or by default. */
   expandedEntries: Set<string>;
+  /** Fork: tool calls closed by a click while they open by default. */
+  collapsedEntries: Set<string>;
 }
 
 /** One image the group's agent viewed; `item` is null until its URL resolves. */
@@ -142,6 +147,7 @@ export const WorkGroupViewCtx = createContext<{
   viewedImages: ReadonlyArray<WorkGroupViewedImage>;
   onToggleEntry: (collapsed: boolean, entryId: string) => void;
   onContentReady?: ((entryId: string) => void) | undefined;
+  holdToOpen: boolean;
 } | null>(null);
 
 export type TimelineWorkEntry = Extract<

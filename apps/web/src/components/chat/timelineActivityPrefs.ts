@@ -24,9 +24,15 @@ export function useHoldToOpenWork() {
  */
 export function useHoldToOpen(hold: boolean, toggle: () => void) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const held = useRef<HTMLElement | null>(null);
   // The opened row re-renders without `hold`, so the release's click must not close it again.
   const openedByHold = useRef(false);
+  const release = () => {
+    if (held.current) delete held.current.dataset.holding;
+    held.current = null;
+  };
   const cancel = () => {
+    release();
     if (timer.current === null) return;
     clearTimeout(timer.current);
     timer.current = null;
@@ -39,12 +45,17 @@ export function useHoldToOpen(hold: boolean, toggle: () => void) {
     [],
   );
   return {
+    // The fill shown while holding (index.css) keys off these two attributes.
+    "data-hold-to-open": hold ? "" : undefined,
     onPointerDown: (event: PointerEvent<HTMLElement>) => {
       openedByHold.current = false;
       if (!hold || event.button !== 0) return;
       cancel();
+      held.current = event.currentTarget;
+      held.current.dataset.holding = "";
       timer.current = setTimeout(() => {
         timer.current = null;
+        release();
         openedByHold.current = true;
         toggle();
       }, HOLD_TO_OPEN_MS);
