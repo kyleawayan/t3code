@@ -1,3 +1,4 @@
+// oxlint-disable t3code/no-untranslated-copy -- Fork-only English copy, kept out of upstream's translation catalogs.
 import type {
   LinearAncestor,
   LinearComment,
@@ -141,12 +142,24 @@ export function cycleLabel(cycle: LinearCycle, now: Date): string {
   return `${name} (${days} days left)`;
 }
 
-/** Due dates are calendar dates without a time, so they compare by local day. */
+/**
+ * "Nov 20 (4 days left)", like a cycle's countdown, then "(tomorrow)", "(today)", and
+ * "(2 days overdue)". Due dates have no time, so they compare by local day.
+ */
 export function dueDateLabel(dueDate: string, now: Date): { label: string; overdue: boolean } {
   const [year, month, day] = dueDate.split("-").map(Number);
   const due = new Date(year ?? 1970, (month ?? 1) - 1, day ?? 1);
-  const label = due.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  return { label, overdue: calendarDaysBetween(now, due) < 0 };
+  const date = due.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const days = calendarDaysBetween(now, due);
+  const countdown =
+    days > 1
+      ? `${days} days left`
+      : days === 1
+        ? "tomorrow"
+        : days === 0
+          ? "today"
+          : `${-days} ${days === -1 ? "day" : "days"} overdue`;
+  return { label: `${date} (${countdown})`, overdue: days < 0 };
 }
 
 const MINUTE_MS = 60_000;
