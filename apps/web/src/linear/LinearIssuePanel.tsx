@@ -10,12 +10,15 @@ import {
   ChevronLeft,
   ChevronRight,
   CirclePlay,
+  CircleUserRound,
   Copy,
   ExternalLink,
   GitBranch,
   Link2,
+  ListTree,
   RotateCw,
   Search,
+  Tag,
 } from "lucide-react";
 import { useEffect, useRef, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
@@ -37,7 +40,6 @@ import {
 } from "~/components/files/markdownPreviewScroll";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useNowMinute } from "~/hooks/useNowMinute";
-import { useRelativeTimeState } from "~/hooks/useRelativeTimeState";
 import { cn } from "~/lib/utils";
 
 import { linearBridge, useLinearKeyStore } from "./linearBridge";
@@ -67,10 +69,12 @@ import {
   cycleLabel,
   dueDateLabel,
   estimateLabel,
+  linearRelativeTime,
   relationGroups,
   subIssueProgress,
   startedStateFractions,
   subIssueRows,
+  type LinearActivityIcon,
   type LinearActivityItem,
   type LinearCommentThread,
   type LinearRelationGroup,
@@ -860,12 +864,18 @@ function LinearResources(props: {
 }
 
 function RelativeTime(props: { readonly iso: string }) {
-  const state = useRelativeTimeState(props.iso);
-  if (state.status !== "relative") return null;
+  const now = new Date(`${useNowMinute()}Z`);
+  const label = linearRelativeTime(props.iso, now);
+  if (!label) return null;
   return (
-    <time dateTime={props.iso} className="shrink-0 text-xs text-muted-foreground">
-      {state.suffix ? `${state.value} ${state.suffix}` : state.value}
-    </time>
+    <Tooltip>
+      <TooltipTrigger
+        render={<time dateTime={props.iso} className="shrink-0 text-xs text-muted-foreground" />}
+      >
+        {label}
+      </TooltipTrigger>
+      <TooltipPopup side="top">{new Date(props.iso).toLocaleString()}</TooltipPopup>
+    </Tooltip>
   );
 }
 
@@ -905,8 +915,16 @@ function LinearActivity(props: {
         </Tooltip>
       </div>
       <ol className="flex flex-col gap-3">
-        {items.map((item) => (
-          <li key={item.id}>
+        {items.map((item, index) => (
+          <li key={item.id} className="relative">
+            {item.kind === "event" && items[index + 1]?.kind === "event" ? (
+              // Linear's timeline: a line joins the glyphs of consecutive history lines.
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute w-px bg-border"
+                style={{ left: "calc(0.5rem - 0.5px)", top: "1.25rem", bottom: "-0.5rem" }}
+              />
+            ) : null}
             <ActivityItem item={item} markdown={props.markdown} />
           </li>
         ))}
@@ -922,8 +940,14 @@ function ActivityItem(props: {
   const { item } = props;
   if (item.kind === "event") {
     return (
-      <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-        <LinearAvatar user={item.actor ?? { displayName: item.actorName, avatarUrl: null }} />
+      <div className="flex min-w-0 items-start gap-2 text-xs/4 text-muted-foreground">
+        <span className="flex size-4 shrink-0 items-center justify-center">
+          {item.icon.kind === "created" ? (
+            <LinearAvatar user={item.actor ?? { displayName: item.actorName, avatarUrl: null }} />
+          ) : (
+            <ActivityGlyph icon={item.icon} />
+          )}
+        </span>
         <span className="min-w-0">
           <span className="text-foreground/80">{item.actorName}</span> {item.text}
         </span>
@@ -933,6 +957,32 @@ function ActivityItem(props: {
     );
   }
   return <CommentThread thread={item.thread} markdown={props.markdown} />;
+}
+
+const GLYPH = "size-3.5 shrink-0 text-muted-foreground";
+
+function ActivityGlyph(props: { readonly icon: Exclude<LinearActivityIcon, { kind: "created" }> }) {
+  const { icon } = props;
+  switch (icon.kind) {
+    case "status":
+      return <LinearStatusIcon state={icon.state} />;
+    case "priority":
+      return <LinearPriorityIcon priority={icon.priority} />;
+    case "relation":
+      return icon.relation === "duplicate-of" || icon.relation === "duplicated-by" ? (
+        <Copy aria-hidden="true" className={GLYPH} />
+      ) : (
+        <RelationIcon kind={icon.relation} />
+      );
+    case "assignee":
+      return <CircleUserRound aria-hidden="true" className={GLYPH} />;
+    case "label":
+      return <Tag aria-hidden="true" className={GLYPH} />;
+    case "cycle":
+      return <CirclePlay aria-hidden="true" className={GLYPH} />;
+    case "parent":
+      return <ListTree aria-hidden="true" className={GLYPH} />;
+  }
 }
 
 function CommentThread(props: {

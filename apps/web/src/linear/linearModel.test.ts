@@ -15,6 +15,7 @@ import {
   ancestorChain,
   cycleLabel,
   issueFingerprint,
+  linearRelativeTime,
   relationGroups,
   segmentMarkdown,
   startedStateFractions,
@@ -52,6 +53,27 @@ describe("cycleLabel", () => {
 
   it("prefers the cycle's own name", () => {
     expect(cycleLabel({ ...cycle, name: "Launch" }, local(2026, 12, 5))).toBe("Launch");
+  });
+});
+
+describe("linearRelativeTime", () => {
+  const now = local(2026, 11, 16);
+  const ago = (ms: number) => new Date(now.getTime() - ms).toISOString();
+  const DAY = 86_400_000;
+  // The 44 to 123 day rows are what Linear's own activity showed for the same entries.
+  it.each([
+    [ago(30_000), "just now"],
+    [ago(5 * 60_000), "5m ago"],
+    [ago(3 * 3_600_000), "3h ago"],
+    [ago(2 * DAY), "2d ago"],
+    [ago(44 * DAY), "6w ago"],
+    [ago(52 * DAY), "7w ago"],
+    [ago(62 * DAY), "9w ago"],
+    [ago(74 * DAY), "2mo ago"],
+    [ago(123 * DAY), "4mo ago"],
+    [ago(400 * DAY), "1y ago"],
+  ])("%s → %s", (iso, expected) => {
+    expect(linearRelativeTime(iso, now)).toBe(expected);
   });
 });
 
@@ -250,15 +272,17 @@ describe("activityItems", () => {
     const items = activityItems({
       ...LINEAR_FIXTURE_IN_REVIEW,
       history: { nodes: [...base, entry, edit] },
-    }).flatMap((item) => (item.kind === "event" && item.id !== "created" ? [item.text] : []));
+    }).flatMap((item) =>
+      item.kind === "event" && item.id !== "created" ? [[item.text, item.icon]] : [],
+    );
     expect(items).toEqual([
-      "changed status from Todo to In Review",
-      "assigned to Example User",
-      "added label Bug",
-      "changed priority from Medium to Urgent",
-      "added to Cycle 10",
-      "set parent issue to ENG-1",
-      "marked this issue as blocking ENG-4",
+      ["changed status from Todo to In Review", { kind: "status", state: entry.toState }],
+      ["assigned to Example User", { kind: "assignee" }],
+      ["added label Bug", { kind: "label" }],
+      ["changed priority from Medium to Urgent", { kind: "priority", priority: 1 }],
+      ["added to Cycle 10", { kind: "cycle" }],
+      ["set parent issue to ENG-1", { kind: "parent" }],
+      ["marked this issue as blocking ENG-4", { kind: "relation", relation: "blocking" }],
     ]);
   });
 });
