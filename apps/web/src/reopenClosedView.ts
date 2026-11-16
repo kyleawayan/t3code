@@ -157,6 +157,9 @@ export async function reopenClosedView(
     case "side-chat":
       panels.openSideChat(ref, surface.threadId);
       break;
+    case "linear": // Fork: Linear tab
+      panels.setLinearSurface(ref, surface, true);
+      break;
     default:
       panels.open(ref, surface.kind);
   }

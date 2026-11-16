@@ -107,6 +107,7 @@ import { searchableSetting } from "./settingsSearch";
 import { BackgroundActivitySettingsRow } from "./BackgroundActivitySettings";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { PullRequestLinksOpenInAppSetting } from "./IntegrationsSettings";
+import { LinearSettingsSection } from "../../linear/LinearSettingsSection"; // Fork: Linear tab
 import { StorageCleanupSections } from "./StorageSettings";
 import { UpdateTrackSwitchDialog } from "./UpdateTrackSwitchDialog";
 import { environmentIdsKey } from "~/state/environmentAtomList";
@@ -1491,7 +1492,6 @@ export function DiffsSettingsPanel() {
         />
         <DiffColorsSettingsRow />
       </SettingsSection>
-
       <SettingsSection id="pull-requests" title="Pull requests">
         <SettingsRow
           {...searchableSetting("proactive-panels")}
@@ -1520,6 +1520,7 @@ export function DiffsSettingsPanel() {
         />
         <PullRequestLinksOpenInAppSetting />
       </SettingsSection>
+      <LinearSettingsSection /> {/* Fork: Linear tab */}
     </SettingsPageContainer>
   );
 }
