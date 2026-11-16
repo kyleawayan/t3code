@@ -6,6 +6,7 @@ import type {
   LinearIssue,
   LinearIssueRef,
   LinearRelatedIssue,
+  LinearState,
   LinearSubIssue,
   LinearUser,
 } from "./linearTypes";
@@ -146,6 +147,28 @@ export function dueDateLabel(dueDate: string, now: Date): { label: string; overd
   const due = new Date(year ?? 1970, (month ?? 1) - 1, day ?? 1);
   const label = due.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   return { label, overdue: calendarDaysBetween(now, due) < 0 };
+}
+
+const MINUTE_MS = 60_000;
+
+/**
+ * Linear's relative dates: minutes, hours, and days for the first week, then weeks up to 9, then
+ * months, then years ("9w ago", "4mo ago").
+ */
+export function linearRelativeTime(iso: string, now: Date): string {
+  const elapsed = now.getTime() - new Date(iso).getTime();
+  if (Number.isNaN(elapsed)) return "";
+  if (elapsed < MINUTE_MS) return "just now";
+  const minutes = Math.floor(elapsed / MINUTE_MS);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.round(days / 7);
+  if (weeks < 10) return `${weeks}w ago`;
+  if (days < 365) return `${Math.floor(days / 30.44)}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
 }
 
 export type LinearRelationKind =
@@ -343,15 +366,16 @@ export function commentAuthor(comment: LinearComment): { name: string; via: stri
   };
 }
 
+/** The glyph a history line shows in place of an avatar, as Linear's activity does. */
 export type LinearActivityIcon =
-  | "created"
-  | "status"
-  | "assignee"
-  | "label"
-  | "priority"
-  | "cycle"
-  | "parent"
-  | "relation";
+  | { readonly kind: "created" }
+  | { readonly kind: "status"; readonly state: LinearState }
+  | { readonly kind: "assignee" }
+  | { readonly kind: "label" }
+  | { readonly kind: "priority"; readonly priority: number }
+  | { readonly kind: "cycle" }
+  | { readonly kind: "parent" }
+  | { readonly kind: "relation"; readonly relation: LinearRelationKind };
 
 export type LinearActivityItem =
   | {
@@ -370,6 +394,13 @@ export type LinearActivityItem =
       readonly thread: LinearCommentThread;
     };
 
+const RELATION_CHANGE_KIND: Record<string, LinearRelationKind> = {
+  b: "blocked-by",
+  x: "blocking",
+  r: "related",
+  d: "duplicate-of",
+};
+
 const RELATION_CHANGE_TEXT: Record<string, (identifier: string) => string> = {
   ab: (id) => `marked this issue as blocked by ${id}`,
   ax: (id) => `marked this issue as blocking ${id}`,
@@ -387,7 +418,7 @@ function historyTexts(entry: LinearHistoryEntry): { text: string; icon: LinearAc
   const texts: { text: string; icon: LinearActivityIcon }[] = [];
   if (entry.toState && entry.fromState?.name !== entry.toState.name) {
     texts.push({
-      icon: "status",
+      icon: { kind: "status", state: entry.toState },
       text: entry.fromState
         ? `changed status from ${entry.fromState.name} to ${entry.toState.name}`
         : `set status to ${entry.toState.name}`,
@@ -395,7 +426,7 @@ function historyTexts(entry: LinearHistoryEntry): { text: string; icon: LinearAc
   }
   if (entry.toAssignee || entry.fromAssignee) {
     texts.push({
-      icon: "assignee",
+      icon: { kind: "assignee" },
       text: entry.toAssignee
         ? entry.fromAssignee
           ? `reassigned from ${entry.fromAssignee.displayName} to ${entry.toAssignee.displayName}`
@@ -407,13 +438,13 @@ function historyTexts(entry: LinearHistoryEntry): { text: string; icon: LinearAc
   const removed = entry.removedLabels ?? [];
   if (added.length > 0) {
     texts.push({
-      icon: "label",
+      icon: { kind: "label" },
       text: `added label${added.length === 1 ? "" : "s"} ${join(added.map((label) => label.name))}`,
     });
   }
   if (removed.length > 0) {
     texts.push({
-      icon: "label",
+      icon: { kind: "label" },
       text: `removed label${removed.length === 1 ? "" : "s"} ${join(removed.map((label) => label.name))}`,
     });
   }
@@ -423,7 +454,7 @@ function historyTexts(entry: LinearHistoryEntry): { text: string; icon: LinearAc
     entry.toPriority !== entry.fromPriority
   ) {
     texts.push({
-      icon: "priority",
+      icon: { kind: "priority", priority: entry.toPriority },
       text:
         entry.toPriority === 0
           ? "removed priority"
@@ -434,7 +465,7 @@ function historyTexts(entry: LinearHistoryEntry): { text: string; icon: LinearAc
   }
   if (entry.toCycle || entry.fromCycle) {
     texts.push({
-      icon: "cycle",
+      icon: { kind: "cycle" },
       text: entry.toCycle
         ? entry.fromCycle
           ? `moved from Cycle ${entry.fromCycle.number} to Cycle ${entry.toCycle.number}`
@@ -444,7 +475,7 @@ function historyTexts(entry: LinearHistoryEntry): { text: string; icon: LinearAc
   }
   if (entry.toParent || entry.fromParent) {
     texts.push({
-      icon: "parent",
+      icon: { kind: "parent" },
       text: entry.toParent
         ? entry.fromParent
           ? `changed parent from ${entry.fromParent.identifier} to ${entry.toParent.identifier}`
@@ -454,7 +485,8 @@ function historyTexts(entry: LinearHistoryEntry): { text: string; icon: LinearAc
   }
   for (const change of entry.relationChanges ?? []) {
     const text = RELATION_CHANGE_TEXT[change.type]?.(change.identifier);
-    if (text) texts.push({ icon: "relation", text });
+    const relation = RELATION_CHANGE_KIND[change.type.slice(1)];
+    if (text && relation) texts.push({ icon: { kind: "relation", relation }, text });
   }
   return texts;
 }
@@ -471,7 +503,7 @@ export function activityItems(
       actor: issue.creator,
       actorName: issue.creator?.displayName ?? "Linear",
       text: "created the issue",
-      icon: "created",
+      icon: { kind: "created" },
     },
   ];
   for (const entry of issue.history.nodes) {
