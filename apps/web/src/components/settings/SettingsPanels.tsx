@@ -114,6 +114,7 @@ import { searchableSetting, type SettingsSearchItemId } from "./settingsSearch";
 import { nativeLanguageName, SYSTEM_LANGUAGE } from "@t3tools/client-runtime/locales";
 import { SUPPORTED_LOCALES } from "../../i18n/locales";
 import { BackgroundActivitySettingsRow } from "./BackgroundActivitySettings";
+import { useOpenToolGroups } from "../chat/timelineActivityPrefs";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { PullRequestLinksOpenInAppSetting } from "./IntegrationsSettings";
 import { LinearSettingsSection } from "../../linear/LinearSettingsSection"; // Fork: Linear tab
@@ -1312,6 +1313,7 @@ export function ChatSettingsPanel() {
 
       <SettingsSection id="activity" title="Activity">
         <ToolCallVisibilityRow />
+        <OpenToolGroupsRow />
       </SettingsSection>
 
       <SettingsSection id="screen-reader" title="Screen reader">
@@ -1366,6 +1368,24 @@ function ToolCallVisibilityRow() {
             ))}
           </SelectPopup>
         </Select>
+      }
+    />
+  );
+}
+
+function OpenToolGroupsRow() {
+  const [open, setOpen] = useOpenToolGroups();
+  return (
+    <SettingsRow
+      {...searchableSetting("open-tool-groups")}
+      description="Show each group of tool calls opened, while the agent works and after, instead of one collapsed line per group. A click still closes one."
+      resetAction={
+        open ? (
+          <SettingResetButton label="open tool call groups" onClick={() => setOpen(false)} />
+        ) : null
+      }
+      control={
+        <Switch checked={open} onCheckedChange={setOpen} aria-label="Open tool call groups" />
       }
     />
   );
