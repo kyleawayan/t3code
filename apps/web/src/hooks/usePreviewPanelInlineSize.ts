@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { type ResizableWidthHandlers, useResizableWidth } from "./useResizableWidth";
 import { observeResize } from "../lib/observeResize";
@@ -34,15 +34,19 @@ export function usePreviewPanelInlineSize(
   const [maxWidth, setMaxWidth] = useState(() =>
     getPreviewPanelMaxWidth(typeof window === "undefined" ? 1280 : window.innerWidth),
   );
+  const rowRef = useRef<HTMLElement | null>(null);
   const { width, handlers } = useResizableWidth({
     storageKey: options.widthStorageKey ?? PREVIEW_PANEL_WIDTH_STORAGE_KEY,
     defaultWidth: options.defaultWidth ?? PREVIEW_PANEL_DEFAULT_WIDTH,
     minWidth: PREVIEW_PANEL_MIN_WIDTH,
     maxWidth,
     edge: "left",
+    // Fork: the divider snaps to the middle of the row it shares, which ends at the sidebar.
+    snapWidths: () => (rowRef.current ? [Math.round(rowRef.current.clientWidth / 2)] : []),
   });
   const observeRow = (host: HTMLElement) => {
     const row = container ?? (enabled ? host.parentElement : null) ?? null;
+    rowRef.current = row;
     // Ref callbacks run before paint, so the width is clamped without an over-wide
     // flash on mount. Only the derived cap is stored: the row resizes every frame
     // of a sidebar drag, but an unchanged cap skips re-rendering the owner.
@@ -64,6 +68,7 @@ export function usePreviewPanelInlineSize(
       window.removeEventListener("resize", onResize);
       if (frame !== 0) window.cancelAnimationFrame(frame);
       stopObserving?.();
+      if (rowRef.current === row) rowRef.current = null;
     };
   };
   return { width, handlers, observeRow };
