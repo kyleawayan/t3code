@@ -147,7 +147,6 @@ export const WorkGroupViewCtx = createContext<{
   viewedImages: ReadonlyArray<WorkGroupViewedImage>;
   onToggleEntry: (collapsed: boolean, entryId: string) => void;
   onContentReady?: ((entryId: string) => void) | undefined;
-  holdToOpen: boolean;
 } | null>(null);
 
 export type TimelineWorkEntry = Extract<

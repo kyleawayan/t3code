@@ -1,5 +1,4 @@
 import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
-import { useHoldToOpen } from "./timelineActivityPrefs";
 import { WorkLogDetails, WorkLogRow } from "./WorkLog";
 import {
   getQuestionAnswerPreview,
@@ -224,7 +223,6 @@ type WorkEntryRowProps = {
   displayLabel?: string | undefined;
   onToggleEntry?: ((collapsed: boolean) => void) | undefined;
   onContentReady?: (() => void) | undefined;
-  holdToOpen?: boolean | undefined;
 };
 
 export const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: WorkEntryRowProps) {
@@ -324,10 +322,6 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     }
     setExpanded(next);
   };
-  const holdHandlers = useHoldToOpen(
-    (props.holdToOpen ?? groupView?.holdToOpen ?? false) && !expanded,
-    toggleExpanded,
-  );
   const failureItem = workEntry.projectedItem?.item;
   const pendingApproval =
     failureItem?.type === "approval_request"
@@ -524,7 +518,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         tabIndex: 0 as const,
         "aria-label": accessibleDisplayText,
         "aria-expanded": expanded,
-        ...holdHandlers,
+        onClick: toggleExpanded,
         onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => {
           if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
             e.preventDefault();

@@ -9,7 +9,7 @@ import { MarkdownFindContext } from "./markdownFindContext";
 import { useChatCanvas } from "./ChatCanvasContext";
 import { WorkLogBlock } from "./WorkLog";
 import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
-import { useHoldToOpenWork, useOpenToolGroups } from "./timelineActivityPrefs";
+import { useOpenToolGroups } from "./timelineActivityPrefs";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
 import { deriveTimelineMinimapItems } from "./timelineMinimapItems";
 import {
@@ -748,7 +748,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     pendingApprovals.filter(isVisiblePendingApproval).map((approval) => approval.requestId),
   );
   const [openToolGroups] = useOpenToolGroups();
-  const [holdToOpenWork] = useHoldToOpenWork();
   const rawRows = useIncrementalTimelineRows(`${listIdentityKey}\0${workspaceRoot ?? ""}`, {
     timelineEntries,
     pendingApprovalRequestIds,
@@ -758,7 +757,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     expandedAttemptIds: visibleExpandedAttemptIds,
     expandedWorkGroupIds,
     workGroupsOpenByDefault: openToolGroups,
-    holdToOpenWork,
     isWorking,
     runlessWorkActive,
     activeTurnStartedAt,
@@ -1697,7 +1695,6 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
               groupedEntries={row.groupedEntries}
               isExpandedToolGroup={row.isExpandedToolGroup}
               displayLabel={row.displayLabel}
-              holdToOpen={row.holdToOpen === true}
             />
           ) : null}
           {row.kind === "work-live" ? <LiveWorkEntryTimelineRow row={row} /> : null}
