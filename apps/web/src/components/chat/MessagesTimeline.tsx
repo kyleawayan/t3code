@@ -156,6 +156,7 @@ function timelineListStateFor(identity: string): {
     workGroupViewState: rememberedPosition?.disclosures?.workGroupState ?? {
       scrollPositions: new Map(),
       expandedEntries: new Set(),
+      collapsedEntries: new Set(),
     },
   };
 }
@@ -1164,6 +1165,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     onWorktreeSetupWorkLocally: onWorktreeSetupWorkLocally ?? null,
     onOpenWorktreeSetupTerminal: onOpenWorktreeSetupTerminal ?? null,
     workGroupViewState,
+    openToolCallsByDefault: openToolGroups,
   };
   const compactionAwaitingRow =
     isCompacting &&
@@ -1674,6 +1676,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
               groupedEntries={row.groupedEntries}
               isExpandedToolGroup={row.isExpandedToolGroup}
               displayLabel={row.displayLabel}
+              holdToOpen={row.holdToOpen === true}
             />
           ) : null}
           {row.kind === "work-live" ? <LiveWorkEntryTimelineRow row={row} /> : null}

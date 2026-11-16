@@ -1,4 +1,5 @@
 import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
+import { useHoldToOpen } from "./timelineActivityPrefs";
 import { WorkLogDetails, WorkLogRow } from "./WorkLog";
 import {
   getQuestionAnswerPreview,
@@ -152,6 +153,7 @@ type WorkEntryRowProps = {
   displayLabel?: string | undefined;
   onToggleEntry?: ((collapsed: boolean) => void) | undefined;
   onContentReady?: (() => void) | undefined;
+  holdToOpen?: boolean | undefined;
 };
 
 export const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: WorkEntryRowProps) {
@@ -222,9 +224,16 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       ? notificationChildThreadId(workEntry.projectedItem.item.source)
       : undefined;
   const groupView = use(WorkGroupViewCtx);
-  const [expanded, setExpanded] = useState(
-    () => groupView?.state.expandedEntries.has(workEntry.id) ?? false,
-  );
+  const openByDefault = ctx.openToolCallsByDefault && workLogEntryIsToolLike(workEntry);
+  const [expanded, setExpanded] = useState(() => {
+    if (!groupView) return openByDefault;
+    const open = openByDefault
+      ? !groupView.state.collapsedEntries.has(workEntry.id)
+      : groupView.state.expandedEntries.has(workEntry.id);
+    // The group sizes its list from this set, so an entry open by default joins it.
+    if (open) groupView.state.expandedEntries.add(workEntry.id);
+    return open;
+  });
   const onInitialOutputReady = () => {
     if (groupView) groupView.onContentReady?.(workEntry.id);
     else props.onContentReady?.();
@@ -235,11 +244,17 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       groupView.onToggleEntry(!next, workEntry.id);
       if (next) groupView.state.expandedEntries.add(workEntry.id);
       else groupView.state.expandedEntries.delete(workEntry.id);
+      if (openByDefault && next) groupView.state.collapsedEntries.delete(workEntry.id);
+      else if (openByDefault) groupView.state.collapsedEntries.add(workEntry.id);
     } else {
       props.onToggleEntry?.(!next);
     }
     setExpanded(next);
   };
+  const holdHandlers = useHoldToOpen(
+    (props.holdToOpen ?? groupView?.holdToOpen ?? false) && !expanded,
+    toggleExpanded,
+  );
   const failureItem = workEntry.projectedItem?.item;
   const pendingApproval =
     failureItem?.type === "approval_request"
@@ -433,7 +448,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         tabIndex: 0 as const,
         "aria-label": accessibleDisplayText,
         "aria-expanded": expanded,
-        onClick: toggleExpanded,
+        ...holdHandlers,
         onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => {
           if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
             e.preventDefault();

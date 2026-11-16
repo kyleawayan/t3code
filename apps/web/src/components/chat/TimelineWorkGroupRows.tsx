@@ -71,12 +71,14 @@ export const WorkGroupSection = memo(function WorkGroupSection({
   groupedEntries,
   isExpandedToolGroup,
   displayLabel,
+  holdToOpen = false,
 }: {
   anchorKey: string;
   disclosureAnchorKey?: string;
   groupedEntries: Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"];
   isExpandedToolGroup: boolean;
   displayLabel?: string | undefined;
+  holdToOpen?: boolean;
 }) {
   const {
     workspaceRoot,
@@ -106,6 +108,7 @@ export const WorkGroupSection = memo(function WorkGroupSection({
         entries={nonEmptyEntries}
         groupedEntries={groupedEntries}
         workspaceRoot={workspaceRoot}
+        holdToOpen={holdToOpen}
       />
     );
   }
@@ -122,6 +125,7 @@ export const WorkGroupSection = memo(function WorkGroupSection({
             onToggleWorkEntry(disclosureAnchorKey, collapsed, workEntry.id)
           }
           onContentReady={() => onWorkEntryContentReady?.(disclosureAnchorKey, workEntry.id)}
+          holdToOpen={holdToOpen}
         />
       ))}
     </section>
@@ -189,12 +193,14 @@ function ExpandedWorkGroupEntries({
   entries,
   groupedEntries,
   workspaceRoot,
+  holdToOpen,
 }: {
   anchorKey: string;
   disclosureAnchorKey: string;
   entries: TimelineWorkEntry[];
   groupedEntries: ReadonlyArray<TimelineWorkEntry>;
   workspaceRoot: string | undefined;
+  holdToOpen: boolean;
 }) {
   const {
     workGroupViewState: viewState,
@@ -227,6 +233,7 @@ function ExpandedWorkGroupEntries({
     onToggleEntry: (collapsed: boolean, entryId: string) =>
       onToggleWorkEntry(disclosureAnchorKey, collapsed, entryId),
     onContentReady: (entryId: string) => onWorkEntryContentReady?.(disclosureAnchorKey, entryId),
+    holdToOpen,
   };
   const updateScrollFades = () => {
     const element = listRef.current?.getScrollableNode();

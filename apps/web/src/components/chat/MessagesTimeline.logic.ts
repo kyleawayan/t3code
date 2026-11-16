@@ -519,6 +519,8 @@ type MessagesTimelineRowContent =
       groupedEntries: WorkLogEntry[];
       isExpandedToolGroup: boolean;
       displayLabel?: string;
+      /** Fork: tool call rows of the run still working open only on a press and hold. */
+      holdToOpen?: boolean;
     }
   | {
       kind: "work-live";
@@ -2392,9 +2394,19 @@ export function deriveMessagesTimelineRows(input: {
     }
   }
 
-  const result = attachTrailingToolGroupsToAssistant(
+  const attached = attachTrailingToolGroupsToAssistant(
     attachCreatedThreadSummaries(nextRows, timelineEntries, collapsedFoldMemberIds),
   );
+  const runIsWorking = (runId: RunId | null | undefined) =>
+    input.isWorking && (runId == null ? runlessWorkActive : runId === unsettledRunId);
+  const result =
+    input.holdToOpenWork === true
+      ? attached.map((row) =>
+          row.kind === "work" && row.groupedEntries.some((entry) => runIsWorking(entry.runId))
+            ? { ...row, holdToOpen: true }
+            : row,
+        )
+      : attached;
   return result.map((row, index) => {
     if (timelineRowIsWorkLog(row) && timelineRowIsWorkLog(result[index + 1])) {
       return { ...row, continuesWorkLog: true };
@@ -2839,6 +2851,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       return (
         a.isExpandedToolGroup === bw.isExpandedToolGroup &&
         a.displayLabel === bw.displayLabel &&
+        a.holdToOpen === bw.holdToOpen &&
         Equal.equals(a.groupedEntries, bw.groupedEntries)
       );
     }
