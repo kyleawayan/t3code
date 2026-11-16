@@ -221,7 +221,7 @@ describe("activityItems", () => {
     expect(
       items.map((item) =>
         item.kind === "event"
-          ? `${item.actorName} ${item.text}`
+          ? `${item.actorName} ${item.text}${item.byLinear ? " (by Linear)" : ""}`
           : `thread ${item.thread.root.id} +${item.thread.replies.length}`,
       ),
     ).toEqual([
@@ -229,6 +229,7 @@ describe("activityItems", () => {
       "Example User added related issue ENG-5",
       "thread comment-first +1",
       "thread comment-second +0",
+      "Linear moved from Cycle 9 to Cycle 10 (by Linear)",
     ]);
   });
 

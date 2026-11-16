@@ -13,6 +13,8 @@ export interface LinearState {
 export interface LinearUser {
   readonly displayName: string;
   readonly avatarUrl: string | null;
+  /** The color Linear gives the initial when the user has no picture. */
+  readonly avatarBackgroundColor?: string | null;
 }
 
 export interface LinearLabel {

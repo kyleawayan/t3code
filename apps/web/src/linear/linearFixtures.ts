@@ -28,7 +28,13 @@ const TEAM = {
   },
 };
 
-const EXAMPLE_USER: LinearUser = { displayName: "Example User", avatarUrl: null };
+const EXAMPLE_USER: LinearUser = {
+  displayName: "Example User",
+  avatarUrl: null,
+  avatarBackgroundColor: "#4cb782",
+};
+// No avatar color, as some API responses send.
+const OTHER_USER: LinearUser = { displayName: "Sam Rivera", avatarUrl: null };
 const BUG = { name: "Bug", color: "#EB5757" };
 const FOLLOW_UP = { name: "Follow-up", color: "#4cb782" };
 const SAMPLE_IMAGE =
@@ -180,7 +186,7 @@ export const LINEAR_FIXTURE_ROOT: LinearIssue = {
         },
       }),
       IN_REVIEW,
-      subIssue("ENG-2", "Finished step", STATES.done, 10),
+      subIssue("ENG-2", "Finished step", STATES.done, 10, { assignee: OTHER_USER }),
     ],
   },
   attachments: {
@@ -261,6 +267,25 @@ export const LINEAR_FIXTURE_ROOT: LinearIssue = {
         fromParent: null,
         toParent: null,
         relationChanges: [{ identifier: "ENG-5", type: "ar" }],
+      },
+      {
+        id: "history-cycle",
+        createdAt: "2026-11-16T06:25:30.000Z",
+        actor: null,
+        botActor: null,
+        fromState: null,
+        toState: null,
+        addedLabels: null,
+        removedLabels: null,
+        fromAssignee: null,
+        toAssignee: null,
+        fromPriority: null,
+        toPriority: null,
+        fromCycle: { number: 9 },
+        toCycle: { number: 10 },
+        fromParent: null,
+        toParent: null,
+        relationChanges: null,
       },
     ],
   },
