@@ -512,8 +512,6 @@ type MessagesTimelineRowContent =
       groupedEntries: WorkLogEntry[];
       isExpandedToolGroup: boolean;
       displayLabel?: string;
-      /** Fork: tool call rows of the run still working open only on a press and hold. */
-      holdToOpen?: boolean;
     }
   | {
       kind: "work-live";
@@ -523,8 +521,6 @@ type MessagesTimelineRowContent =
       groupedEntries: WorkLogEntry[];
       groupId: string;
       expanded: boolean;
-      /** Fork: opens only on a press and hold (Settings → Chat → Hold to open running work). */
-      holdToOpen?: boolean;
       active: boolean;
       thought?: WorkLogEntry;
     }
@@ -541,8 +537,6 @@ type MessagesTimelineRowContent =
       createdAt: string | null;
       groupId?: string;
       expanded?: boolean;
-      /** Fork: a failed live group opens only on a press and hold, like `work-live`. */
-      holdToOpen?: boolean;
     }
   | {
       kind: "work-toggle";
@@ -552,8 +546,6 @@ type MessagesTimelineRowContent =
       groupId: string;
       hiddenCount: number;
       expanded: boolean;
-      /** Fork: opens only on a press and hold, for a closed group of the run still working. */
-      holdToOpen?: boolean;
       summary: string;
       summaryKind: ToolGroupSummaryKind;
       toolSurface?: WorkLogEntry["toolSurface"];
@@ -1523,21 +1515,17 @@ function deriveTimelineTurnFolds(
   });
 }
 
-/** Whether a work group shows open, and whether opening it takes a press and hold. */
-function workGroupDisclosure(
+/** Whether a work group shows open: its default, flipped by the user's toggle. */
+function workGroupExpanded(
   input: Pick<
     Parameters<typeof deriveMessagesTimelineRows>[0],
-    "expandedWorkGroupIds" | "workGroupsOpenByDefault" | "holdToOpenWork"
+    "expandedWorkGroupIds" | "workGroupsOpenByDefault"
   >,
   groupId: string,
-  running = true,
-): { expanded: boolean; holdToOpen?: true } {
-  const expanded =
-    (input.expandedWorkGroupIds?.has(groupId) ?? false) !==
-    (input.workGroupsOpenByDefault === true);
-  return !expanded && running && input.holdToOpenWork === true
-    ? { expanded, holdToOpen: true }
-    : { expanded };
+): boolean {
+  return (
+    (input.expandedWorkGroupIds?.has(groupId) ?? false) !== (input.workGroupsOpenByDefault === true)
+  );
 }
 
 export function deriveMessagesTimelineRows(input: {
@@ -1551,8 +1539,6 @@ export function deriveMessagesTimelineRows(input: {
   expandedWorkGroupIds?: ReadonlySet<string>;
   /** Fork: tool call groups start open (Settings → Chat → Open tool call groups). */
   workGroupsOpenByDefault?: boolean;
-  /** Fork: closed work of the running turn opens only on a press and hold. */
-  holdToOpenWork?: boolean;
   isWorking: boolean;
   /** Native subagent work has no app run; runless entries form the live response. */
   runlessWorkActive?: boolean;
@@ -1736,7 +1722,7 @@ export function deriveMessagesTimelineRows(input: {
             entry: (latestRunningToolEntry ?? latestVisibleToolEntry).entry,
             groupedEntries: visibleActiveToolEntries.map((entry) => entry.entry),
             groupId,
-            ...workGroupDisclosure(input, groupId),
+            expanded: workGroupExpanded(input, groupId),
             active: latestToolKeepsActivityLive,
             ...(latestThoughtEntry ? { thought: latestThoughtEntry.entry } : {}),
           };
@@ -2035,8 +2021,7 @@ export function deriveMessagesTimelineRows(input: {
         const activeInProgressToolEntries = visibleGroupedEntries.filter(workEntryIsInActiveRun);
         if (activeInProgressToolEntries.length > 0) {
           const groupId = workGroupId(timelineEntry.id);
-          const disclosure = workGroupDisclosure(input, groupId);
-          const { expanded } = disclosure;
+          const expanded = workGroupExpanded(input, groupId);
           const latestActiveToolEntry = activeInProgressToolEntries.at(-1)!;
           nextRows.push({
             kind: "work-live",
@@ -2045,7 +2030,7 @@ export function deriveMessagesTimelineRows(input: {
             entry: latestActiveToolEntry,
             groupedEntries: visibleGroupedEntries,
             groupId,
-            ...disclosure,
+            expanded,
             active: true,
           });
           hasActivityRow = true;
@@ -2072,15 +2057,7 @@ export function deriveMessagesTimelineRows(input: {
           });
         } else {
           const groupId = workGroupId(timelineEntry.id);
-          const disclosure = workGroupDisclosure(
-            input,
-            groupId,
-            input.isWorking &&
-              (timelineEntry.entry.runId == null
-                ? runlessWorkActive
-                : timelineEntry.entry.runId === unsettledRunId),
-          );
-          const { expanded } = disclosure;
+          const expanded = workGroupExpanded(input, groupId);
           const summaryKind = toolGroupSummaryKind(visibleGroupedEntries);
           const primarySourceEntry = visibleGroupedEntries.find(
             (entry) => entry.toolSource !== undefined,
@@ -2108,7 +2085,7 @@ export function deriveMessagesTimelineRows(input: {
             runId: timelineEntry.entry.runId ?? null,
             groupId,
             hiddenCount: visibleGroupedEntries.length,
-            ...disclosure,
+            expanded,
             summary:
               singleEntry !== null && !workLogEntryIsToolLike(singleEntry)
                 ? singleEntry.label
@@ -2315,15 +2292,14 @@ export function deriveMessagesTimelineRows(input: {
     const failedGroupAnchor = latestToolFailed ? activeWorkAnchor : undefined;
     if (failedGroupAnchor) {
       const groupId = workGroupId(failedGroupAnchor.id);
-      const disclosure = workGroupDisclosure(input, groupId);
-      const { expanded } = disclosure;
+      const expanded = workGroupExpanded(input, groupId);
       const groupedEntries = visibleActiveToolEntries.map((entry) => entry.entry);
       nextRows.push({
         kind: "thinking",
         id: LIVE_ACTIVITY_ROW_ID,
         createdAt: input.activeTurnStartedAt ?? null,
         groupId,
-        ...disclosure,
+        expanded,
       });
       if (expanded) {
         nextRows.push(expandedWorkGroupRow(groupId, failedGroupAnchor.createdAt, groupedEntries));
@@ -2338,19 +2314,9 @@ export function deriveMessagesTimelineRows(input: {
     }
   }
 
-  const attached = attachTrailingToolGroupsToAssistant(
+  const result = attachTrailingToolGroupsToAssistant(
     attachCreatedThreadSummaries(nextRows, timelineEntries, collapsedFoldMemberIds),
   );
-  const runIsWorking = (runId: RunId | null | undefined) =>
-    input.isWorking && (runId == null ? runlessWorkActive : runId === unsettledRunId);
-  const result =
-    input.holdToOpenWork === true
-      ? attached.map((row) =>
-          row.kind === "work" && row.groupedEntries.some((entry) => runIsWorking(entry.runId))
-            ? { ...row, holdToOpen: true }
-            : row,
-        )
-      : attached;
   return result.map((row, index) => {
     if (timelineRowIsWorkLog(row) && timelineRowIsWorkLog(result[index + 1])) {
       return { ...row, continuesWorkLog: true };
@@ -2610,12 +2576,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       );
     case "thinking": {
       const bt = b as typeof a;
-      return (
-        a.createdAt === bt.createdAt &&
-        a.groupId === bt.groupId &&
-        a.expanded === bt.expanded &&
-        a.holdToOpen === bt.holdToOpen
-      );
+      return a.createdAt === bt.createdAt && a.groupId === bt.groupId && a.expanded === bt.expanded;
     }
     case "worktree-setup":
       return a.snapshot === (b as typeof a).snapshot;
@@ -2696,7 +2657,6 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       return (
         a.isExpandedToolGroup === bw.isExpandedToolGroup &&
         a.displayLabel === bw.displayLabel &&
-        a.holdToOpen === bw.holdToOpen &&
         Equal.equals(a.groupedEntries, bw.groupedEntries)
       );
     }
@@ -2707,7 +2667,6 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.createdAt === bw.createdAt &&
         a.groupId === bw.groupId &&
         a.expanded === bw.expanded &&
-        a.holdToOpen === bw.holdToOpen &&
         a.active === bw.active &&
         Equal.equals(a.entry, bw.entry) &&
         Equal.equals(a.groupedEntries, bw.groupedEntries)
@@ -2722,7 +2681,6 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.groupId === bw.groupId &&
         a.hiddenCount === bw.hiddenCount &&
         a.expanded === bw.expanded &&
-        a.holdToOpen === bw.holdToOpen &&
         a.summary === bw.summary &&
         a.summaryKind === bw.summaryKind &&
         a.toolSurface === bw.toolSurface &&

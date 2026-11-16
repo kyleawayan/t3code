@@ -131,7 +131,6 @@ export interface WorkGroupViewState {
 export const WorkGroupViewCtx = createContext<{
   state: WorkGroupViewState;
   onToggleEntry: (collapsed: boolean) => void;
-  holdToOpen: boolean;
 } | null>(null);
 
 export type TimelineWorkEntry = Extract<

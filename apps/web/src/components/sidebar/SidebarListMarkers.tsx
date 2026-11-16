@@ -11,6 +11,8 @@ import {
 } from "../Sidebar.logic";
 import { ProjectFavicon, type ProjectFaviconProject } from "../ProjectFavicon";
 import { SIDEBAR_SORTABLE_DRAG_DISABLED, SIDEBAR_SORTABLE_DRAG_ENABLED } from "./SidebarThreadRow";
+import { useHoldToOpen } from "~/hooks/useHoldToOpen";
+import { useHoldToOpenWorking } from "./workingShelfHold";
 
 function SortableSidebarMarker(props: {
   marker: SidebarListMarker;
@@ -128,6 +130,11 @@ export function SidebarSectionHeader(props: {
       : props.marker === "snoozed-header"
         ? "snoozed"
         : "settled";
+  const [holdToOpenWorking] = useHoldToOpenWorking();
+  const toggleHandlers = useHoldToOpen(
+    shelf === "working" && holdToOpenWorking && !props.toggle.expanded,
+    props.toggle.onToggle,
+  );
   return (
     <SortableSidebarMarker
       marker={props.marker}
@@ -136,7 +143,7 @@ export function SidebarSectionHeader(props: {
     >
       <CollapsibleSectionHeader
         data-sidebar-row={`shelf:${shelf}`}
-        onClick={props.toggle.onToggle}
+        {...toggleHandlers}
         expanded={props.toggle.expanded}
         tone={props.isDropTarget ? "accent" : props.dragging ? "emphasized" : "muted"}
         data-testid={`sidebar-${shelf}-shelf-toggle`}

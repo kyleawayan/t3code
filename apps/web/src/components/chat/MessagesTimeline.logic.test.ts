@@ -393,38 +393,6 @@ describe("deriveMessagesTimelineRows", () => {
         }).filter((row) => row.kind === "work-toggle" || row.kind === "work-live");
       expect(openByDefault(new Set())).toMatchObject([{ expanded: true }]);
       expect(openByDefault(new Set([workRows[0]!.groupId]))).toMatchObject([{ expanded: false }]);
-      // Hold to open applies only to closed work of the run still working.
-      const heldRows = deriveMessagesTimelineRows({
-        timelineEntries: entries,
-        isWorking: status === "waiting",
-        runningRunId: fixture.runId,
-        activeTurnStartedAt: fixture.time(0),
-        turnDiffSummaries: [],
-        supportsConversationRollback: false,
-        holdToOpenWork: true,
-      });
-      const held = heldRows.filter((row) => row.kind === "work-toggle" || row.kind === "work-live");
-      expect(held.map((row) => row.holdToOpen === true)).toEqual([status === "waiting"]);
-      // An open group's tool call rows need the hold too while the run works.
-      const heldOpenTools = deriveMessagesTimelineRows({
-        timelineEntries: entries,
-        isWorking: status === "waiting",
-        runningRunId: fixture.runId,
-        activeTurnStartedAt: fixture.time(0),
-        turnDiffSummaries: [],
-        supportsConversationRollback: false,
-        expandedWorkGroupIds: new Set([workRows[0]!.groupId]),
-        holdToOpenWork: true,
-      }).find((row) => row.kind === "work" && row.isExpandedToolGroup);
-      expect(heldOpenTools?.kind === "work" && heldOpenTools.holdToOpen === true).toBe(
-        status === "waiting",
-      );
-      // Turning it off replaces the cached rows instead of reusing them.
-      const stableHeld = computeStableMessagesTimelineRows(heldRows, {
-        result: [],
-        byId: new Map(),
-      });
-      expect(computeStableMessagesTimelineRows(rows, stableHeld).result).toEqual(rows);
       const pendingRows = deriveMessagesTimelineRows({
         timelineEntries: entries,
         pendingApprovalRequestIds: new Set([RuntimeRequestId.make("approval-request")]),

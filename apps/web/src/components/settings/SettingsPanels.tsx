@@ -105,7 +105,8 @@ import {
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { BackgroundActivitySettingsRow } from "./BackgroundActivitySettings";
-import { useHoldToOpenWork, useOpenToolGroups } from "../chat/timelineActivityPrefs";
+import { useOpenToolGroups } from "../chat/timelineActivityPrefs";
+import { useHoldToOpenWorking } from "../sidebar/workingShelfHold";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { PullRequestLinksOpenInAppSetting } from "./IntegrationsSettings";
 import { LinearSettingsSection } from "../../linear/LinearSettingsSection"; // Fork: Linear tab
@@ -787,6 +788,7 @@ export function GeneralSettingsPanel() {
       </SettingsSection>
 
       <SettingsSection id="sidebar" title="Sidebar">
+        <HoldToOpenWorkingRow />
         <SettingsRow
           {...searchableSetting("project-grouping")}
           description="Combine matching repositories across environments."
@@ -1217,7 +1219,6 @@ export function ChatSettingsPanel() {
       <SettingsSection id="activity" title="Activity">
         <ToolCallVisibilityRow />
         <OpenToolGroupsRow />
-        <HoldToOpenWorkRow />
         <ScreenReaderAnnouncementsRow />
       </SettingsSection>
     </SettingsPageContainer>
@@ -1273,12 +1274,30 @@ function ToolCallVisibilityRow() {
   );
 }
 
+function HoldToOpenWorkingRow() {
+  const [hold, setHold] = useHoldToOpenWorking();
+  return (
+    <SettingsRow
+      {...searchableSetting("hold-to-open-working")}
+      description="The Working shelf opens only when you press and hold its header for half a second, so a stray click doesn't open it. Enter and Space still open it."
+      resetAction={
+        hold ? (
+          <SettingResetButton label="hold to open Working" onClick={() => setHold(false)} />
+        ) : null
+      }
+      control={
+        <Switch checked={hold} onCheckedChange={setHold} aria-label="Hold to open Working" />
+      }
+    />
+  );
+}
+
 function OpenToolGroupsRow() {
   const [open, setOpen] = useOpenToolGroups();
   return (
     <SettingsRow
       {...searchableSetting("open-tool-groups")}
-      description="Show each group of tool calls opened, while the agent works and after, instead of one collapsed line per group. A click still closes one."
+      description="Show tool calls opened, each group and each call's details, while the agent works and after. A click still closes one."
       resetAction={
         open ? (
           <SettingResetButton label="open tool call groups" onClick={() => setOpen(false)} />
@@ -1286,24 +1305,6 @@ function OpenToolGroupsRow() {
       }
       control={
         <Switch checked={open} onCheckedChange={setOpen} aria-label="Open tool call groups" />
-      }
-    />
-  );
-}
-
-function HoldToOpenWorkRow() {
-  const [hold, setHold] = useHoldToOpenWork();
-  return (
-    <SettingsRow
-      {...searchableSetting("hold-to-open-work")}
-      description="While an agent works, its live activity line and closed tool call groups open only when you press and hold for half a second, so a stray click doesn't open them. Enter and Space still open them."
-      resetAction={
-        hold ? (
-          <SettingResetButton label="hold to open running work" onClick={() => setHold(false)} />
-        ) : null
-      }
-      control={
-        <Switch checked={hold} onCheckedChange={setHold} aria-label="Hold to open running work" />
       }
     />
   );
