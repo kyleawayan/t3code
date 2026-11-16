@@ -235,7 +235,6 @@ function LinearIssueHeader(props: {
 }) {
   const { issue, surface } = props;
   const ancestors = issue ? ancestorChain(issue) : [];
-  const openLink = useOpenLink(props.threadRef);
   return (
     <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-1 border-b border-border px-2 py-1">
       <HeaderButton label="Back" disabled={surface.index === 0} onClick={() => props.onStep(-1)}>
@@ -270,15 +269,10 @@ function LinearIssueHeader(props: {
       </nav>
       {issue ? (
         <div className="ms-auto flex shrink-0 items-center">
+          <OpenInLinearButton url={issue.url} threadRef={props.threadRef} />
           <CopyButton label="Copy issue link" value={issue.url} icon={<Link2 />} />
           <CopyButton label="Copy issue ID" value={issue.identifier} icon={<Copy />} />
           <CopyButton label="Copy git branch name" value={issue.branchName} icon={<GitBranch />} />
-          <HeaderButton
-            label="Open in Linear"
-            onClick={(event) => void openLink(issue.url, { event })}
-          >
-            <ExternalLink />
-          </HeaderButton>
         </div>
       ) : null}
       {props.identifier === LINEAR_SEARCH_ENTRY ? null : (
@@ -296,6 +290,16 @@ function LinearIssueHeader(props: {
         </>
       )}
     </div>
+  );
+}
+
+/** In the accent color, so the way out to Linear stands out from the copy buttons. */
+function OpenInLinearButton(props: { readonly url: string; readonly threadRef: ScopedThreadRef }) {
+  const openLink = useOpenLink(props.threadRef);
+  return (
+    <HeaderButton label="Open in Linear" onClick={(event) => void openLink(props.url, { event })}>
+      <ExternalLink className="text-primary" />
+    </HeaderButton>
   );
 }
 
