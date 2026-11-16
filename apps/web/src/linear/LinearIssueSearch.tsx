@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Search } from "lucide-react";
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 
+import { SquishText } from "~/components/SquishText";
 import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
 import { useDebouncedValue } from "~/state/queries";
@@ -167,9 +168,9 @@ export function LinearIssueSearch(props: { readonly onOpen: (identifier: string)
               index + (direct ? 1 : 0),
               <>
                 <LinearStatusIcon state={issue.state} />
-                <span className="w-14 shrink-0 text-muted-foreground tabular-nums">
+                <SquishText className="w-14 shrink-0 text-muted-foreground tabular-nums">
                   {issue.identifier}
-                </span>
+                </SquishText>
                 <span className="min-w-0 truncate">{issue.title}</span>
               </>,
             ),
