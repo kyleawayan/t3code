@@ -881,16 +881,28 @@ function LinearActivity(props: {
     <section className="mt-8 flex flex-col gap-3 border-t border-border pt-5" aria-label="Activity">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium">Activity</h2>
-        <HeaderButton
-          label={
-            props.newestFirst
-              ? "Newest first: show oldest first"
-              : "Oldest first: show newest first"
-          }
-          onClick={props.onToggleOrder}
-        >
-          {props.newestFirst ? <ArrowUpNarrowWide /> : <ArrowDownNarrowWide />}
-        </HeaderButton>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                size="xs"
+                variant="ghost-muted"
+                aria-label={
+                  props.newestFirst
+                    ? "Newest first: show oldest first"
+                    : "Oldest first: show newest first"
+                }
+                onClick={props.onToggleOrder}
+              />
+            }
+          >
+            {props.newestFirst ? <ArrowUpNarrowWide /> : <ArrowDownNarrowWide />}
+            {props.newestFirst ? "Newest first" : "Oldest first"}
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">
+            {props.newestFirst ? "Show oldest first" : "Show newest first"}
+          </TooltipPopup>
+        </Tooltip>
       </div>
       <ol className="flex flex-col gap-3">
         {items.map((item) => (

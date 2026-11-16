@@ -6,7 +6,7 @@ export type LinearSection = "description" | "sub-issues" | "resources";
 
 const IssueView = Schema.Struct({
   collapsed: Schema.optional(Schema.Array(Schema.String)),
-  newestFirst: Schema.optional(Schema.Boolean),
+  oldestFirst: Schema.optional(Schema.Boolean),
 });
 type IssueView = typeof IssueView.Type;
 const IssueViews = Schema.Record(Schema.String, IssueView);
@@ -26,16 +26,16 @@ export function rememberIssueView(
   const next = update(views[identifier] ?? {});
   const entries = Object.entries(views).filter(([key]) => key !== identifier);
   const collapsed = next.collapsed?.length ? next.collapsed : undefined;
-  if (collapsed || next.newestFirst) {
+  if (collapsed || next.oldestFirst) {
     entries.push([
       identifier,
-      { ...(collapsed ? { collapsed } : {}), ...(next.newestFirst ? { newestFirst: true } : {}) },
+      { ...(collapsed ? { collapsed } : {}), ...(next.oldestFirst ? { oldestFirst: true } : {}) },
     ]);
   }
   return Object.fromEntries(entries.slice(-limit));
 }
 
-/** Each issue's collapsed sections and activity order, kept across reloads. */
+/** Each issue's collapsed sections and activity order (newest first by default), kept across reloads. */
 export function useLinearIssueView(identifier: string) {
   const [views, setViews] = useLocalStorage(STORAGE_KEY, EMPTY, IssueViews);
   const view = views[identifier] ?? {};
@@ -50,12 +50,12 @@ export function useLinearIssueView(identifier: string) {
             : [...(previous.collapsed ?? []), section],
         })),
       ),
-    newestFirst: view.newestFirst === true,
+    newestFirst: view.oldestFirst !== true,
     toggleOrder: () =>
       setViews((current) =>
         rememberIssueView(current, identifier, (previous) => ({
           ...previous,
-          newestFirst: !previous.newestFirst,
+          oldestFirst: !previous.oldestFirst,
         })),
       ),
   };

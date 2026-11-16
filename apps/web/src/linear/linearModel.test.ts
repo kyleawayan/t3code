@@ -365,18 +365,18 @@ describe("linear surface history", () => {
 describe("rememberIssueView", () => {
   it("keeps only issues off the defaults, most recent last, up to the limit", () => {
     let views = rememberIssueView({}, "ENG-1", () => ({ collapsed: ["description"] }));
-    views = rememberIssueView(views, "ENG-2", () => ({ newestFirst: true }));
-    views = rememberIssueView(views, "ENG-1", (view) => ({ ...view, newestFirst: true }));
+    views = rememberIssueView(views, "ENG-2", () => ({ oldestFirst: true }));
+    views = rememberIssueView(views, "ENG-1", (view) => ({ ...view, oldestFirst: true }));
     expect(views).toEqual({
-      "ENG-2": { newestFirst: true },
-      "ENG-1": { collapsed: ["description"], newestFirst: true },
+      "ENG-2": { oldestFirst: true },
+      "ENG-1": { collapsed: ["description"], oldestFirst: true },
     });
     expect(Object.keys(views)).toEqual(["ENG-2", "ENG-1"]);
-    expect(rememberIssueView(views, "ENG-2", () => ({ newestFirst: false }))).toEqual({
-      "ENG-1": { collapsed: ["description"], newestFirst: true },
+    expect(rememberIssueView(views, "ENG-2", () => ({ oldestFirst: false }))).toEqual({
+      "ENG-1": { collapsed: ["description"], oldestFirst: true },
     });
     expect(
-      Object.keys(rememberIssueView(views, "ENG-3", () => ({ newestFirst: true }), 2)),
+      Object.keys(rememberIssueView(views, "ENG-3", () => ({ oldestFirst: true }), 2)),
     ).toEqual(["ENG-1", "ENG-3"]);
   });
 });
