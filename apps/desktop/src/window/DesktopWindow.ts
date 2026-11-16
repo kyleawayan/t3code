@@ -1,4 +1,5 @@
 import * as Clock from "effect/Clock";
+import { routeSwipeToLinearTab } from "../linear/linearSwipe.ts"; // Fork: Linear tab
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -851,6 +852,7 @@ export const make = Effect.gen(function* () {
     if (environment.platform === "darwin") {
       // Mouse drivers can deliver Back/Forward as macOS swipe gestures instead of buttons.
       window.on("swipe", (_event, direction) => {
+        if (routeSwipeToLinearTab(window.webContents, direction)) return; // Fork: Linear tab
         const history = window.webContents.navigationHistory;
         if (direction === "left" && history.canGoBack()) history.goBack();
         else if (direction === "right" && history.canGoForward()) history.goForward();

@@ -1,5 +1,6 @@
 import { startFileDrag } from "./methods/fileDrag.ts";
 import * as Effect from "effect/Effect";
+import { installLinearIpcHandlers } from "../linear/LinearIpc.ts"; // Fork: Linear tab
 
 import { receiveProviderAuthCallback, cancelProviderAuthCallback } from "./methods/providerAuth.ts";
 import * as DesktopIpc from "./DesktopIpc.ts";
@@ -183,4 +184,5 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   }
   yield* ipc.handle(PreviewIpc.listBrowserImportSources);
   yield* ipc.handle(PreviewIpc.importBrowserCookies);
+  yield* installLinearIpcHandlers(); // Fork: Linear tab
 });

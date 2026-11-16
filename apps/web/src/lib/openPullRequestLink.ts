@@ -14,6 +14,7 @@ import {
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 
 import { canOpenLinksInApp } from "../browser/browserLinkTarget";
+import { tryOpenLinearLink } from "../linear/linearOpen"; // Fork: Linear tab
 import { useOpenLink } from "../browser/useOpenLink";
 import { useClientSettings } from "../hooks/useSettings";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
@@ -96,6 +97,15 @@ export function useOpenChangeRequestLink(
   });
   const openLink = useOpenLink(threadRef);
   return (event, targetUrl, targetThreadRef, targetEnvironmentId, onCommitUnavailable) => {
+    // Fork: Linear tab
+    if (
+      !shouldOpenPullRequestExternally(event) &&
+      tryOpenLinearLink(targetUrl, panelRef ?? targetThreadRef ?? threadRef)
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      return true;
+    }
     if (!openInApp || shouldOpenPullRequestExternally(event)) return false;
     const resolvedThreadRef = targetThreadRef ?? threadRef;
     const resolvedPanelRef = panelRef ?? resolvedThreadRef;

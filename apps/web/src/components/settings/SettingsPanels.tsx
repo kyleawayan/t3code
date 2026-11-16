@@ -121,6 +121,7 @@ import { SUPPORTED_LOCALES } from "../../i18n/locales";
 import { BackgroundActivitySettingsRow } from "./BackgroundActivitySettings";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { PullRequestLinksOpenInAppSetting } from "./IntegrationsSettings";
+import { LinearSettingsSection } from "../../linear/LinearSettingsSection"; // Fork: Linear tab
 import { StorageCleanupSections } from "./StorageSettings";
 import { UpdateTrackSwitchDialog } from "./UpdateTrackSwitchDialog";
 import { environmentIdsKey } from "~/state/environmentAtomList";
@@ -1771,6 +1772,7 @@ export function DiffsSettingsPanel() {
         />
         <PullRequestLinksOpenInAppSetting />
       </SettingsSection>
+      <LinearSettingsSection /> {/* Fork: Linear tab */}
     </SettingsPageContainer>
   );
 }

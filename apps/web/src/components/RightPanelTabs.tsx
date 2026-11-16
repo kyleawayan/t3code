@@ -112,6 +112,7 @@ import { resolvePullRequestState } from "./pullRequest/pullRequestPresentation";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { observeResize } from "~/lib/observeResize";
 import { surfaceShortcutKey } from "~/lib/surfaceShortcutKey";
+import { linearLauncherActions, LinearTabIcon, linearTabTitle } from "~/linear/LinearTab"; // Fork: Linear tab
 
 export interface RightPanelTabsProps {
   mode: PreviewPanelMode;
@@ -151,6 +152,7 @@ export interface RightPanelTabsProps {
   onAddDevice: () => void;
   /** Absent where side chats are not offered. */
   onAddSideChat?: (() => void) | undefined;
+  onAddLinear?: (() => void) | undefined; // Fork: Linear tab
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -335,6 +337,7 @@ function RightPanelEmptyState(props: {
   onAddDevice: () => void;
   /** Absent where side chats are not offered. */
   onAddSideChat?: (() => void) | undefined;
+  onAddLinear?: (() => void) | undefined; // Fork: Linear tab
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -421,6 +424,7 @@ function RightPanelEmptyState(props: {
           },
         ]
       : []),
+    ...linearLauncherActions(props.onAddLinear), // Fork: Linear tab
   ] as const;
 
   type SurfaceAction = (typeof actions)[number];
@@ -614,6 +618,8 @@ function surfaceTitle(
       return surface.title ?? surface.target?.name ?? resolve(msg("Device"));
     case "side-chat":
       return resolve(msg("Side chat"));
+    case "linear": // Fork: Linear tab
+      return linearTabTitle(surface);
     case "preview": {
       const snapshot = surface.resourceId ? sessions[surface.resourceId] : null;
       if (!snapshot || snapshot.navStatus._tag === "Idle") return resolve(msg("Browser"));
@@ -706,6 +712,8 @@ function SurfaceIcon({
       return <IssueSurfaceIcon surface={surface} environmentId={environmentId} />;
     case "side-chat":
       return <SideChatTabIcon environmentId={environmentId} threadId={surface.threadId} />;
+    case "linear": // Fork: Linear tab
+      return <LinearTabIcon surface={surface} />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />
@@ -1238,6 +1246,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
           },
         ]
       : []),
+    ...linearLauncherActions(props.onAddLinear), // Fork: Linear tab
   ] as const;
 
   const handleAddSurfaceMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -1651,6 +1660,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddPullRequests={props.onAddPullRequests}
             onAddDevice={props.onAddDevice}
             onAddSideChat={props.onAddSideChat}
+            onAddLinear={props.onAddLinear}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
             diffAvailable={props.diffAvailable}

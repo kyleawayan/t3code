@@ -26,6 +26,7 @@ import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { useScratchProject } from "../../hooks/useScratchProject";
 import { useClientSettings } from "../../hooks/useSettings";
 import { useOpenChangeRequestLink } from "../../lib/openPullRequestLink";
+import { tryOpenLinearLink } from "../../linear/linearOpen"; // Fork: Linear tab
 import { selectActiveRightPanelSurface, useRightPanelStore } from "../../rightPanelStore";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { resolveThreadRouteTarget } from "../../threadRoutes";
@@ -219,6 +220,7 @@ export function DesktopWebLinkCoordinator() {
     const routeParams = router.state.matches.at(-1)?.params ?? {};
     const routeTarget = resolveThreadRouteTarget(routeParams);
     const activeThreadRef = routeTarget?.kind === "server" ? routeTarget.threadRef : undefined;
+    if (tryOpenLinearLink(url, activeThreadRef)) return; // Fork: Linear tab
     const activeThread = activeThreadRef ? readThreadShell(activeThreadRef) : null;
     const activeProject =
       activeThread && activeThreadRef
