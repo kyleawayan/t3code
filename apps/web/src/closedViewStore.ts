@@ -12,6 +12,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { resolveStorage } from "./lib/storage";
 import { randomUUID } from "./lib/utils";
 import { type RightPanelSurface } from "./rightPanelStore";
+import { sanitizeLinearSurface } from "./linear/linearSurface"; // Fork: Linear tab
 
 export type ClosedView =
   | {
@@ -85,6 +86,8 @@ const isClosedViewEntry = (entry: unknown): entry is ClosedViewEntry => {
       );
     case "side-chat":
       return typeof surface.threadId === "string" && surface.id === `side-chat:${surface.threadId}`;
+    case "linear": // Fork: Linear tab
+      return sanitizeLinearSurface(surface) !== null;
     case "pull-request":
       return (
         typeof surface.projectId === "string" &&
