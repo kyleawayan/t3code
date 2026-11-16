@@ -14,6 +14,7 @@ import {
   estimateLabel,
   ancestorChain,
   cycleLabel,
+  dueDateLabel,
   issueFingerprint,
   linearRelativeTime,
   relationGroups,
@@ -53,6 +54,21 @@ describe("cycleLabel", () => {
 
   it("prefers the cycle's own name", () => {
     expect(cycleLabel({ ...cycle, name: "Launch" }, local(2026, 12, 5))).toBe("Launch");
+  });
+});
+
+describe("dueDateLabel", () => {
+  const now = local(2026, 11, 16);
+  const date = (day: number) =>
+    new Date(2026, 10, day).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  it.each([
+    ["2026-11-20", `${date(20)} (4 days left)`, false],
+    ["2026-11-17", `${date(17)} (tomorrow)`, false],
+    ["2026-11-16", `${date(16)} (today)`, false],
+    ["2026-11-15", `${date(15)} (1 day overdue)`, true],
+    ["2026-11-10", `${date(10)} (6 days overdue)`, true],
+  ])("%s → %s", (dueDate, label, overdue) => {
+    expect(dueDateLabel(dueDate, now)).toEqual({ label, overdue });
   });
 });
 
