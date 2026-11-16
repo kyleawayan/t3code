@@ -491,7 +491,7 @@ function LinearIssueView(props: {
 }
 
 const CHIP =
-  "inline-flex h-6 max-w-full items-center gap-1.5 rounded-full border border-border px-2 text-xs";
+  "inline-flex h-5 max-w-full items-center gap-1 rounded-full border border-border px-1.5 text-xs";
 
 // Sub-issue rows let chips shrink, squishing their text before anything clips.
 const ROW_CHIP = cn(CHIP, "min-w-0 shrink");
@@ -524,7 +524,7 @@ function LinearProperties(props: {
   const due = issue.dueDate ? dueDateLabel(issue.dueDate, now) : null;
   const estimate = estimateLabel(issue.estimate, issue.team.issueEstimationType);
   return (
-    <div className="mt-4 flex flex-wrap gap-1.5" aria-label="Properties">
+    <div className="mt-3 flex flex-wrap gap-1" aria-label="Properties">
       <Chip>
         <LinearStatusIcon state={issue.state} />
         {issue.state.name}
@@ -537,7 +537,7 @@ function LinearProperties(props: {
       ) : null}
       {issue.assignee ? (
         <Chip>
-          <LinearAvatar user={issue.assignee} />
+          <LinearAvatar user={issue.assignee} className="size-3.5" />
           <span className="truncate">{issue.assignee.displayName}</span>
         </Chip>
       ) : null}
