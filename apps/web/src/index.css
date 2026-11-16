@@ -3165,3 +3165,27 @@ code {
 [data-slot="sidebar"][data-side="right"][data-state="expanded"] [data-slot="sidebar-rail"]::after {
   left: 0;
 }
+
+/* Fork: Hold to open running work fills a held row from the left over HOLD_TO_OPEN_MS (500ms,
+   in timelineActivityPrefs.ts); letting go early empties it at once. */
+[data-hold-to-open] {
+  position: relative;
+  isolation: isolate;
+}
+
+[data-hold-to-open]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  transform: scaleX(0);
+  transform-origin: left;
+  pointer-events: none;
+}
+
+[data-hold-to-open][data-holding]::before {
+  transform: scaleX(1);
+  transition: transform 500ms linear;
+}

@@ -63,12 +63,14 @@ export const WorkGroupSection = memo(function WorkGroupSection({
   groupedEntries,
   isExpandedToolGroup,
   displayLabel,
+  holdToOpen = false,
 }: {
   anchorKey: string;
   disclosureAnchorKey?: string;
   groupedEntries: Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"];
   isExpandedToolGroup: boolean;
   displayLabel?: string | undefined;
+  holdToOpen?: boolean;
 }) {
   const { workspaceRoot, routeThreadKey, onToggleWorkEntry, pendingApprovals } =
     use(TimelineRowCtx);
@@ -94,6 +96,7 @@ export const WorkGroupSection = memo(function WorkGroupSection({
         disclosureAnchorKey={disclosureAnchorKey}
         entries={nonEmptyEntries}
         workspaceRoot={workspaceRoot}
+        holdToOpen={holdToOpen}
       />
     );
   }
@@ -107,6 +110,7 @@ export const WorkGroupSection = memo(function WorkGroupSection({
           workspaceRoot={workspaceRoot}
           displayLabel={displayLabel}
           onToggleEntry={onToggleStandaloneEntry}
+          holdToOpen={holdToOpen}
         />
       ))}
     </section>
@@ -129,11 +133,13 @@ function ExpandedWorkGroupEntries({
   disclosureAnchorKey,
   entries,
   workspaceRoot,
+  holdToOpen,
 }: {
   anchorKey: string;
   disclosureAnchorKey: string;
   entries: TimelineWorkEntry[];
   workspaceRoot: string | undefined;
+  holdToOpen: boolean;
 }) {
   const { workGroupViewState: viewState, onToggleWorkEntry } = use(TimelineRowCtx);
   const [initialScrollIndex] = useState(() =>
@@ -157,6 +163,7 @@ function ExpandedWorkGroupEntries({
 
   const groupView = {
     state: viewState,
+    holdToOpen,
     onToggleEntry: (collapsed: boolean) => onToggleWorkEntry(disclosureAnchorKey, collapsed),
   };
   const updateScrollFades = () => {
