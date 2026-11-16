@@ -5,6 +5,55 @@ const MAX_FADED_ROWS_PER_UPDATE = 40;
 
 type RowPosition = { top: number; left: number; width: number; height: number };
 
+// Fork: a row that jumps sections (passing two or more rows) blurs along its path while it travels,
+// strongest at the start, where ease-out moves it fastest. An SVG filter blurs one axis, and
+// since url() filters can't interpolate, the blur steps down through a few strengths.
+const MOTION_BLUR_MIN_TRAVEL = 80;
+const MOTION_BLUR_MAX_LEVEL = 6;
+const MOTION_BLUR_PX_PER_LEVEL = 60;
+const MOTION_BLUR_FILTER = "sidebar-motion-blur";
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function ensureMotionBlurFilters(document: Document) {
+  if (document.getElementById(`${MOTION_BLUR_FILTER}-1`)) return;
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("width", "0");
+  svg.setAttribute("height", "0");
+  svg.style.position = "absolute";
+  for (let level = 1; level <= MOTION_BLUR_MAX_LEVEL; level++) {
+    const filter = document.createElementNS(SVG_NS, "filter");
+    filter.id = `${MOTION_BLUR_FILTER}-${level}`;
+    // Room above and below for the blur; none sideways, where it doesn't spread.
+    filter.setAttribute("x", "0");
+    filter.setAttribute("width", "100%");
+    filter.setAttribute("y", "-50%");
+    filter.setAttribute("height", "200%");
+    const blur = document.createElementNS(SVG_NS, "feGaussianBlur");
+    blur.setAttribute("stdDeviation", `0 ${level}`);
+    filter.append(blur);
+    svg.append(filter);
+  }
+  document.body.append(svg);
+}
+
+/** Filter keyframes stepping from the travel's peak blur down to none by three quarters in. */
+function motionBlurKeyframes(offset: number): Keyframe[] | null {
+  if (Math.abs(offset) <= MOTION_BLUR_MIN_TRAVEL) return null;
+  const peak = Math.min(
+    MOTION_BLUR_MAX_LEVEL,
+    Math.max(1, Math.round(Math.abs(offset) / MOTION_BLUR_PX_PER_LEVEL)),
+  );
+  const levels = [peak, Math.round((peak * 2) / 3), Math.round(peak / 3)].filter(
+    (level) => level > 0,
+  );
+  const frames = levels.flatMap((level, index) => [
+    { filter: `url(#${MOTION_BLUR_FILTER}-${level})`, offset: index / 4 },
+    { filter: `url(#${MOTION_BLUR_FILTER}-${level})`, offset: (index + 1) / 4 },
+  ]);
+  return [...frames, { filter: "none", offset: levels.length / 4 }, { filter: "none", offset: 1 }];
+}
+
 function progress(animation: Animation) {
   return animation.playState === "finished"
     ? 1
@@ -18,7 +67,10 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
   const reducedMotion = parent.ownerDocument.defaultView?.matchMedia(
     "(prefers-reduced-motion: reduce)",
   );
-  const running = new Map<HTMLElement, { animation: Animation; offset: number }>();
+  const running = new Map<
+    HTMLElement,
+    { animation: Animation; offset: number; blur: Animation | null }
+  >();
   const entering = new Map<HTMLElement, { animation: Animation; travel: number }>();
   const exiting = new Map<HTMLElement, Animation>();
   let released: Map<HTMLElement, number> | null = null;
@@ -90,6 +142,7 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
 
   const cancel = (node: HTMLElement) => {
     running.get(node)?.animation.cancel();
+    running.get(node)?.blur?.cancel();
     running.delete(node);
   };
   const suspend = () => {
@@ -98,7 +151,7 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
     positions = null;
     released = null;
   };
-  const move = (node: HTMLElement, offset: number) => {
+  const move = (node: HTMLElement, offset: number, blur: boolean) => {
     cancel(node);
     const entry = entering.get(node);
     if (entry) entry.travel = 0;
@@ -107,7 +160,12 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
       [{ transform: `translateY(${offset}px)` }, { transform: "translateY(0px)" }],
       motionTiming,
     );
-    running.set(node, { animation, offset });
+    const blurFrames = blur ? motionBlurKeyframes(offset) : null;
+    if (blurFrames) ensureMotionBlurFilters(node.ownerDocument);
+    const blurAnimation = blurFrames
+      ? node.animate(blurFrames, { duration: motionTiming.duration, easing: "linear" })
+      : null;
+    running.set(node, { animation, offset, blur: blurAnimation });
     animation.addEventListener(
       "finish",
       () => {
@@ -192,6 +250,14 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
         if (!shouldAnimate || !next.has(node)) cancel(node);
       }
       if (shouldAnimate) {
+        // A row jumps when it passes two or more rows that stay; a block shifting together keeps
+        // its order and stays sharp.
+        const oldRank = new Map(oldOrder.filter((n) => next.has(n)).map((n, rank) => [n, rank]));
+        const newRank = new Map(
+          nextOrder.filter((n) => positions!.has(n)).map((n, rank) => [n, rank]),
+        );
+        const jumped = (node: HTMLElement) =>
+          Math.abs((newRank.get(node) ?? 0) - (oldRank.get(node) ?? 0)) >= 2;
         for (const [index, node] of nextOrder.entries()) {
           const position = next.get(node)!;
           const previousTop = positions!.get(node)?.top;
@@ -220,14 +286,15 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
           const delta = movedDelta.get(node);
           // Computed progress includes easing; carry forward only our translation, never dnd-kit's
           // transforms.
-          if (delta !== undefined) move(node, delta);
+          if (delta !== undefined) move(node, delta, jumped(node));
         }
       }
       if (released !== null) {
         if (!reducedMotion?.matches) {
           for (const [node, position] of next) {
             const top = released.get(node);
-            if (top !== undefined) move(node, top - position.top);
+            // A row the user just dropped lands without blur.
+            if (top !== undefined) move(node, top - position.top, false);
           }
         }
         released = null;
