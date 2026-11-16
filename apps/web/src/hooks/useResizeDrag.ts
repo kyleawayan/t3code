@@ -10,13 +10,27 @@ interface ResizeSession {
   edge: "left" | "right";
   /** Pointer widths are clamped to these before `resize` sees them. */
   bounds: ResizeBounds;
+  /** Widths the drag sticks to once the pointer comes within `SNAP_DISTANCE_PX` of one. */
+  snap?: readonly number[];
   resize: (width: number) => number;
   finish: (width: number, moved: boolean) => void;
   cleanup?: (committed: boolean) => void;
 }
 
+const SNAP_DISTANCE_PX = 12;
+
 function clampToBounds(width: number, bounds: ResizeBounds): number {
   return Math.max(bounds.min, Math.min(bounds.max, width));
+}
+
+function snapWidth(width: number, session: ResizeSession): number {
+  const target = session.snap?.find(
+    (point) =>
+      Math.abs(point - width) <= SNAP_DISTANCE_PX &&
+      point >= session.bounds.min &&
+      point <= session.bounds.max,
+  );
+  return target ?? width;
 }
 
 interface ActiveDrag<T extends HTMLElement> {
@@ -40,7 +54,7 @@ function createResizeDrag<T extends HTMLElement>() {
     const delta = (active.pendingX - active.startX) * (active.session.edge === "left" ? -1 : 1);
     if (Math.abs(delta) > 2) active.moved = true;
     active.width = active.session.resize(
-      clampToBounds(active.session.width + delta, active.session.bounds),
+      snapWidth(clampToBounds(active.session.width + delta, active.session.bounds), active.session),
     );
   };
 
