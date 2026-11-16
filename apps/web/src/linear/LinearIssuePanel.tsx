@@ -502,10 +502,17 @@ function LinearIssueView(props: {
 const CHIP =
   "inline-flex h-5 max-w-full items-center gap-1 rounded-full border border-border px-1.5 text-xs";
 
-// Sub-issue rows let chips shrink, squishing their text before anything clips.
-const ROW_CHIP = cn(CHIP, "min-w-0 shrink");
+// Sub-issue rows use tighter pills, 2px apart.
+const ROW_CHIP =
+  "inline-flex h-5 max-w-full shrink-0 items-center gap-0.5 rounded-full border border-border px-1 text-xs";
 
-/** A chip label that squishes in a row; elsewhere it stays plain text. */
+// Only labels shrink, squishing before they clip; counts, cycles, and estimates stay readable.
+const ROW_LABEL_CHIP = cn(ROW_CHIP, "min-w-0 shrink");
+
+// Below @md a row keeps only its estimate chip.
+const WIDE_ROW_ONLY = "hidden @md:inline-flex";
+
+/** A label chip's text squishes in a row; elsewhere it stays plain text. */
 function ChipText(props: { readonly children: string; readonly squish?: boolean | undefined }) {
   return props.squish ? (
     <SquishText minScale={SQUISH_TEXT_TIGHT_MIN_SCALE}>{props.children}</SquishText>
@@ -517,11 +524,11 @@ function ChipText(props: { readonly children: string; readonly squish?: boolean 
 function Chip(props: {
   readonly children: ReactNode;
   readonly className?: string;
-  readonly squish?: boolean;
+  /** In a sub-issue row: a `label` chip squishes, a `value` chip keeps its size. */
+  readonly row?: "label" | "value";
 }) {
-  return (
-    <span className={cn(props.squish ? ROW_CHIP : CHIP, props.className)}>{props.children}</span>
-  );
+  const chip = props.row === "label" ? ROW_LABEL_CHIP : props.row === "value" ? ROW_CHIP : CHIP;
+  return <span className={cn(chip, props.className)}>{props.children}</span>;
 }
 
 function LinearProperties(props: {
@@ -603,11 +610,7 @@ function RelationChip(props: {
   readonly compact?: boolean;
 }) {
   const { group } = props;
-  const label = (
-    <ChipText squish={props.compact}>
-      {props.compact ? String(group.issues.length) : group.label}
-    </ChipText>
-  );
+  const label = <>{props.compact ? String(group.issues.length) : group.label}</>;
   const chip = props.compact ? ROW_CHIP : cn(CHIP, "shrink-0");
   const only = group.issues.length === 1 ? group.issues[0] : undefined;
   if (only) {
@@ -670,18 +673,20 @@ function IssueRefButton(props: {
 function ProgressPill(props: {
   readonly progress: { done: number; total: number };
   readonly bare?: boolean;
-  readonly squish?: boolean;
+  readonly row?: boolean;
+  readonly className?: string;
 }) {
   return (
     <span
       className={cn(
-        props.bare ? "inline-flex items-center gap-1.5 text-xs" : props.squish ? ROW_CHIP : CHIP,
-        !props.squish && "shrink-0",
+        props.bare ? "inline-flex items-center gap-1.5 text-xs" : props.row ? ROW_CHIP : CHIP,
+        "shrink-0",
         "text-muted-foreground tabular-nums",
+        props.className,
       )}
     >
       <LinearProgressRing done={props.progress.done} total={props.progress.total} />
-      <ChipText squish={props.squish}>{`${props.progress.done}/${props.progress.total}`}</ChipText>
+      {`${props.progress.done}/${props.progress.total}`}
     </span>
   );
 }
@@ -767,6 +772,8 @@ function LinearSubIssues(props: {
   readonly onToggle: () => void;
 }) {
   const rows = subIssueRows(props.issue.children.nodes);
+  // The ID column fits the longest key here (up to w-14), so short keys sit close to their status.
+  const idWidth = `min(3.5rem, ${Math.max(0, ...rows.map((row) => row.issue.identifier.length))}ch)`;
   return (
     <section className="mt-7 flex flex-col gap-1" aria-label="Sub-issues">
       <SectionHeader title="Sub-issues" open={props.open} onToggle={props.onToggle}>
@@ -790,34 +797,39 @@ function LinearSubIssues(props: {
                     style={{ paddingInlineStart: `${ROW_INSET_REM + row.depth * INDENT_REM}rem` }}
                     onClick={() => props.onOpen(row.issue.identifier)}
                   >
-                    <SquishText className="hidden w-14 shrink-0 text-muted-foreground tabular-nums @sm:inline-grid">
+                    <SquishText
+                      className="hidden shrink-0 text-muted-foreground tabular-nums @sm:inline-grid"
+                      style={{ width: idWidth }}
+                    >
                       {row.issue.identifier}
                     </SquishText>
                     <LinearStatusIcon state={row.issue.state} />
                     <SquishText ellipsisScale={SQUISH_TEXT_MIN_SCALE} className="min-w-0 flex-1">
                       {row.issue.title}
                     </SquishText>
-                    <span className="hidden min-w-0 shrink items-center gap-1 @md:flex">
-                      {row.progress ? <ProgressPill progress={row.progress} squish /> : null}
+                    <span className="flex min-w-0 shrink items-center gap-0.5">
+                      {row.progress ? (
+                        <ProgressPill progress={row.progress} row className={WIDE_ROW_ONLY} />
+                      ) : null}
                       {row.issue.labels.nodes.map((label) => (
-                        <Chip key={label.name} squish>
+                        <Chip key={label.name} row="label" className={WIDE_ROW_ONLY}>
                           <LinearColorDot color={label.color} />
                           <ChipText squish>{label.name}</ChipText>
                         </Chip>
                       ))}
                       {row.issue.cycle ? (
-                        <Chip squish>
+                        <Chip row="value" className={WIDE_ROW_ONLY}>
                           <CirclePlay className="size-3.5 shrink-0 text-muted-foreground" />
-                          <ChipText squish>{String(row.issue.cycle.number)}</ChipText>
+                          {String(row.issue.cycle.number)}
+                        </Chip>
+                      ) : null}
+                      {rowEstimate ? (
+                        <Chip row="value">
+                          <LinearEstimateIcon />
+                          {rowEstimate}
                         </Chip>
                       ) : null}
                     </span>
-                    {rowEstimate ? (
-                      <Chip squish>
-                        <LinearEstimateIcon />
-                        <ChipText squish>{rowEstimate}</ChipText>
-                      </Chip>
-                    ) : null}
                   </button>
                   {row.blocks.map((group) => (
                     <RelationChip key={group.kind} group={group} onOpen={props.onOpen} compact />
