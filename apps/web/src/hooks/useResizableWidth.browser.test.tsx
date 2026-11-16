@@ -17,7 +17,9 @@ function Panel({ defaultWidth, snap }: { defaultWidth: number; snap?: readonly n
   return (
     <>
       <button onClick={() => setWidth(350)}>{width}</button>
-      <div role="separator" style={{ width: 8, height: 40 }} {...handlers} />
+      <div role="separator" style={{ width: 8, height: 40 }} {...handlers}>
+        <span />
+      </div>
     </>
   );
 }
@@ -95,6 +97,7 @@ describe("useResizableWidth", () => {
       const handle = screen.container.querySelector<HTMLElement>('[role="separator"]')!;
       // Synthetic drag events have no active browser pointer to capture.
       using _capture = vi.spyOn(handle, "setPointerCapture").mockImplementation(() => {});
+      using pulse = vi.spyOn(handle.firstElementChild!, "animate");
       const pointer = { bubbles: true, pointerId: 1, button: 0 };
       const drag = (to: number) =>
         act(() => {
@@ -104,8 +107,11 @@ describe("useResizableWidth", () => {
       // The left edge widens as the pointer moves left: 300 + 90 lands 10px short of 400.
       await drag(410);
       expect(localStorage.getItem(STORAGE_KEY)).toBe("400");
+      // The line glows once as the drag lands on the snap width.
+      expect(pulse).toHaveBeenCalledTimes(1);
       await drag(480);
       expect(localStorage.getItem(STORAGE_KEY)).toBe("420");
+      expect(pulse).toHaveBeenCalledTimes(1);
     } finally {
       if (previous === null) localStorage.removeItem(STORAGE_KEY);
       else localStorage.setItem(STORAGE_KEY, previous);

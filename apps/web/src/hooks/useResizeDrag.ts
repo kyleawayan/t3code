@@ -12,6 +12,8 @@ interface ResizeSession {
   bounds: ResizeBounds;
   /** Widths the drag sticks to once the pointer comes within `SNAP_DISTANCE_PX` of one. */
   snap?: readonly number[];
+  /** Called when the drag lands on a snap width, not on every frame it stays there. */
+  onSnap?: () => void;
   resize: (width: number) => number;
   finish: (width: number, moved: boolean) => void;
   cleanup?: (committed: boolean) => void;
@@ -23,14 +25,13 @@ function clampToBounds(width: number, bounds: ResizeBounds): number {
   return Math.max(bounds.min, Math.min(bounds.max, width));
 }
 
-function snapWidth(width: number, session: ResizeSession): number {
-  const target = session.snap?.find(
+function snapTarget(width: number, session: ResizeSession): number | undefined {
+  return session.snap?.find(
     (point) =>
       Math.abs(point - width) <= SNAP_DISTANCE_PX &&
       point >= session.bounds.min &&
       point <= session.bounds.max,
   );
-  return target ?? width;
 }
 
 interface ActiveDrag<T extends HTMLElement> {
@@ -41,6 +42,7 @@ interface ActiveDrag<T extends HTMLElement> {
   pendingX: number;
   width: number;
   moved: boolean;
+  snapped: boolean;
   frame: number | null;
   onBlur: () => void;
 }
@@ -53,9 +55,11 @@ function createResizeDrag<T extends HTMLElement>() {
     if (!active) return;
     const delta = (active.pendingX - active.startX) * (active.session.edge === "left" ? -1 : 1);
     if (Math.abs(delta) > 2) active.moved = true;
-    active.width = active.session.resize(
-      snapWidth(clampToBounds(active.session.width + delta, active.session.bounds), active.session),
-    );
+    const width = clampToBounds(active.session.width + delta, active.session.bounds);
+    const target = snapTarget(width, active.session);
+    if (target !== undefined && !active.snapped) active.session.onSnap?.();
+    active.snapped = target !== undefined;
+    active.width = active.session.resize(target ?? width);
   };
 
   const finish = (commit: boolean) => {
@@ -116,6 +120,8 @@ function createResizeDrag<T extends HTMLElement>() {
         pendingX: event.clientX,
         width: session.width,
         moved: false,
+        // A drag that starts on a snap width hasn't landed on it, so it doesn't glow.
+        snapped: snapTarget(session.width, session) !== undefined,
         frame: null,
         onBlur,
       };
