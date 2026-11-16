@@ -384,6 +384,20 @@ describe("deriveMessagesTimelineRows", () => {
       expect(rows.some((row) => row.kind === "event")).toBe(false);
       expect(workRows[0]).not.toMatchObject({ expanded: true });
       expect(workRows[0]).not.toMatchObject({ isExpandedToolGroup: true });
+      // Open by default, the same toggle closes the group instead.
+      const openByDefault = (expandedWorkGroupIds: ReadonlySet<string>) =>
+        deriveMessagesTimelineRows({
+          timelineEntries: entries,
+          isWorking: status === "waiting",
+          runningRunId: fixture.runId,
+          activeTurnStartedAt: fixture.time(0),
+          turnDiffSummaries: [],
+          supportsConversationRollback: false,
+          expandedWorkGroupIds,
+          workGroupsOpenByDefault: true,
+        }).filter((row) => row.kind === "work-toggle" || row.kind === "work-live");
+      expect(openByDefault(new Set())).toMatchObject([{ expanded: true }]);
+      expect(openByDefault(new Set([workRows[0]!.groupId]))).toMatchObject([{ expanded: false }]);
       const pendingRows = deriveMessagesTimelineRows({
         timelineEntries: entries,
         pendingApprovalRequestIds: new Set([RuntimeRequestId.make("approval-request")]),

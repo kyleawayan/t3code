@@ -512,6 +512,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "open-tool-groups",
+    title: "Open tool call groups",
+    to: "/settings/chat",
+    searchTerms: ["expand auto open tool calls commands work log activity collapsed groups"],
+  },
+  {
     id: "screen-reader-announcements",
     title: msg("Screen reader announcements"),
     to: "/settings/chat",
