@@ -22,7 +22,7 @@ import { useLinearKeyStore, type LinearBridge } from "./linearBridge";
 import { LINEAR_FIXTURE_ISSUES } from "./linearFixtures";
 import { LinearIssuePanel } from "./LinearIssuePanel";
 import { tryOpenLinearLink } from "./linearOpen";
-import { newLinearSurface } from "./linearSurface";
+import { LINEAR_SEARCH_ENTRY, newLinearSurface } from "./linearSurface";
 
 const environmentId = EnvironmentId.make("environment");
 const threadRef = scopeThreadRef(environmentId, ThreadId.make("thread"));
@@ -153,6 +153,21 @@ it("navigates into sub-issues and relations, and back with the keyboard", async 
   // One blocked issue: the chip opens it directly instead of a list.
   await userEvent.click(screen.getByRole("button", { name: /^Blocks ENG-4/ }));
   await expect.element(screen.getByRole("heading", { name: "ENG-4 wasn't found" })).toBeVisible();
+});
+
+it("opens the dev fixtures from search without a key", async () => {
+  openTab(LINEAR_SEARCH_ENTRY);
+  await using screen = await render(<LinearHarness />);
+
+  await userEvent.click(
+    screen
+      .getByRole("region", { name: "Dev fixtures" })
+      .getByRole("button", { name: /Complex sample/ }),
+  );
+  await expect.element(screen.getByRole("heading", { name: /^Complex sample/ })).toBeVisible();
+  const subIssues = screen.getByRole("region", { name: "Sub-issues" });
+  await userEvent.click(subIssues.getByRole("button", { name: /Accessibility pass/ }));
+  await expect.element(screen.getByRole("heading", { name: "Accessibility pass" })).toBeVisible();
 });
 
 it("explains how to add a key when there isn't one", async () => {

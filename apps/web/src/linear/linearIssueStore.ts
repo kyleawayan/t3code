@@ -1,3 +1,4 @@
+// oxlint-disable t3code/no-untranslated-copy -- Fork-only English copy, kept out of upstream's translation catalogs.
 import { create } from "zustand";
 
 import { linearBridge, useLinearKeyStore, type LinearRequestError } from "./linearBridge";
@@ -38,8 +39,36 @@ const patchEntry = (identifier: string, patch: Partial<LinearIssueEntry>) =>
     },
   }));
 
+/** Dev builds read `FIX-` keys from a local fixture, so the tab can be tried without a key. */
+const DEV_FIXTURE_KEY = /^FIX-\d+$/;
+
+// A `FIX-` key the fixture doesn't have still goes to Linear.
+function loadDevFixture(identifier: string): Promise<void> {
+  return import("./linearDevFixtures").then(
+    ({ DEV_LINEAR_FIXTURES }) => {
+      const issue = DEV_LINEAR_FIXTURES[identifier];
+      if (!issue) return fetchFromLinear(identifier);
+      fetchedAt.set(identifier, Date.now());
+      const fingerprint = issueFingerprint(issue);
+      if (useLinearIssueStore.getState().entries[identifier]?.fingerprint === fingerprint) return;
+      patchEntry(identifier, { issue, fingerprint, loading: false, error: null });
+    },
+    (cause: unknown) => {
+      patchEntry(identifier, {
+        loading: false,
+        error: { kind: "failed", message: cause instanceof Error ? cause.message : String(cause) },
+      });
+    },
+  );
+}
+
 /** Fetches through the desktop bridge; an unchanged result leaves the store alone. */
 export function fetchLinearIssue(identifier: string): Promise<void> {
+  if (import.meta.env.DEV && DEV_FIXTURE_KEY.test(identifier)) return loadDevFixture(identifier);
+  return fetchFromLinear(identifier);
+}
+
+function fetchFromLinear(identifier: string): Promise<void> {
   const pending = inFlight.get(identifier);
   if (pending) return pending;
   const bridge = linearBridge();

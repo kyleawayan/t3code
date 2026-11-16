@@ -1,6 +1,7 @@
+// oxlint-disable t3code/no-untranslated-copy -- Fork-only English copy, kept out of upstream's translation catalogs.
 import { useNavigate } from "@tanstack/react-router";
 import { Search } from "lucide-react";
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { SquishText } from "~/components/SquishText";
 import { Button } from "~/components/ui/button";
@@ -15,6 +16,9 @@ import { LINEAR_MY_ISSUES_QUERY, LINEAR_SEARCH_QUERY } from "./linearQuery";
 import type { LinearIssueRef } from "./linearTypes";
 
 const IDENTIFIER = /^[A-Za-z][A-Za-z0-9_]*-\d+$/;
+
+// Fork: dev builds list local fixture issues; production builds drop the chunk entirely.
+const DevFixtureList = import.meta.env.DEV ? lazy(() => import("./LinearDevFixtureList")) : null;
 
 /** A pasted link or a typed key like `ENG-12` opens directly, ahead of the search results. */
 export function directLinearTarget(input: string): string | null {
@@ -148,6 +152,11 @@ export function LinearIssueSearch(props: { readonly onOpen: (identifier: string)
           onKeyDown={onKeyDown}
         />
       </InputGroup>
+      {DevFixtureList && !searching ? (
+        <Suspense fallback={null}>
+          <DevFixtureList onOpen={props.onOpen} />
+        </Suspense>
+      ) : null}
       <section className="flex flex-col gap-1" aria-label="Search results">
         <h2 className="px-2 text-xs text-muted-foreground">
           {searching ? "Results" : "Assigned to you"}
