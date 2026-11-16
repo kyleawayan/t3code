@@ -494,12 +494,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["expand auto open tool calls commands work log activity collapsed groups"],
   },
   {
-    id: "hold-to-open-work",
-    title: "Hold to open running work",
-    to: "/settings/chat",
-    searchTerms: ["press hold long press peek expand working tool calls activity distraction"],
-  },
-  {
     id: "screen-reader-announcements",
     title: "Screen reader announcements",
     to: "/settings/chat",
@@ -709,6 +703,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [
       "custom audio file chime alert silent preview completed input approval failed usage limit guest request",
     ],
+  },
+  {
+    id: "hold-to-open-working",
+    title: "Hold to open Working",
+    to: "/settings/general",
+    searchTerms: ["sidebar working shelf press hold long press peek expand distraction"],
   },
   {
     id: "in-app-notifications",

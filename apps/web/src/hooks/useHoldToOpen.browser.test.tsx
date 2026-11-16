@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { expect, it, vi } from "vite-plus/test";
 
-import { act, fakeTimers, render } from "../../../test/render";
-import { HOLD_TO_OPEN_MS, useHoldToOpen } from "./timelineActivityPrefs";
+import { act, fakeTimers, render } from "../../test/render";
+import { HOLD_TO_OPEN_MS, useHoldToOpen } from "./useHoldToOpen";
 
-// Like a work row: only a closed disclosure needs the hold.
+// Like the Working shelf: only a closed disclosure needs the hold.
 function Disclosure() {
   const [open, setOpen] = useState(false);
   const handlers = useHoldToOpen(!open, () => setOpen((value) => !value));
@@ -15,7 +15,7 @@ function Disclosure() {
   );
 }
 
-it("opens held work only after the hold, keeps it open on release, and ignores a quick click", async () => {
+it("opens only after the hold, stays open on release, and ignores a quick click", async () => {
   // A bare button; no navigation is involved.
   await using screen = await render(<Disclosure />, { router: false });
   using _timers = fakeTimers();

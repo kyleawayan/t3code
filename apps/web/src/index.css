@@ -3214,8 +3214,9 @@ code {
   left: 0;
 }
 
-/* Fork: Hold to open running work fills a held row from the left over HOLD_TO_OPEN_MS (500ms,
-   in timelineActivityPrefs.ts); letting go early empties it at once. */
+/* Fork: a hold-to-open control (the sidebar's Working shelf header) fills from the left over
+   HOLD_TO_OPEN_MS (500ms, in hooks/useHoldToOpen.ts) and runs back when let go early. The fill is
+   revealed with clip-path rather than scaled, so its rounded corners don't stretch. */
 [data-hold-to-open] {
   position: relative;
   isolation: isolate;
@@ -3228,12 +3229,12 @@ code {
   z-index: -1;
   border-radius: inherit;
   background: color-mix(in srgb, var(--primary) 16%, transparent);
-  transform: scaleX(0);
-  transform-origin: left;
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path 250ms ease-out;
   pointer-events: none;
 }
 
 [data-hold-to-open][data-holding]::before {
-  transform: scaleX(1);
-  transition: transform 500ms linear;
+  clip-path: inset(0 0 0 0);
+  transition: clip-path 500ms linear;
 }
