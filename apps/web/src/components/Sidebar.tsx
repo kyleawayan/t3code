@@ -3408,7 +3408,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                     {/* Boring mode already folds active threads into project folders. */}
                     {boringSidebarEnabled ? null : (
                       <label className="flex cursor-pointer items-center justify-between gap-3 border-t px-3 py-2 text-sm">
-                        Group by project
+                        <T>Group by project</T>
                         <Switch
                           size="sm"
                           checked={groupByProjectEnabled}
@@ -3659,6 +3659,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             }
                             thread={thread}
                             variant={rowVariant}
+                            section={section}
                             navigationParent={
                               folderRow ??
                               (section === "working" ||
@@ -3783,7 +3784,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               projectKey={item.key}
                               first={shelfGroups?.[0]?.projectKey === item.key}
                               shelf={item.shelf}
-                              label={group?.displayName ?? "Project"}
+                              label={group?.displayName ?? gt("Project")}
                               project={group}
                               dragDisabled={
                                 snoozedShelf ||
