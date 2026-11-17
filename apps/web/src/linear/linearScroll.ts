@@ -6,20 +6,17 @@ import { useLayoutEffect, useRef } from "react";
 import { getLocalStorageItem, writeLocalStorageValue } from "~/hooks/useLocalStorage";
 import { observeResize } from "~/lib/observeResize";
 
+// Changing this key drops every saved scroll position.
 const STORAGE_KEY = "t3code.markdownPreviewScroll";
 const MAX_ENTRIES = 100;
 const SAVE_DELAY_MS = 250;
 const ScrollTops = Schema.Record(Schema.String, Schema.Number);
 
-export function markdownPreviewScrollKey(
-  threadRef: ScopedThreadRef,
-  cwd: string,
-  relativePath: string,
-): string {
-  return JSON.stringify([scopedThreadKey(threadRef), cwd, relativePath]);
+export function linearScrollKey(threadRef: ScopedThreadRef, identifier: string): string {
+  return JSON.stringify([scopedThreadKey(threadRef), "linear", identifier]);
 }
 
-/** Insertion order is recency, so the least recently scrolled files fall off first. */
+/** Insertion order is recency, so the least recently scrolled issues fall off first. */
 export function rememberScrollTop(
   scrollTops: typeof ScrollTops.Type,
   key: string,
