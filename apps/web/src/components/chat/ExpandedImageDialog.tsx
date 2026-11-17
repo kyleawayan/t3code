@@ -232,7 +232,8 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
             variant={container ? "ghost" : "media-navigation"}
             className={cn(
               "left-0 top-auto bottom-0 translate-y-0 sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2",
-              container && "absolute z-20",
+              // The panel's resize handle covers the body's left edge.
+              container && "absolute z-20 left-2",
             )}
             aria-label={gt("Previous media")}
             onClick={() => navigateImage(-1)}
