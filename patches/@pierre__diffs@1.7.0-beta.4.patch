@@ -134,6 +134,22 @@ index 96d4fb137ea683b66381b1ce6e47e8708a89366c..13f2564897a5bf53a8f311300003b3ea
  	}
  	/**
  	* Re-measure the '0' character width against the font that is loaded right
+diff --git a/dist/rows/lineDiffRanges.js b/dist/rows/lineDiffRanges.js
+index 4952e527db52aa9c7ca25855768ddbacc203371c..9644caed297b7b988b0bcab421f60aebed8584a1 100644
+--- a/dist/rows/lineDiffRanges.js
++++ b/dist/rows/lineDiffRanges.js
+@@ -41,7 +41,11 @@
+ * `ranges` remembers each pair's answer, so asking again for a line costs
+ * nothing while its texts stand. `markRow` turns the ranges into spans.
+ */
++const MAX_WORD_DIFF_LINE_COUNT = 5;
+ function lineDiffRangesFor(model, side, lineIndex, ranges) {
++	// T3 Code fork: like Zed, word diffs mark only a change that swaps N lines for N lines, N <= 5.
++	const block = model.blockAt(side, lineIndex);
++	if (block?.type === "change" && (block.deletions !== block.additions || block.deletions > MAX_WORD_DIFF_LINE_COUNT)) return NO_SIDE_RANGES;
+ 	const partner = model.pairFor(side, lineIndex);
+ 	if (partner == null) return NO_SIDE_RANGES;
+ 	const { deletionLines, additionLines } = model.diff;
 diff --git a/package.json b/package.json
 index d1fa4d5d79ba70b6cd990b0ac9df5206fe55b58d..8762624a075174f5d9f35224cf091596d951a1a7 100644
 --- a/package.json
