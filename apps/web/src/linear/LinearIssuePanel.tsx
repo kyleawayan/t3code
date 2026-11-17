@@ -1,3 +1,4 @@
+// oxlint-disable t3code/no-untranslated-copy -- Fork-only English copy, kept out of upstream's translation catalogs.
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { ScrollArea as ScrollAreaPrimitive } from "@base-ui/react/scroll-area";
 import { useNavigate } from "@tanstack/react-router";
@@ -34,15 +35,12 @@ import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Skeleton } from "~/components/ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
-import {
-  markdownPreviewScrollKey,
-  usePersistedScrollAreaPosition,
-} from "~/components/files/markdownPreviewScroll";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useNowMinute } from "~/hooks/useNowMinute";
 import { cn } from "~/lib/utils";
 
 import { linearBridge, useLinearKeyStore } from "./linearBridge";
+import { linearScrollKey, usePersistedScrollAreaPosition } from "./linearScroll";
 import {
   LinearAvatar,
   LinearBlockedIcon,
@@ -127,10 +125,8 @@ export function LinearIssuePanel(props: {
   const entry = useLinearIssue(identifier, props.visible);
   const issue = entry?.issue;
   const panelRef = useRef<HTMLDivElement>(null);
-  // Like the markdown preview: each issue keeps its scroll per thread, across tab switches and reloads.
-  const scrollRef = usePersistedScrollAreaPosition(
-    markdownPreviewScrollKey(threadRef, "linear", identifier),
-  );
+  // Each issue keeps its scroll per thread, across tab switches and reloads.
+  const scrollRef = usePersistedScrollAreaPosition(linearScrollKey(threadRef, identifier));
   // The clicked row unmounts with the old issue; keep focus here so back keys stay in the tab.
   const keepFocus = () => panelRef.current?.focus({ preventScroll: true });
   const open = (next: string) => {

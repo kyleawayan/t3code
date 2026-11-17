@@ -67,6 +67,7 @@ import { MediaVideoPlayer } from "~/components/media/MediaVideoPlayer";
 import { MediaActions, type MediaActionSource } from "~/components/media/MediaActions";
 import { useRemoteOpenState } from "~/remoteOpen";
 import { useClientSettings } from "~/hooks/useSettings";
+import { useFileLineMetrics } from "./fileLineMetrics"; // Fork: line height metrics
 import { useTheme } from "~/hooks/useTheme";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "~/hooks/useLocalStorage";
@@ -133,7 +134,6 @@ import {
 } from "./filePreviewMode";
 import { setMarkdownTaskChecked } from "@t3tools/shared/markdownTaskList";
 import { changeFileSaveSession, useFileSaveSession } from "./fileSaveSessions";
-import { markdownPreviewScrollKey, usePersistedScrollAreaPosition } from "./markdownPreviewScroll";
 import { revisionedQuery } from "~/state/revisionedQuery";
 import {
   getOptimisticProjectFileQueryData,
@@ -859,6 +859,7 @@ function EditableFileSurface({
   onPendingChange,
   onEditorChange,
 }: EditableFileSurfaceProps) {
+  const fileMetrics = useFileLineMetrics(); // Fork: line height metrics
   const messages = useMessages();
   const addReviewComment = useComposerDraftStore((store) => store.addReviewComment);
   const removeReviewComment = useComposerDraftStore((store) => store.removeReviewComment);
@@ -1062,6 +1063,7 @@ function EditableFileSurface({
           }}
         >
           <File<FileCommentAnnotationGroup>
+            metrics={fileMetrics}
             file={externalFile}
             edit={editable}
             editorOptions={editorOptions}
@@ -1165,16 +1167,9 @@ function RenderedMarkdownSurface({
 }) {
   const saveTarget = { environmentId, cwd, relativePath };
   useFileSaveSession(saveTarget, onPendingChange);
-  const scrollAreaRef = usePersistedScrollAreaPosition(
-    markdownPreviewScrollKey(threadRef, cwd, relativePath),
-  );
 
   return (
-    <ScrollArea
-      ref={scrollAreaRef}
-      className="min-h-0 flex-1"
-      onKeyDown={selectRenderedContentOnSelectAll}
-    >
+    <ScrollArea className="min-h-0 flex-1" onKeyDown={selectRenderedContentOnSelectAll}>
       <FileMarkdownPreview
         text={contents}
         cwd={cwd}

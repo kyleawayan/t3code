@@ -1,16 +1,16 @@
-import "../../index.css";
+import "../index.css";
 
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { render, type Screen } from "../../../test/render";
-import { ScrollArea } from "../ui/scroll-area";
-import { rememberScrollTop, usePersistedScrollAreaPosition } from "./markdownPreviewScroll";
+import { render, type Screen } from "../../test/render";
+import { ScrollArea } from "~/components/ui/scroll-area";
+import { rememberScrollTop, usePersistedScrollAreaPosition } from "./linearScroll";
 
 function setup() {
   localStorage.removeItem("t3code.markdownPreviewScroll");
 }
 
-function Preview(props: {
+function IssueBody(props: {
   readonly scrollKey: string;
   readonly paragraphs?: number;
   readonly width?: number;
@@ -45,55 +45,55 @@ describe("usePersistedScrollAreaPosition", () => {
   it("restores the position after a remount", async () => {
     setup();
     {
-      await using screen = await render(<Preview scrollKey="a" />);
+      await using screen = await render(<IssueBody scrollKey="a" />);
       await userScrollTo(screen, 300);
     }
-    await using screen = await render(<Preview scrollKey="a" />);
+    await using screen = await render(<IssueBody scrollKey="a" />);
     expect(viewport(screen).scrollTop).toBe(300);
   });
 
-  it("swaps positions when the key changes on a mounted preview", async () => {
+  it("swaps positions when the key changes on a mounted panel", async () => {
     setup();
-    await using screen = await render(<Preview scrollKey="thread-a" />);
+    await using screen = await render(<IssueBody scrollKey="thread-a" />);
     await userScrollTo(screen, 300);
 
-    await screen.rerender(<Preview scrollKey="thread-b" />);
+    await screen.rerender(<IssueBody scrollKey="thread-b" />);
     expect(viewport(screen).scrollTop).toBe(0);
     await userScrollTo(screen, 120);
 
-    await screen.rerender(<Preview scrollKey="thread-a" />);
+    await screen.rerender(<IssueBody scrollKey="thread-a" />);
     expect(viewport(screen).scrollTop).toBe(300);
-    await screen.rerender(<Preview scrollKey="thread-b" />);
+    await screen.rerender(<IssueBody scrollKey="thread-b" />);
     expect(viewport(screen).scrollTop).toBe(120);
   });
 
   it("reaches the position once late content makes it scrollable", async () => {
     setup();
     {
-      await using screen = await render(<Preview scrollKey="a" />);
+      await using screen = await render(<IssueBody scrollKey="a" />);
       await userScrollTo(screen, 300);
     }
-    await using screen = await render(<Preview scrollKey="a" paragraphs={1} />);
+    await using screen = await render(<IssueBody scrollKey="a" paragraphs={1} />);
     expect(viewport(screen).scrollTop).toBe(0);
 
-    await screen.rerender(<Preview scrollKey="a" />);
+    await screen.rerender(<IssueBody scrollKey="a" />);
     await vi.waitFor(() => expect(viewport(screen).scrollTop).toBe(300));
   });
 
-  it("keeps the position when the preview mounts narrow and then widens", async () => {
+  it("keeps the position when the panel mounts narrow and then widens", async () => {
     setup();
     {
-      await using screen = await render(<Preview scrollKey="a" />);
+      await using screen = await render(<IssueBody scrollKey="a" />);
       await userScrollTo(screen, 300);
     }
-    await using screen = await render(<Preview scrollKey="a" width={120} />);
-    await screen.rerender(<Preview scrollKey="a" />);
+    await using screen = await render(<IssueBody scrollKey="a" width={120} />);
+    await screen.rerender(<IssueBody scrollKey="a" />);
     await vi.waitFor(() => expect(viewport(screen).scrollTop).toBe(300));
   });
 });
 
 describe("rememberScrollTop", () => {
-  it("keeps the most recently scrolled entries and forgets the top of a file", () => {
+  it("keeps the most recently scrolled entries and forgets ones at the top", () => {
     const scrollTops = { a: 10, b: 20, c: 30 };
 
     expect(Object.entries(rememberScrollTop(scrollTops, "a", 40.6, 3))).toEqual([

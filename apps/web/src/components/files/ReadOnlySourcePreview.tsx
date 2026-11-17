@@ -3,6 +3,7 @@ import { type ClipboardEvent, useEffect, useRef, useState } from "react";
 
 import { DiffWorkerPoolProvider } from "~/components/DiffWorkerPoolProvider";
 import { useClientSettings } from "~/hooks/useSettings";
+import { useFileLineMetrics } from "./fileLineMetrics"; // Fork: line height metrics
 import { useRenderedAppearance } from "~/hooks/useTheme";
 import { resolveDiffThemeName } from "~/lib/diffRendering";
 import { PREFERRED_HIGHLIGHTER } from "~/lib/syntaxHighlighting";
@@ -20,6 +21,7 @@ export default function ReadOnlySourcePreview(props: {
 }) {
   const resolvedTheme = useRenderedAppearance();
   const defaultWordWrap = useClientSettings((settings) => settings.wordWrap);
+  const fileMetrics = useFileLineMetrics(); // Fork: line height metrics
   const wordWrap = props.wordWrap ?? defaultWordWrap;
   const { text, onPostRender } = props;
   const wrapper = useRef<HTMLDivElement>(null);
@@ -75,6 +77,7 @@ export default function ReadOnlySourcePreview(props: {
           config={{ overscrollSize: 600, intersectionObserverMargin: 1200 }}
         >
           <File
+            metrics={fileMetrics}
             file={{
               name: props.name,
               contents: props.text,
