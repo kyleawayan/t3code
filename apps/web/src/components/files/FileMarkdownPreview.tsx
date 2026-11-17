@@ -24,16 +24,14 @@ export function FileMarkdownPreview(props: {
       : props.cwd;
 
   return (
-    // Fork: indent guides like Obsidian's, styled in index.css. Chat messages keep plain lists.
-    <div data-markdown-indent-guides className="mx-auto max-w-4xl px-6 py-5">
-      <ChatMarkdown
-        text={maskMarkdownFrontmatter(props.text)}
-        cwd={props.cwd}
-        imageBaseDir={imageBaseDir}
-        threadRef={props.threadRef}
-        workspaceMutationId={props.workspaceMutationId}
-        onTaskListChange={props.onTaskListChange}
-      />
-    </div>
+    <ChatMarkdown
+      text={maskMarkdownFrontmatter(props.text)}
+      cwd={props.cwd}
+      imageBaseDir={imageBaseDir}
+      threadRef={props.threadRef}
+      workspaceMutationId={props.workspaceMutationId}
+      className="mx-auto max-w-4xl px-6 py-5"
+      onTaskListChange={props.onTaskListChange}
+    />
   );
 }

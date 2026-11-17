@@ -2462,103 +2462,15 @@ code {
   margin-top: 0.25rem;
 }
 
-/* Fork: Obsidian-style indent guides in the Markdown file preview, a line under each parent
-   marker down the length of its nested list. The li resolves its own list's gutter, because the
-   nested list resets --list-gutter for itself. */
-[data-markdown-indent-guides] .chat-markdown li {
-  --indent-guide-start: calc(var(--list-gutter, 1.25rem) * -0.5);
-}
-
-/* A task's checkbox sits at the start of the gutter instead of the marker's place. */
-[data-markdown-indent-guides] .chat-markdown li.task-list-item {
-  --indent-guide-start: calc(var(--list-gutter, 1.25rem) * -1 + 0.5em);
-}
-
-[data-markdown-indent-guides] .chat-markdown li > :is(ul, ol) {
-  position: relative;
-}
-
-/* Spans the nested list's 0.65rem top margin and reaches up to just under the parent's marker,
-   like Obsidian. */
-[data-markdown-indent-guides] .chat-markdown li > :is(ul, ol)::before {
-  content: "";
-  position: absolute;
-  inset-block: calc(-0.65rem - 0.15em) 0;
-  inset-inline-start: calc(var(--indent-guide-start) - 0.5px);
-  border-inline-start: 1px solid color-mix(in srgb, currentColor 15%, transparent);
-  pointer-events: none;
-}
-
 /* GitHub-style task lists: the checkbox replaces the list marker. */
 .chat-markdown li.task-list-item {
   list-style-type: none;
 }
 
-/* Drawn like the app's Checkbox because chat renders tasks disabled, and the browser's disabled
-   checkbox washes out the checked state, which is the clearest sign a task is done. */
 .chat-markdown li.task-list-item input[type="checkbox"] {
-  appearance: none;
-  display: inline-grid;
-  place-content: center;
-  width: 1em;
-  height: 1em;
   margin-block: 0 0.15em;
   margin-inline: calc(-1 * var(--list-gutter, 1.25rem)) 0.35em;
-  border: 1px solid color-mix(in srgb, currentColor 55%, transparent);
-  border-radius: 0.25rem;
   vertical-align: middle;
-}
-
-.chat-markdown li.task-list-item input[type="checkbox"]:checked {
-  border-color: var(--primary);
-  background-color: var(--primary);
-}
-
-.chat-markdown li.task-list-item input[type="checkbox"]:checked::after {
-  content: "";
-  width: 0.7em;
-  height: 0.7em;
-  background-color: var(--primary-foreground);
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E")
-    center / contain no-repeat;
-}
-
-.chat-markdown li.task-list-item input[type="checkbox"]:enabled {
-  cursor: pointer;
-}
-
-.chat-markdown li.task-list-item input[type="checkbox"]:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
-/* A checked task reads as done. Loose lists wrap the checkbox in a paragraph. Text decoration
-   reaches every in-flow descendant, so nested lists become atomic inline boxes, which it skips.
-   The dim goes on the text fill, not `color`: nested lists reset the fill to their unchanged
-   `color`, so open sub-tasks stay readable and a nested done task dims only once. The text dims
-   relative to its surroundings so it still stands apart in already-muted blocks and follows the
-   contrast setting; opacity would also fade the checkbox. Done text deliberately falls below
-   4.5:1: at the 80% that keeps it, done and open text sit under 2:1 apart and read as the same
-   state. */
-.chat-markdown
-  li.task-list-item:is(
-    :has(> input[type="checkbox"]:checked),
-    :has(> p:first-child > input[type="checkbox"]:checked)
-  ) {
-  -webkit-text-fill-color: color-mix(in srgb, currentColor 50%, transparent);
-  text-decoration-line: line-through;
-  text-decoration-color: color-mix(in srgb, currentColor 50%, transparent);
-}
-
-.chat-markdown
-  li.task-list-item:is(
-    :has(> input[type="checkbox"]:checked),
-    :has(> p:first-child > input[type="checkbox"]:checked)
-  )
-  > :is(ul, ol) {
-  display: inline-block;
-  width: 100%;
-  -webkit-text-fill-color: currentColor;
 }
 
 /* Markdown assumes inline images — GitHub comments lay button images out in a row — and the
