@@ -399,7 +399,7 @@ describe("deriveMessagesTimelineRows", () => {
         }).filter((row) => row.kind === "work-toggle" || row.kind === "work-live");
       expect(openByDefault(new Set())).toMatchObject([{ expanded: true }]);
       expect(openByDefault(new Set([workRows[0]!.groupId]))).toMatchObject([{ expanded: false }]);
-      // Tool call rows of the newest run open by default; thoughts and older runs stay closed.
+      // Tool call and thought rows of the newest run open by default; older runs stay closed.
       const olderRunId = RunId.make("older-run");
       const entry = (tone: "tool" | "thinking", runId: RunId) => ({
         id: tone,
@@ -409,7 +409,8 @@ describe("deriveMessagesTimelineRows", () => {
         runId,
       });
       expect(workEntryOpensByDefault(entry("tool", fixture.runId), fixture.runId)).toBe(true);
-      expect(workEntryOpensByDefault(entry("thinking", fixture.runId), fixture.runId)).toBe(false);
+      expect(workEntryOpensByDefault(entry("thinking", fixture.runId), fixture.runId)).toBe(true);
+      expect(workEntryOpensByDefault(entry("thinking", olderRunId), fixture.runId)).toBe(false);
       expect(workEntryOpensByDefault(entry("tool", olderRunId), fixture.runId)).toBe(false);
       expect(workEntryOpensByDefault(entry("tool", fixture.runId), null)).toBe(false);
       const pendingRows = deriveMessagesTimelineRows({
