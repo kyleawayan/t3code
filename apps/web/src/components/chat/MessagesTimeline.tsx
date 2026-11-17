@@ -1054,7 +1054,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     onWorktreeSetupWorkLocally: onWorktreeSetupWorkLocally ?? null,
     onOpenWorktreeSetupTerminal: onOpenWorktreeSetupTerminal ?? null,
     workGroupViewState,
-    openToolCallsByDefault: openToolGroups,
+    openToolCallsRunId: openToolGroups ? (latestRun?.runId ?? null) : null,
   };
   const compactionAwaitingRow =
     isCompacting &&
