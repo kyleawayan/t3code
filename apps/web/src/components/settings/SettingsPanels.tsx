@@ -535,6 +535,12 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.sidebarWorkingShelfEnabled !== DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled
       ? [gt("Working section")]
       : []),
+    ...(settings.holdToOpenWorking !== DEFAULT_UNIFIED_SETTINGS.holdToOpenWorking
+      ? ["Hold to open Working"]
+      : []),
+    ...(settings.holdToOpenToolCalls !== DEFAULT_UNIFIED_SETTINGS.holdToOpenToolCalls
+      ? ["Hold to open tool calls"]
+      : []),
     ...(settings.sidebarAutoSettleAfterDays !== DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays
       ? [gt("Auto-settle inactive threads")]
       : []),
@@ -722,6 +728,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,
       sidebarProjectSortOrder: DEFAULT_UNIFIED_SETTINGS.sidebarProjectSortOrder,
       sidebarWorkingShelfEnabled: DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled,
+      holdToOpenWorking: DEFAULT_UNIFIED_SETTINGS.holdToOpenWorking,
+      holdToOpenToolCalls: DEFAULT_UNIFIED_SETTINGS.holdToOpenToolCalls,
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       sidebarAutoSettleKeepPullRequests: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleKeepPullRequests,
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
@@ -1468,36 +1476,54 @@ function ToolCallVisibilityRow() {
 }
 
 function HoldToOpenWorkingRow() {
+  const gt = useGT();
+  const setting = useSearchableSetting();
   const [hold, setHold] = useHoldToOpenWorking();
   return (
     <SettingsRow
-      {...searchableSetting("hold-to-open-working")}
-      description="The Working shelf opens only when you press and hold its header for half a second, so a stray click doesn't open it. Enter and Space still open it."
+      {...setting("hold-to-open-working")}
+      description={gt(
+        "The Working shelf opens only when you press and hold its header for half a second, so a stray click doesn't open it. Enter and Space still open it.",
+      )}
       resetAction={
         hold ? (
-          <SettingResetButton label="hold to open Working" onClick={() => setHold(false)} />
+          <SettingResetButton
+            ariaLabel={gt("Reset hold to open Working to default")}
+            onClick={() => setHold(false)}
+          />
         ) : null
       }
       control={
-        <Switch checked={hold} onCheckedChange={setHold} aria-label="Hold to open Working" />
+        <Switch checked={hold} onCheckedChange={setHold} aria-label={gt("Hold to open Working")} />
       }
     />
   );
 }
 
 function HoldToOpenToolCallsRow() {
+  const gt = useGT();
+  const setting = useSearchableSetting();
   const [hold, setHold] = useHoldToOpenToolCalls();
   return (
     <SettingsRow
-      {...searchableSetting("hold-to-open-tool-calls")}
-      description="Tool calls and thoughts open only after a half-second press and hold, so a stray click doesn't. Enter and Space still open them."
+      {...setting("hold-to-open-tool-calls")}
+      description={gt(
+        "Tool calls and thoughts open only after a half-second press and hold, so a stray click doesn't. Enter and Space still open them.",
+      )}
       resetAction={
         hold ? (
-          <SettingResetButton label="hold to open tool calls" onClick={() => setHold(false)} />
+          <SettingResetButton
+            ariaLabel={gt("Reset hold to open tool calls to default")}
+            onClick={() => setHold(false)}
+          />
         ) : null
       }
       control={
-        <Switch checked={hold} onCheckedChange={setHold} aria-label="Hold to open tool calls" />
+        <Switch
+          checked={hold}
+          onCheckedChange={setHold}
+          aria-label={gt("Hold to open tool calls")}
+        />
       }
     />
   );
@@ -1781,7 +1807,6 @@ export function DiffsSettingsPanel() {
         />
         <DiffColorsSettingsRow />
       </SettingsSection>
-
       <SettingsSection id="pull-requests" title={gt("Pull requests")}>
         <SettingsRow
           {...setting("proactive-panels")}
