@@ -122,7 +122,8 @@ function DialogPopup({
   mediaControlsPlacement?: "inside" | "outside";
   /**
    * Fork: fills this positioned element, opaque, instead of floating over the window. Pair with
-   * `modal={false}`.
+   * `modal={false}`. The element must be a stacking context (`isolate`), or the popup's z-index
+   * lifts it over app dialogs.
    */
   container?: HTMLElement | null | undefined;
 }) {

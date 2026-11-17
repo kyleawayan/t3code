@@ -1550,8 +1550,12 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
           />
         ) : null}
       </div>
-      {/* Fork: relative so zoomed markdown media fills the body and leaves the tabs usable. */}
-      <div className="relative flex min-h-0 flex-1 flex-col" data-right-panel-surface-content>
+      {/* Fork: zoomed markdown media fills this body and leaves the tabs usable. Isolated so its
+          z-index stays under app dialogs (Cmd+K, Settings) and the panel's resize handle. */}
+      <div
+        className="relative isolate flex min-h-0 flex-1 flex-col"
+        data-right-panel-surface-content
+      >
         {props.activeSurfaceId === null ? (
           <RightPanelEmptyState
             onAddBrowser={props.onAddBrowser}
