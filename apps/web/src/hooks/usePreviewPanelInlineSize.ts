@@ -42,6 +42,7 @@ export function usePreviewPanelInlineSize(
     maxWidth,
     edge: "left",
     snapWidths: () => (rowRef.current ? getPreviewPanelSnapWidths(rowRef.current.clientWidth) : []),
+    snapLabel: (index) => PREVIEW_PANEL_SNAPS[index]?.label,
   });
   const observeRow = (host: HTMLElement) => {
     const row = container ?? (enabled ? host.parentElement : null) ?? null;
@@ -82,9 +83,16 @@ export function getPreviewPanelMaxWidth(viewportWidth: number, containerWidth?: 
 }
 
 /**
- * Fork: the divider snaps where the chat gets half or a third of the row it shares with the
- * panel, which ends at the sidebar.
+ * Fork: the splits the divider snaps to, as the panel's share of the row it shares with the
+ * column on its left (the chat, or the pull request list), which ends at the sidebar. Labels read
+ * left · right.
  */
+const PREVIEW_PANEL_SNAPS = [
+  { panelShare: 1 / 2, label: "1/2 · 1/2" },
+  { panelShare: 3 / 5, label: "2/5 · 3/5" },
+  { panelShare: 2 / 3, label: "1/3 · 2/3" },
+] as const;
+
 function getPreviewPanelSnapWidths(rowWidth: number): readonly number[] {
-  return [Math.round(rowWidth / 2), Math.round((rowWidth * 2) / 3)];
+  return PREVIEW_PANEL_SNAPS.map(({ panelShare }) => Math.round(rowWidth * panelShare));
 }
