@@ -96,7 +96,7 @@ export interface TimelineRowSharedState {
   onFileOpen: (attachment: ChatFileAttachment) => void;
   onFileDownload: (attachment: ChatFileAttachment) => void;
   openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
-  onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
+  onToggleWorkGroup: (groupId: string, anchorKey: string, expanded: boolean) => void;
   onToggleWorkEntry: (anchorKey: string, collapsed: boolean, entryId?: string) => void;
   onWorkEntryContentReady?: (anchorKey: string, entryId: string) => void;
   onCancelWorktreeSetup: (() => void) | null;
@@ -134,6 +134,8 @@ export interface WorkGroupViewState {
   expandedEntries: Set<string>;
   /** Fork: tool calls closed by a click while they open by default. */
   collapsedEntries: Set<string>;
+  /** Fork: entries open only by default; they close once their run is no longer the newest. */
+  defaultOpenedEntries: Set<string>;
 }
 
 /** One image the group's agent viewed; `item` is null until its URL resolves. */

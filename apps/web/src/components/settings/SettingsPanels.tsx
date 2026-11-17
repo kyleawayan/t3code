@@ -1490,7 +1490,7 @@ function OpenToolGroupsRow() {
   return (
     <SettingsRow
       {...searchableSetting("open-tool-groups")}
-      description="Show tool calls and thoughts opened, each group and each call's details, while the agent works and after. A click still closes one."
+      description="Show the newest turn's tool calls and thoughts opened, each group and each call's details. Older turns start closed. A click still opens or closes one."
       resetAction={
         open ? (
           <SettingResetButton label="open tool call groups" onClick={() => setOpen(false)} />

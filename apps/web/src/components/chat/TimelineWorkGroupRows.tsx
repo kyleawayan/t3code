@@ -470,7 +470,7 @@ export function ThinkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind:
       type="button"
       className="group/live-work flex min-h-6 w-full max-w-full cursor-pointer items-center rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
       aria-expanded={row.expanded === true}
-      onClick={() => ctx.onToggleWorkGroup(groupId, row.id)}
+      onClick={() => ctx.onToggleWorkGroup(groupId, row.id, row.expanded === true)}
     >
       {activity}
     </button>
@@ -621,7 +621,7 @@ export function LiveWorkEntryTimelineRow({
           : undefined
       }
       aria-expanded={row.expanded}
-      onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
+      onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id, row.expanded)}
     >
       {thoughtLine ? (
         <WorkLogRow
@@ -703,7 +703,7 @@ export function WorkGroupToggleTimelineRow({
       expanded={row.expanded}
       createdAt={row.createdAt}
       timestampFormat={ctx.timestampFormat}
-      onToggle={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
+      onToggle={() => ctx.onToggleWorkGroup(row.groupId, row.id, row.expanded)}
     />
   );
 }

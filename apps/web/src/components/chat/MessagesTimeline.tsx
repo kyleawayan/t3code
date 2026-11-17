@@ -90,6 +90,7 @@ import {
   TIMELINE_MINIMAP_TARGET_OFFSET,
   timelineTurnFoldRunIdsByEntryId,
   liveAnswerPreview,
+  closedWorkGroupId,
   type MessagesTimelineRow,
   type TimelineLatestRun,
 } from "./MessagesTimeline.logic";
@@ -159,6 +160,7 @@ function timelineListStateFor(identity: string): {
       scrollPositions: new Map(),
       expandedEntries: new Set(),
       collapsedEntries: new Set(),
+      defaultOpenedEntries: new Set(),
     },
   };
 }
@@ -579,17 +581,20 @@ const ConversationTimeline = memo(function ConversationTimeline({
       return next;
     });
   };
-  const onToggleWorkGroup = (groupId: string, anchorKey: string) => {
+  const onToggleWorkGroup = (groupId: string, anchorKey: string, expanded: boolean) => {
     preserveDisclosurePosition(
       anchorKey,
-      expandedWorkGroupIds.has(groupId) ? undefined : { contentKey: `${groupId}:details` },
+      expanded ? undefined : { contentKey: `${groupId}:details` },
     );
+    // Fork: the choice itself is kept, so it holds after a newer run stops opening this group.
     setExpandedWorkGroupIds((existing) => {
       const next = new Set(existing);
-      if (next.has(groupId)) {
+      if (expanded) {
         next.delete(groupId);
+        next.add(closedWorkGroupId(groupId));
       } else {
         next.add(groupId);
+        next.delete(closedWorkGroupId(groupId));
       }
       return next;
     });

@@ -45,6 +45,7 @@ import {
   threadReadTargetId,
   threadReadTargetTitle,
   workEntryDisplayLabel,
+  claimWorkEntryOpen,
   workEntryOpensByDefault,
   workEntryReadOutput,
 } from "./MessagesTimeline.logic";
@@ -297,15 +298,9 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       : undefined;
   const groupView = use(WorkGroupViewCtx);
   const openByDefault = workEntryOpensByDefault(workEntry, ctx.openToolCallsRunId);
-  const [expanded, setExpanded] = useState(() => {
-    if (!groupView) return openByDefault;
-    const open = openByDefault
-      ? !groupView.state.collapsedEntries.has(workEntry.id)
-      : groupView.state.expandedEntries.has(workEntry.id);
-    // The group sizes its list from this set, so an entry open by default joins it.
-    if (open) groupView.state.expandedEntries.add(workEntry.id);
-    return open;
-  });
+  const [expanded, setExpanded] = useState(() =>
+    groupView ? claimWorkEntryOpen(groupView.state, workEntry.id, openByDefault) : openByDefault,
+  );
   const onInitialOutputReady = () => {
     if (groupView) groupView.onContentReady?.(workEntry.id);
     else props.onContentReady?.();
@@ -314,6 +309,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     const next = !expanded;
     if (groupView) {
       groupView.onToggleEntry(!next, workEntry.id);
+      groupView.state.defaultOpenedEntries.delete(workEntry.id);
       if (next) groupView.state.expandedEntries.add(workEntry.id);
       else groupView.state.expandedEntries.delete(workEntry.id);
       if (openByDefault && next) groupView.state.collapsedEntries.delete(workEntry.id);
