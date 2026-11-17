@@ -5,7 +5,7 @@ const MAX_FADED_ROWS_PER_UPDATE = 40;
 
 type RowPosition = { top: number; left: number; width: number; height: number };
 
-// Fork: a row that jumps sections (passing two or more rows) blurs along its path while it travels,
+// Fork: a row that jumps sections (changes place and travels more than 80px) blurs as it travels,
 // strongest at the start, where ease-out moves it fastest. An SVG filter blurs one axis, and
 // since url() filters can't interpolate, the blur steps down through a few strengths.
 const MOTION_BLUR_MIN_TRAVEL = 80;
@@ -244,14 +244,14 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
         if (!shouldAnimate || !next.has(node)) cancel(node);
       }
       if (shouldAnimate) {
-        // A row jumps when it passes two or more rows that stay; a block shifting together keeps
-        // its order and stays sharp.
+        // A row jumps when it changes place among the rows that stay; a block shifting together
+        // keeps its order and stays sharp. A section below empty space, like the bottom-anchored
+        // Working shelf, is one row away however far a row travels to reach it.
         const oldRank = new Map(oldOrder.filter((n) => next.has(n)).map((n, rank) => [n, rank]));
         const newRank = new Map(
           nextOrder.filter((n) => positions!.has(n)).map((n, rank) => [n, rank]),
         );
-        const jumped = (node: HTMLElement) =>
-          Math.abs((newRank.get(node) ?? 0) - (oldRank.get(node) ?? 0)) >= 2;
+        const jumped = (node: HTMLElement) => newRank.get(node) !== oldRank.get(node);
         for (const [index, node] of nextOrder.entries()) {
           const position = next.get(node)!;
           const previousTop = positions!.get(node)?.top;
