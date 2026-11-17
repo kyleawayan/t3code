@@ -105,8 +105,8 @@ export interface TimelineRowSharedState {
   onWorktreeSetupWorkLocally: (() => void) | null;
   onOpenWorktreeSetupTerminal: ((terminalId: string) => void) | null;
   workGroupViewState: WorkGroupViewState;
-  /** Fork: tool call rows start open (Settings → Chat → Open tool call groups). */
-  openToolCallsByDefault: boolean;
+  /** Fork: this run's tool call rows start open (Settings → Chat → Open tool call groups). */
+  openToolCallsRunId: RunId | null;
 }
 
 export interface TimelineRowActivityState {
