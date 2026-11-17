@@ -37,6 +37,8 @@ import {
   type MessagesTimelineRow,
   workEntryDisplayLabel,
   workEntryOpensByDefault,
+  claimWorkEntryOpen,
+  closedWorkGroupId,
 } from "./MessagesTimeline.logic";
 import { workEntryIconName } from "./TimelineWorkEntryRow.logic";
 
@@ -384,20 +386,32 @@ describe("deriveMessagesTimelineRows", () => {
       expect(rows.some((row) => row.kind === "event")).toBe(false);
       expect(workRows[0]).not.toMatchObject({ expanded: true });
       expect(workRows[0]).not.toMatchObject({ isExpandedToolGroup: true });
-      // Open by default, the same toggle closes the group instead.
-      const openByDefault = (expandedWorkGroupIds: ReadonlySet<string>) =>
+      // Open by default only in the newest run; a click's choice outlives that default.
+      const openByDefault = (expandedWorkGroupIds: ReadonlySet<string>, latestRunId: RunId) =>
         deriveMessagesTimelineRows({
           timelineEntries: entries,
           isWorking: status === "waiting",
           runningRunId: fixture.runId,
+          latestRun: {
+            runId: latestRunId,
+            status: "running",
+            startedAt: fixture.time(0),
+            completedAt: null,
+          },
           activeTurnStartedAt: fixture.time(0),
           turnDiffSummaries: [],
           supportsConversationRollback: false,
           expandedWorkGroupIds,
           workGroupsOpenByDefault: true,
         }).filter((row) => row.kind === "work-toggle" || row.kind === "work-live");
-      expect(openByDefault(new Set())).toMatchObject([{ expanded: true }]);
-      expect(openByDefault(new Set([workRows[0]!.groupId]))).toMatchObject([{ expanded: false }]);
+      const groupId = workRows[0]!.groupId;
+      const closed = new Set([closedWorkGroupId(groupId)]);
+      const newerRunId = RunId.make("newer-run");
+      expect(openByDefault(new Set(), fixture.runId)).toMatchObject([{ expanded: true }]);
+      expect(openByDefault(closed, fixture.runId)).toMatchObject([{ expanded: false }]);
+      expect(openByDefault(new Set(), newerRunId)).toMatchObject([{ expanded: false }]);
+      expect(openByDefault(closed, newerRunId)).toMatchObject([{ expanded: false }]);
+      expect(openByDefault(new Set([groupId]), newerRunId)).toMatchObject([{ expanded: true }]);
       // Tool call and thought rows of the newest run open by default; older runs stay closed.
       const olderRunId = RunId.make("older-run");
       const entry = (tone: "tool" | "thinking", runId: RunId) => ({
@@ -412,6 +426,17 @@ describe("deriveMessagesTimelineRows", () => {
       expect(workEntryOpensByDefault(entry("thinking", olderRunId), fixture.runId)).toBe(false);
       expect(workEntryOpensByDefault(entry("tool", olderRunId), fixture.runId)).toBe(false);
       expect(workEntryOpensByDefault(entry("tool", fixture.runId), null)).toBe(false);
+      // A row open only by default reopens closed once its run is no longer the newest.
+      const view = {
+        expandedEntries: new Set<string>(),
+        collapsedEntries: new Set<string>(),
+        defaultOpenedEntries: new Set<string>(),
+      };
+      expect(claimWorkEntryOpen(view, "by-default", true)).toBe(true);
+      expect(claimWorkEntryOpen(view, "by-default", false)).toBe(false);
+      expect(view.expandedEntries.has("by-default")).toBe(false);
+      view.expandedEntries.add("clicked");
+      expect(claimWorkEntryOpen(view, "clicked", false)).toBe(true);
       const pendingRows = deriveMessagesTimelineRows({
         timelineEntries: entries,
         pendingApprovalRequestIds: new Set([RuntimeRequestId.make("approval-request")]),

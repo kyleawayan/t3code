@@ -125,6 +125,7 @@ export interface RememberedTimelinePosition {
       scrollPositions: Map<string, { readonly entryId: string; readonly offset: number }>;
       expandedEntries: Set<string>;
       collapsedEntries: Set<string>;
+      defaultOpenedEntries: Set<string>;
     };
   };
 }
