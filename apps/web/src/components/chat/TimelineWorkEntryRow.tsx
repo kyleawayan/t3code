@@ -1,4 +1,5 @@
 import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
+import { useHoldToOpen } from "~/hooks/useHoldToOpen";
 import { WorkLogDetails, WorkLogRow } from "./WorkLog";
 import {
   getQuestionAnswerPreview,
@@ -319,6 +320,8 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     }
     setExpanded(next);
   };
+  // Only opening needs the hold; an open row still closes with a click.
+  const holdHandlers = useHoldToOpen(ctx.holdToOpenToolCalls && !expanded, toggleExpanded);
   const failureItem = workEntry.projectedItem?.item;
   const pendingApproval =
     failureItem?.type === "approval_request"
@@ -515,7 +518,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         tabIndex: 0 as const,
         "aria-label": accessibleDisplayText,
         "aria-expanded": expanded,
-        onClick: toggleExpanded,
+        ...holdHandlers,
         onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => {
           if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
             e.preventDefault();

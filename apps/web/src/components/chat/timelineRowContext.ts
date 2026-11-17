@@ -107,6 +107,8 @@ export interface TimelineRowSharedState {
   workGroupViewState: WorkGroupViewState;
   /** Fork: this run's tool call rows start open (Settings → Chat → Open tool call groups). */
   openToolCallsRunId: RunId | null;
+  /** Fork: tool calls open only on a press and hold (Settings → Chat → Hold to open tool calls). */
+  holdToOpenToolCalls: boolean;
 }
 
 export interface TimelineRowActivityState {

@@ -1,5 +1,6 @@
 import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
 import { WorkLogButton, WorkLogList, WorkLogRow } from "./WorkLog";
+import { useHoldToOpen } from "~/hooks/useHoldToOpen";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
 import { type ToolActivityIcon } from "@t3tools/contracts";
 import {
@@ -447,6 +448,11 @@ export function ThinkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind:
   const m = useMessages();
   const { isCompacting, isPreparingWorktree, liveAnswerPreview, providerStartingLabel } =
     use(TimelineRowActivityCtx);
+  const { groupId } = row;
+  // Only opening needs the hold; an open group still closes with a click.
+  const holdHandlers = useHoldToOpen(ctx.holdToOpenToolCalls && row.expanded !== true, () => {
+    if (groupId !== undefined) ctx.onToggleWorkGroup(groupId, row.id, row.expanded === true);
+  });
   if (isPreparingWorktree || isCompacting) return <WorkLogRow label="" />;
   // A failed group keeps this disclosure while an approval waits, but nothing is thinking then.
   const live = ctx.pendingApprovals.size === 0;
@@ -463,14 +469,13 @@ export function ThinkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind:
       shimmer={live}
     />
   );
-  const { groupId } = row;
   if (groupId === undefined) return activity;
   return (
     <button
       type="button"
       className="group/live-work flex min-h-6 w-full max-w-full cursor-pointer items-center rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
       aria-expanded={row.expanded === true}
-      onClick={() => ctx.onToggleWorkGroup(groupId, row.id, row.expanded === true)}
+      {...holdHandlers}
     >
       {activity}
     </button>
@@ -594,6 +599,10 @@ export function LiveWorkEntryTimelineRow({
   const label = liveWorkEntryLabel(row.entry, ctx.workspaceRoot, row.active, m);
   const threadLabel = threadReadLabel(label, row.entry, threadTarget, m);
 
+  const holdHandlers = useHoldToOpen(ctx.holdToOpenToolCalls && !row.expanded, () =>
+    ctx.onToggleWorkGroup(row.groupId, row.id, row.expanded),
+  );
+
   const item = row.entry.projectedItem?.item;
   const pendingApproval =
     item?.type === "approval_request" ? ctx.pendingApprovals.get(item.requestId) : undefined;
@@ -621,7 +630,7 @@ export function LiveWorkEntryTimelineRow({
           : undefined
       }
       aria-expanded={row.expanded}
-      onClick={() => ctx.onToggleWorkGroup(row.groupId, row.id, row.expanded)}
+      {...holdHandlers}
     >
       {thoughtLine ? (
         <WorkLogRow
@@ -703,6 +712,7 @@ export function WorkGroupToggleTimelineRow({
       expanded={row.expanded}
       createdAt={row.createdAt}
       timestampFormat={ctx.timestampFormat}
+      hold={ctx.holdToOpenToolCalls}
       onToggle={() => ctx.onToggleWorkGroup(row.groupId, row.id, row.expanded)}
     />
   );
@@ -716,16 +726,19 @@ function WorkGroupHeader(props: {
   expanded: boolean;
   createdAt: string;
   timestampFormat: TimestampFormat;
+  /** Fork: the group opens only on a press and hold (Settings → Chat → Hold to open tool calls). */
+  hold?: boolean;
   onToggle: () => void;
 }) {
   const gt = useGT();
+  const holdHandlers = useHoldToOpen(props.hold === true && !props.expanded, props.onToggle);
   return (
     <WorkLogButton
       aria-label={
         props.failed ? gt("{label}, tool call failed", { label: props.label }) : props.label
       }
       aria-expanded={props.expanded}
-      onClick={props.onToggle}
+      {...holdHandlers}
       icon={
         <ToolActivityIconView
           icon={props.toolIcon}
