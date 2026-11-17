@@ -488,6 +488,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "hold-to-open-tool-calls",
+    title: "Hold to open tool calls",
+    to: "/settings/chat",
+    searchTerms: ["press hold expand lock collapse tool calls thoughts peeking work log activity"],
+  },
+  {
     id: "open-tool-groups",
     title: "Open tool call groups",
     to: "/settings/chat",

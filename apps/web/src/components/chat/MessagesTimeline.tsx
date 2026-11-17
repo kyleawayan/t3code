@@ -7,7 +7,7 @@ import { MarkdownFindContext } from "./markdownFindContext";
 import { useChatCanvas } from "./ChatCanvasContext";
 import { WorkLogBlock } from "./WorkLog";
 import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
-import { useOpenToolGroups } from "./timelineActivityPrefs";
+import { useHoldToOpenToolCalls, useOpenToolGroups } from "./timelineActivityPrefs";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
 import { deriveTimelineMinimapItems } from "./timelineMinimapItems";
 import {
@@ -746,7 +746,9 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const pendingApprovalRequestIds = new Set(
     pendingApprovals.filter(isVisiblePendingApproval).map((approval) => approval.requestId),
   );
-  const [openToolGroups] = useOpenToolGroups();
+  const [openToolGroupsSetting] = useOpenToolGroups();
+  const [holdToOpenToolCalls] = useHoldToOpenToolCalls();
+  const openToolGroups = openToolGroupsSetting && !holdToOpenToolCalls;
   const rawRows = useIncrementalTimelineRows(`${listIdentityKey}\0${workspaceRoot ?? ""}`, {
     timelineEntries,
     pendingApprovalRequestIds,
@@ -1169,6 +1171,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     onOpenWorktreeSetupTerminal: onOpenWorktreeSetupTerminal ?? null,
     workGroupViewState,
     openToolCallsRunId: openToolGroups ? (latestRun?.runId ?? null) : null,
+    holdToOpenToolCalls,
   };
   const compactionAwaitingRow =
     isCompacting &&
