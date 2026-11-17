@@ -66,8 +66,6 @@ import { useClientSettings } from "~/hooks/useSettings";
 import { useTheme } from "~/hooks/useTheme";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "~/hooks/useLocalStorage";
-import { useExternalFileRefresh } from "~/hooks/useExternalFileRefresh";
-import { isObsidianVaultCandidate, obsidianNoteTitle } from "~/lib/obsidianPath";
 import { resolveDiffThemeName } from "~/lib/diffRendering";
 import { PREFERRED_HIGHLIGHTER } from "~/lib/syntaxHighlighting";
 import { cn, isMacPlatform } from "~/lib/utils";
@@ -1095,7 +1093,6 @@ function RenderedMarkdownSurface({
   workspaceMutationId,
   readOnly,
   onPendingChange,
-  title,
 }: Omit<
   EditableFileSurfaceProps,
   | "resolvedTheme"
@@ -1109,7 +1106,6 @@ function RenderedMarkdownSurface({
   threadRef: ScopedThreadRef;
   readOnly: boolean;
   workspaceMutationId: string | null;
-  title: string | null;
 }) {
   const saveTarget = { environmentId, cwd, relativePath };
   useFileSaveSession(saveTarget, onPendingChange);
@@ -1129,7 +1125,6 @@ function RenderedMarkdownSurface({
         relativePath={relativePath}
         threadRef={threadRef}
         workspaceMutationId={workspaceMutationId}
-        title={title}
         onTaskListChange={
           readOnly
             ? undefined
@@ -1397,15 +1392,6 @@ export default function FilePreviewPanel({
       : relativePath && attachment === undefined
         ? resolvePathLinkTarget(relativePath, cwd)
         : null;
-  const obsidianPath =
-    absolutePath !== null &&
-    isMarkdown &&
-    file.isFile &&
-    window.desktopBridge !== undefined &&
-    environmentId === primaryEnvironmentId &&
-    isObsidianVaultCandidate(absolutePath)
-      ? absolutePath
-      : null;
   const onFilePostRender = useFileLineReveal(relativePath, revealLine, revealRequestId);
   // Mounting the file read under the workspace mutation id refetches it after each mutation.
   useAtomMount(
@@ -1421,22 +1407,6 @@ export default function FilePreviewPanel({
         )
       : NO_FILE_REVISION_ATOM,
   );
-  useExternalFileRefresh({
-    enabled:
-      canReadFiles &&
-      attachment === undefined &&
-      relativePath !== null &&
-      !isFolder &&
-      !isMedia &&
-      !isPdf &&
-      !isDocument &&
-      !selectedFilePending,
-    // Only a local file can change under another app on this machine; a remote one would pay a
-    // full read over the connection every interval.
-    poll:
-      isMarkdown && window.desktopBridge !== undefined && environmentId === primaryEnvironmentId,
-    refresh: file.refresh,
-  });
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the breadcrumb DOM so the deepest and current crumbs are in view after commit
   useEffect(() => {
@@ -1540,7 +1510,6 @@ export default function FilePreviewPanel({
               openInCwdIsFile={file.isFile}
               compact
               revealFileManager={revealsInFileManager}
-              obsidianPath={obsidianPath}
             />
           ) : null}
           {canToggleRendered && renderedMode ? (
@@ -1761,7 +1730,6 @@ export default function FilePreviewPanel({
                 workspaceMutationId={workspaceMutationId}
                 readOnly={file.data.truncated || isHostFile || !canWriteFiles}
                 onPendingChange={onPendingChange}
-                title={obsidianPath === null ? null : obsidianNoteTitle(obsidianPath)}
               />
             ) : tableDelimiter && renderTable ? (
               <DelimitedTablePreview
