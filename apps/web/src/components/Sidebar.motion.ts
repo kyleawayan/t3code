@@ -3,11 +3,17 @@ const rowTravel = (height: number) => Math.min(height, 40);
 // Fades clone removed rows and animate clones and entries; intervening layout reads force reflows.
 const MAX_FADED_ROWS_PER_UPDATE = 40;
 
-type RowPosition = { top: number; left: number; width: number; height: number };
+type RowPosition = {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+  section: string | undefined;
+};
 
-// Fork: a row that jumps sections (changes place and travels more than 80px) blurs as it travels,
-// strongest at the start, where ease-out moves it fastest. An SVG filter blurs one axis, and
-// since url() filters can't interpolate, the blur steps down through a few strengths.
+// Fork: a row that jumps (changes section or place, and travels more than 80px) blurs as it
+// travels, strongest at the start, where ease-out moves it fastest. An SVG filter blurs one axis,
+// and since url() filters can't interpolate, the blur steps down through a few strengths.
 const MOTION_BLUR_MIN_TRAVEL = 80;
 const MOTION_BLUR_MAX_LEVEL = 6;
 const MOTION_BLUR_PX_PER_LEVEL = 60;
@@ -194,6 +200,7 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
               left: node.offsetLeft,
               width: node.offsetWidth,
               height: node.offsetHeight,
+              section: node.dataset.sidebarSection,
             },
           ]),
       );
@@ -250,14 +257,16 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
         if (!shouldAnimate || !next.has(node)) cancel(node);
       }
       if (shouldAnimate) {
-        // A row jumps when it changes place among the rows that stay; a block shifting together
-        // keeps its order and stays sharp. A section below empty space, like the bottom-anchored
-        // Working shelf, is one row away however far a row travels to reach it.
+        // A row jumps when it changes section, or place among the rows that stay; a block shifting
+        // together keeps both and stays sharp. The section counts on its own because the first
+        // working thread brings the Working header with it, so it passes no row that stays.
         const oldRank = new Map(oldOrder.filter((n) => next.has(n)).map((n, rank) => [n, rank]));
         const newRank = new Map(
           nextOrder.filter((n) => positions!.has(n)).map((n, rank) => [n, rank]),
         );
-        const jumped = (node: HTMLElement) => newRank.get(node) !== oldRank.get(node);
+        const jumped = (node: HTMLElement) =>
+          newRank.get(node) !== oldRank.get(node) ||
+          next.get(node)!.section !== positions!.get(node)!.section;
         for (const [index, node] of nextOrder.entries()) {
           const position = next.get(node)!;
           const previousTop = positions!.get(node)?.top;

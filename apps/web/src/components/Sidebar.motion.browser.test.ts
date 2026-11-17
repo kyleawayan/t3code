@@ -78,3 +78,32 @@ it("blurs a row that slides far into a bottom-anchored section past one row", ()
   expect(filterAnimations(rows[0]!)).toHaveLength(1);
   expect(rows.slice(1).flatMap(filterAnimations)).toHaveLength(0);
 });
+
+it("blurs a row that changes section when that section's header comes or goes with it", () => {
+  using fixture = rowList(2);
+  const { list, rows, motion } = fixture;
+  Object.assign(list.style, { display: "flex", flexDirection: "column", height: "600px" });
+  rows[0]!.dataset.sidebarSection = "active";
+  rows[1]!.style.marginTop = "auto";
+  motion.update(false);
+
+  // The first working thread: the shelf's header appears with it, so the row passes no row that stays.
+  const header = document.createElement("li");
+  Object.assign(header.style, { height: "32px", marginTop: "auto" });
+  rows[1]!.style.marginTop = "0";
+  rows[1]!.before(header, rows[0]!);
+  rows[0]!.dataset.sidebarSection = "working";
+  motion.update(true);
+
+  expect(filterAnimations(rows[0]!)).toHaveLength(1);
+  for (const animation of rows[0]!.getAnimations()) animation.finish();
+
+  // The last working thread stops: it leaves with the shelf's header.
+  header.remove();
+  list.prepend(rows[0]!);
+  rows[0]!.dataset.sidebarSection = "active";
+  rows[1]!.style.marginTop = "auto";
+  motion.update(true);
+
+  expect(filterAnimations(rows[0]!)).toHaveLength(1);
+});
