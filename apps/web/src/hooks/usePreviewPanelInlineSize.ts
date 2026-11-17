@@ -41,8 +41,7 @@ export function usePreviewPanelInlineSize(
     minWidth: PREVIEW_PANEL_MIN_WIDTH,
     maxWidth,
     edge: "left",
-    // Fork: the divider snaps to the middle of the row it shares, which ends at the sidebar.
-    snapWidths: () => (rowRef.current ? [Math.round(rowRef.current.clientWidth / 2)] : []),
+    snapWidths: () => (rowRef.current ? getPreviewPanelSnapWidths(rowRef.current.clientWidth) : []),
   });
   const observeRow = (host: HTMLElement) => {
     const row = container ?? (enabled ? host.parentElement : null) ?? null;
@@ -80,4 +79,12 @@ export function getPreviewPanelMaxWidth(viewportWidth: number, containerWidth?: 
     containerWidth === undefined ? Infinity : Math.floor(containerWidth) - SIBLING_COLUMN_MIN_WIDTH;
   // Keep max >= min; an inverted clamp would overwrite the saved width on drag end.
   return Math.max(PREVIEW_PANEL_MIN_WIDTH, Math.min(fractionCap, containerCap));
+}
+
+/**
+ * Fork: the divider snaps where the chat gets half or a third of the row it shares with the
+ * panel, which ends at the sidebar.
+ */
+function getPreviewPanelSnapWidths(rowWidth: number): readonly number[] {
+  return [Math.round(rowWidth / 2), Math.round((rowWidth * 2) / 3)];
 }
