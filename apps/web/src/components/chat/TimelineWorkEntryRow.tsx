@@ -45,6 +45,7 @@ import {
   threadReadTargetId,
   threadReadTargetTitle,
   workEntryDisplayLabel,
+  workEntryOpensByDefault,
   workEntryReadOutput,
 } from "./MessagesTimeline.logic";
 import { cn } from "~/lib/utils";
@@ -295,7 +296,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       ? notificationChildThreadId(workEntry.projectedItem.item.source)
       : undefined;
   const groupView = use(WorkGroupViewCtx);
-  const openByDefault = ctx.openToolCallsByDefault && workLogEntryIsToolLike(workEntry);
+  const openByDefault = workEntryOpensByDefault(workEntry, ctx.openToolCallsRunId);
   const [expanded, setExpanded] = useState(() => {
     if (!groupView) return openByDefault;
     const open = openByDefault

@@ -1608,6 +1608,19 @@ function deriveTimelineTurnFolds(
   });
 }
 
+/**
+ * With "Open tool call groups" on, the newest run's tool call rows start open; thoughts stay
+ * closed. Older runs stay closed, since each open row loads its details.
+ */
+export function workEntryOpensByDefault(entry: WorkLogEntry, openRunId: RunId | null): boolean {
+  return (
+    openRunId !== null &&
+    entry.runId === openRunId &&
+    entry.tone !== "thinking" &&
+    workLogEntryIsToolLike(entry)
+  );
+}
+
 /** Whether a work group shows open: its default, flipped by the user's toggle. */
 function workGroupExpanded(
   input: Pick<
