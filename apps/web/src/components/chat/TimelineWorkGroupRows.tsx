@@ -437,7 +437,7 @@ export function ThinkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind:
   const { groupId } = row;
   // Only opening needs the hold; an open group still closes with a click.
   const holdHandlers = useHoldToOpen(ctx.holdToOpenToolCalls && row.expanded !== true, () => {
-    if (groupId !== undefined) ctx.onToggleWorkGroup(groupId, row.id, row.expanded === true);
+    if (groupId !== undefined) ctx.onToggleWorkGroup(groupId, row.id);
   });
   if (isPreparingWorktree || isCompacting) return <WorkLogRow label="" />;
   // A failed group keeps this disclosure while an approval waits, but nothing is thinking then.
@@ -578,7 +578,7 @@ export function LiveWorkEntryTimelineRow({
   const threadLabel = threadReadLabel(label, threadTarget);
 
   const holdHandlers = useHoldToOpen(ctx.holdToOpenToolCalls && !row.expanded, () =>
-    ctx.onToggleWorkGroup(row.groupId, row.id, row.expanded),
+    ctx.onToggleWorkGroup(row.groupId, row.id),
   );
 
   const item = row.entry.projectedItem?.item;
@@ -685,7 +685,7 @@ export function WorkGroupToggleTimelineRow({
       createdAt={row.createdAt}
       timestampFormat={ctx.timestampFormat}
       hold={ctx.holdToOpenToolCalls}
-      onToggle={() => ctx.onToggleWorkGroup(row.groupId, row.id, row.expanded)}
+      onToggle={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
     />
   );
 }

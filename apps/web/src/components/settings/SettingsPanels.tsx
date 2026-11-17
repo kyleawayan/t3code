@@ -114,7 +114,7 @@ import { searchableSetting, type SettingsSearchItemId } from "./settingsSearch";
 import { nativeLanguageName, SYSTEM_LANGUAGE } from "@t3tools/client-runtime/locales";
 import { SUPPORTED_LOCALES } from "../../i18n/locales";
 import { BackgroundActivitySettingsRow } from "./BackgroundActivitySettings";
-import { useHoldToOpenToolCalls, useOpenToolGroups } from "../chat/timelineActivityPrefs";
+import { useHoldToOpenToolCalls } from "../chat/timelineActivityPrefs";
 import { useHoldToOpenWorking } from "../sidebar/workingShelfHold";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { PullRequestLinksOpenInAppSetting } from "./IntegrationsSettings";
@@ -1316,7 +1316,6 @@ export function ChatSettingsPanel() {
       <SettingsSection id="activity" title="Activity">
         <ToolCallVisibilityRow />
         <HoldToOpenToolCallsRow />
-        <OpenToolGroupsRow />
       </SettingsSection>
 
       <SettingsSection id="screen-reader" title="Screen reader">
@@ -1399,7 +1398,7 @@ function HoldToOpenToolCallsRow() {
   return (
     <SettingsRow
       {...searchableSetting("hold-to-open-tool-calls")}
-      description="Tool calls and thoughts open only after a half-second press and hold, so a stray click doesn't. Enter and Space still open them. Pauses Open tool call groups while on."
+      description="Tool calls and thoughts open only after a half-second press and hold, so a stray click doesn't. Enter and Space still open them."
       resetAction={
         hold ? (
           <SettingResetButton label="hold to open tool calls" onClick={() => setHold(false)} />
@@ -1407,34 +1406,6 @@ function HoldToOpenToolCallsRow() {
       }
       control={
         <Switch checked={hold} onCheckedChange={setHold} aria-label="Hold to open tool calls" />
-      }
-    />
-  );
-}
-
-function OpenToolGroupsRow() {
-  const [open, setOpen] = useOpenToolGroups();
-  const [holdToOpen] = useHoldToOpenToolCalls();
-  return (
-    <SettingsRow
-      {...searchableSetting("open-tool-groups")}
-      description={
-        holdToOpen
-          ? "Off while Hold to open tool calls is on."
-          : "Show the newest turn's tool calls and thoughts opened, each group and each call's details. Older turns start closed. A click still opens or closes one."
-      }
-      resetAction={
-        open && !holdToOpen ? (
-          <SettingResetButton label="open tool call groups" onClick={() => setOpen(false)} />
-        ) : null
-      }
-      control={
-        <Switch
-          checked={open && !holdToOpen}
-          disabled={holdToOpen}
-          onCheckedChange={setOpen}
-          aria-label="Open tool call groups"
-        />
       }
     />
   );

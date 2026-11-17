@@ -1556,63 +1556,6 @@ function deriveTimelineTurnFolds(
   });
 }
 
-/**
- * With "Open tool call groups" on, the newest run's tool call and thought rows start open. Older
- * runs stay closed, since each open row loads its details.
- */
-export function workEntryOpensByDefault(entry: WorkLogEntry, openRunId: RunId | null): boolean {
-  return openRunId !== null && entry.runId === openRunId && workLogEntryIsToolLike(entry);
-}
-
-/**
- * Whether a grouped tool call row opens as it mounts, recorded in its group's sets. A row that
- * opened only by default closes once its run is no longer the newest; a clicked one keeps its state.
- */
-export function claimWorkEntryOpen(
-  state: {
-    readonly expandedEntries: Set<string>;
-    readonly collapsedEntries: Set<string>;
-    readonly defaultOpenedEntries: Set<string>;
-  },
-  entryId: string,
-  openByDefault: boolean,
-): boolean {
-  if (!openByDefault && state.defaultOpenedEntries.delete(entryId)) {
-    state.expandedEntries.delete(entryId);
-  }
-  const open = openByDefault
-    ? !state.collapsedEntries.has(entryId)
-    : state.expandedEntries.has(entryId);
-  // The group sizes its list from expandedEntries, so an entry open by default joins it.
-  if (open) state.expandedEntries.add(entryId);
-  if (open && openByDefault) state.defaultOpenedEntries.add(entryId);
-  return open;
-}
-
-/** Fork: a group closed by a click while it opened by default. */
-export const closedWorkGroupId = (groupId: string) => `closed:${groupId}`;
-
-/**
- * Whether a work group shows open. With "Open tool call groups" on, only the newest run's groups
- * start open, so a new run closes the last one's. A click's choice outlives that default.
- */
-function workGroupExpanded(
-  input: Pick<
-    Parameters<typeof deriveMessagesTimelineRows>[0],
-    "expandedWorkGroupIds" | "workGroupsOpenByDefault" | "latestRun"
-  >,
-  groupId: string,
-  runId: RunId | null | undefined,
-): boolean {
-  const toggled = input.expandedWorkGroupIds;
-  if (toggled?.has(groupId)) return true;
-  const openByDefault =
-    input.workGroupsOpenByDefault === true &&
-    runId != null &&
-    runId === (input.latestRun?.runId ?? null);
-  return openByDefault && !(toggled?.has(closedWorkGroupId(groupId)) ?? false);
-}
-
 export function deriveMessagesTimelineRows(input: {
   timelineEntries: ReadonlyArray<TimelineEntry>;
   pendingApprovalRequestIds?: ReadonlySet<RuntimeRequestId>;
@@ -1620,10 +1563,7 @@ export function deriveMessagesTimelineRows(input: {
   runningRunId?: RunId | null;
   expandedRunIds?: ReadonlySet<RunId>;
   expandedAttemptIds?: ReadonlySet<RunAttemptId>;
-  /** Groups opened by a click, plus `closedWorkGroupId`s for groups closed while open by default. */
   expandedWorkGroupIds?: ReadonlySet<string>;
-  /** Fork: the newest run's tool call groups start open (Settings → Chat → Open tool call groups). */
-  workGroupsOpenByDefault?: boolean;
   isWorking: boolean;
   /** Native subagent work has no app run; runless entries form the live response. */
   runlessWorkActive?: boolean;
@@ -1807,7 +1747,7 @@ export function deriveMessagesTimelineRows(input: {
             entry: (latestRunningToolEntry ?? latestVisibleToolEntry).entry,
             groupedEntries: visibleActiveToolEntries.map((entry) => entry.entry),
             groupId,
-            expanded: workGroupExpanded(input, groupId, activeWorkAnchor.entry.runId),
+            expanded: input.expandedWorkGroupIds?.has(groupId) ?? false,
             active: latestToolKeepsActivityLive,
             ...(latestThoughtEntry ? { thought: latestThoughtEntry.entry } : {}),
           };
@@ -2106,7 +2046,7 @@ export function deriveMessagesTimelineRows(input: {
         const activeInProgressToolEntries = visibleGroupedEntries.filter(workEntryIsInActiveRun);
         if (activeInProgressToolEntries.length > 0) {
           const groupId = workGroupId(timelineEntry.id);
-          const expanded = workGroupExpanded(input, groupId, timelineEntry.entry.runId);
+          const expanded = input.expandedWorkGroupIds?.has(groupId) ?? false;
           const latestActiveToolEntry = activeInProgressToolEntries.at(-1)!;
           nextRows.push({
             kind: "work-live",
@@ -2142,7 +2082,7 @@ export function deriveMessagesTimelineRows(input: {
           });
         } else {
           const groupId = workGroupId(timelineEntry.id);
-          const expanded = workGroupExpanded(input, groupId, timelineEntry.entry.runId);
+          const expanded = input.expandedWorkGroupIds?.has(groupId) ?? false;
           const summaryKind = toolGroupSummaryKind(visibleGroupedEntries);
           const primarySourceEntry = visibleGroupedEntries.find(
             (entry) => entry.toolSource !== undefined,
@@ -2387,7 +2327,7 @@ export function deriveMessagesTimelineRows(input: {
     const failedGroupAnchor = latestToolFailed ? activeWorkAnchor : undefined;
     if (failedGroupAnchor) {
       const groupId = workGroupId(failedGroupAnchor.id);
-      const expanded = workGroupExpanded(input, groupId, failedGroupAnchor.entry.runId);
+      const expanded = input.expandedWorkGroupIds?.has(groupId) ?? false;
       const groupedEntries = visibleActiveToolEntries.map((entry) => entry.entry);
       nextRows.push({
         kind: "thinking",
