@@ -42,7 +42,7 @@ interface ActiveDrag<T extends HTMLElement> {
   pendingX: number;
   width: number;
   moved: boolean;
-  snapped: boolean;
+  snappedTo: number | undefined;
   frame: number | null;
   onBlur: () => void;
 }
@@ -57,8 +57,8 @@ function createResizeDrag<T extends HTMLElement>() {
     if (Math.abs(delta) > 2) active.moved = true;
     const width = clampToBounds(active.session.width + delta, active.session.bounds);
     const target = snapTarget(width, active.session);
-    if (target !== undefined && !active.snapped) active.session.onSnap?.();
-    active.snapped = target !== undefined;
+    if (target !== undefined && target !== active.snappedTo) active.session.onSnap?.();
+    active.snappedTo = target;
     active.width = active.session.resize(target ?? width);
   };
 
@@ -121,7 +121,7 @@ function createResizeDrag<T extends HTMLElement>() {
         width: session.width,
         moved: false,
         // A drag that starts on a snap width hasn't landed on it, so it doesn't glow.
-        snapped: snapTarget(session.width, session) !== undefined,
+        snappedTo: snapTarget(session.width, session),
         frame: null,
         onBlur,
       };

@@ -91,7 +91,7 @@ describe("useResizableWidth", () => {
     localStorage.removeItem(STORAGE_KEY);
     try {
       // This hook only needs browser storage and React; no navigation is involved.
-      await using screen = await render(<Panel defaultWidth={300} snap={[400]} />, {
+      await using screen = await render(<Panel defaultWidth={300} snap={[400, 480]} />, {
         router: false,
       });
       const handle = screen.container.querySelector<HTMLElement>('[role="separator"]')!;
@@ -112,6 +112,13 @@ describe("useResizableWidth", () => {
       await drag(480);
       expect(localStorage.getItem(STORAGE_KEY)).toBe("420");
       expect(pulse).toHaveBeenCalledTimes(1);
+      await drag(440);
+      expect(localStorage.getItem(STORAGE_KEY)).toBe("480");
+      expect(pulse).toHaveBeenCalledTimes(2);
+      // Moving straight from one snap width to the other lands on a new one, so it glows again.
+      await drag(580);
+      expect(localStorage.getItem(STORAGE_KEY)).toBe("400");
+      expect(pulse).toHaveBeenCalledTimes(3);
     } finally {
       if (previous === null) localStorage.removeItem(STORAGE_KEY);
       else localStorage.setItem(STORAGE_KEY, previous);
