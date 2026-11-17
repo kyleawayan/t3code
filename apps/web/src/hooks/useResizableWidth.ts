@@ -18,6 +18,8 @@ export interface UseResizableWidthOptions {
   readonly edge: "left" | "right";
   /** Read when a drag starts: widths it snaps to, such as half the row. */
   readonly snapWidths?: (() => readonly number[]) | undefined;
+  /** Names the snap width at an index of `snapWidths`, shown on the handle while a drag sits on it. */
+  readonly snapLabel?: ((index: number) => string | undefined) | undefined;
 }
 
 export interface ResizableWidthHandlers {
@@ -43,6 +45,11 @@ function pulseSnapLine(handle: HTMLElement) {
     ],
     { duration: 450, easing: "ease-out" },
   );
+}
+
+function showSnapLabel(handle: HTMLElement, label: string | undefined) {
+  if (label === undefined) delete handle.dataset.snapLabel;
+  else handle.dataset.snapLabel = label;
 }
 
 /** Uses the current default until a width is chosen; persists on drag end, not every frame. */
@@ -103,6 +110,8 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
       bounds: { min: minWidth, max: maxWidth },
       snap: options.snapWidths?.() ?? [],
       onSnap: () => pulseSnapLine(handle),
+      onSnapChange: (index) =>
+        showSnapLabel(handle, index === undefined ? undefined : options.snapLabel?.(index)),
       resize(nextWidth) {
         host?.style.setProperty(RESIZABLE_WIDTH_PROPERTY, `${nextWidth}px`);
         return nextWidth;
@@ -120,9 +129,14 @@ export function useResizableWidth(options: UseResizableWidthOptions): {
 
   // Bounds can change mid-drag (sidebar opens, window narrows), and the render
   // that carries them rewrites the committed width, so re-apply the live pointer position.
+  // Snap widths follow the row too, or the snap label would name a split the panel no longer has.
   const { refresh } = drag;
+  const readSnapWidths = useStableCallback(() => options.snapWidths?.() ?? []);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reapplies the live drag pointer position to the DOM before paint when the bounds change
-  useLayoutEffect(() => refresh({ min: minWidth, max: maxWidth }), [refresh, minWidth, maxWidth]);
+  useLayoutEffect(
+    () => refresh({ min: minWidth, max: maxWidth }, readSnapWidths),
+    [refresh, minWidth, maxWidth, readSnapWidths],
+  );
 
   return {
     width: clampedWidth,

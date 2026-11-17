@@ -3150,3 +3150,31 @@ code {
   clip-path: inset(0 0 0 0);
   transition: clip-path 500ms linear;
 }
+
+/* Fork: while a divider drag sits on a snap width, its split (data-snap-label, set in
+   hooks/useResizableWidth.ts) shows centered on the handle. */
+[data-snap-label]::after {
+  content: attr(data-snap-label);
+  position: absolute;
+  top: 50%;
+  /* On the handle's line: its left edge on fine pointers, its middle on coarse ones. */
+  left: 0;
+  translate: -50% -50%;
+  padding: 0.125rem 0.375rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+@media (any-pointer: coarse) {
+  [data-snap-label]::after {
+    left: 50%;
+  }
+}

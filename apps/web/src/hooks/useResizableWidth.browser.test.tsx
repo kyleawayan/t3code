@@ -5,6 +5,8 @@ import { RESIZABLE_WIDTH_PROPERTY, useResizableWidth } from "./useResizableWidth
 
 const STORAGE_KEY = "test:responsive-panel-width";
 
+const SNAP_LABELS = ["half", "third"];
+
 function Panel({ defaultWidth, snap }: { defaultWidth: number; snap?: readonly number[] }) {
   const { width, setWidth, handlers } = useResizableWidth({
     storageKey: STORAGE_KEY,
@@ -13,6 +15,7 @@ function Panel({ defaultWidth, snap }: { defaultWidth: number; snap?: readonly n
     maxWidth: 560,
     edge: "left",
     snapWidths: snap ? () => snap : undefined,
+    snapLabel: (index) => SNAP_LABELS[index],
   });
   return (
     <>
@@ -119,6 +122,23 @@ describe("useResizableWidth", () => {
       await drag(580);
       expect(localStorage.getItem(STORAGE_KEY)).toBe("400");
       expect(pulse).toHaveBeenCalledTimes(3);
+      await act(() => {
+        handle.dispatchEvent(new PointerEvent("pointerdown", { ...pointer, clientX: 500 }));
+        handle.dispatchEvent(new PointerEvent("pointermove", { ...pointer, clientX: 422 }));
+      });
+      await vi.waitFor(() => expect(handle.dataset.snapLabel).toBe("third"));
+      await act(() =>
+        handle.dispatchEvent(new PointerEvent("pointermove", { ...pointer, clientX: 460 })),
+      );
+      await vi.waitFor(() => expect(handle.dataset.snapLabel).toBeUndefined());
+      await act(() =>
+        handle.dispatchEvent(new PointerEvent("pointermove", { ...pointer, clientX: 422 })),
+      );
+      await vi.waitFor(() => expect(handle.dataset.snapLabel).toBe("third"));
+      await act(() =>
+        handle.dispatchEvent(new PointerEvent("pointerup", { ...pointer, clientX: 422 })),
+      );
+      expect(handle.dataset.snapLabel).toBeUndefined();
     } finally {
       if (previous === null) localStorage.removeItem(STORAGE_KEY);
       else localStorage.setItem(STORAGE_KEY, previous);
