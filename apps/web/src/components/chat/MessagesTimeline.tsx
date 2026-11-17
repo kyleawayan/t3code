@@ -9,7 +9,7 @@ import { MarkdownFindContext } from "./markdownFindContext";
 import { useChatCanvas } from "./ChatCanvasContext";
 import { WorkLogBlock } from "./WorkLog";
 import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
-import { useHoldToOpenToolCalls, useOpenToolGroups } from "./timelineActivityPrefs";
+import { useHoldToOpenToolCalls } from "./timelineActivityPrefs";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
 import { deriveTimelineMinimapItems } from "./timelineMinimapItems";
 import {
@@ -90,7 +90,6 @@ import {
   TIMELINE_MINIMAP_TARGET_OFFSET,
   timelineTurnFoldRunIdsByEntryId,
   liveAnswerPreview,
-  closedWorkGroupId,
   type MessagesTimelineRow,
   type TimelineLatestRun,
 } from "./MessagesTimeline.logic";
@@ -159,8 +158,6 @@ function timelineListStateFor(identity: string): {
     workGroupViewState: rememberedPosition?.disclosures?.workGroupState ?? {
       scrollPositions: new Map(),
       expandedEntries: new Set(),
-      collapsedEntries: new Set(),
-      defaultOpenedEntries: new Set(),
     },
   };
 }
@@ -581,20 +578,17 @@ const ConversationTimeline = memo(function ConversationTimeline({
       return next;
     });
   };
-  const onToggleWorkGroup = (groupId: string, anchorKey: string, expanded: boolean) => {
+  const onToggleWorkGroup = (groupId: string, anchorKey: string) => {
     preserveDisclosurePosition(
       anchorKey,
-      expanded ? undefined : { contentKey: `${groupId}:details` },
+      expandedWorkGroupIds.has(groupId) ? undefined : { contentKey: `${groupId}:details` },
     );
-    // Fork: the choice itself is kept, so it holds after a newer run stops opening this group.
     setExpandedWorkGroupIds((existing) => {
       const next = new Set(existing);
-      if (expanded) {
+      if (next.has(groupId)) {
         next.delete(groupId);
-        next.add(closedWorkGroupId(groupId));
       } else {
         next.add(groupId);
-        next.delete(closedWorkGroupId(groupId));
       }
       return next;
     });
@@ -752,9 +746,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const pendingApprovalRequestIds = new Set(
     pendingApprovals.filter(isVisiblePendingApproval).map((approval) => approval.requestId),
   );
-  const [openToolGroupsSetting] = useOpenToolGroups();
   const [holdToOpenToolCalls] = useHoldToOpenToolCalls();
-  const openToolGroups = openToolGroupsSetting && !holdToOpenToolCalls;
   const rawRows = useIncrementalTimelineRows(`${listIdentityKey}\0${workspaceRoot ?? ""}`, {
     timelineEntries,
     pendingApprovalRequestIds,
@@ -763,7 +755,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     expandedRunIds: visibleExpandedRunIds,
     expandedAttemptIds: visibleExpandedAttemptIds,
     expandedWorkGroupIds,
-    workGroupsOpenByDefault: openToolGroups,
     isWorking,
     runlessWorkActive,
     activeTurnStartedAt,
@@ -1176,7 +1167,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     onWorktreeSetupWorkLocally: onWorktreeSetupWorkLocally ?? null,
     onOpenWorktreeSetupTerminal: onOpenWorktreeSetupTerminal ?? null,
     workGroupViewState,
-    openToolCallsRunId: openToolGroups ? (latestRun?.runId ?? null) : null,
     holdToOpenToolCalls,
   };
   const compactionAwaitingRow =

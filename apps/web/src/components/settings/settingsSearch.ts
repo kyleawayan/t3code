@@ -513,15 +513,11 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "hold-to-open-tool-calls",
-    title: "Hold to open tool calls",
+    title: msg("Hold to open tool calls"),
     to: "/settings/chat",
-    searchTerms: ["press hold expand lock collapse tool calls thoughts peeking work log activity"],
-  },
-  {
-    id: "open-tool-groups",
-    title: "Open tool call groups",
-    to: "/settings/chat",
-    searchTerms: ["expand auto open tool calls commands work log activity collapsed groups"],
+    searchTerms: [
+      msg("press hold expand lock collapse tool calls thoughts peeking work log activity"),
+    ],
   },
   {
     id: "screen-reader-announcements",
@@ -740,17 +736,19 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "notification-sounds",
-    title: "Notification sounds",
+    title: msg("Notification sounds"),
     to: "/settings/general",
     searchTerms: [
-      "custom audio file chime alert silent preview completed input approval failed usage limit guest request",
+      msg(
+        "custom audio file chime alert silent preview completed input approval failed usage limit guest request",
+      ),
     ],
   },
   {
     id: "hold-to-open-working",
-    title: "Hold to open Working",
+    title: msg("Hold to open Working"),
     to: "/settings/general",
-    searchTerms: ["sidebar working shelf press hold long press peek expand distraction"],
+    searchTerms: [msg("sidebar working shelf press hold long press peek expand distraction")],
   },
   {
     id: "in-app-notifications",

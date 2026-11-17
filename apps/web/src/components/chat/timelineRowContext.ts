@@ -96,7 +96,7 @@ export interface TimelineRowSharedState {
   onFileOpen: (attachment: ChatFileAttachment) => void;
   onFileDownload: (attachment: ChatFileAttachment) => void;
   openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
-  onToggleWorkGroup: (groupId: string, anchorKey: string, expanded: boolean) => void;
+  onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
   onToggleWorkEntry: (anchorKey: string, collapsed: boolean, entryId?: string) => void;
   onWorkEntryContentReady?: (anchorKey: string, entryId: string) => void;
   onCancelWorktreeSetup: (() => void) | null;
@@ -105,8 +105,6 @@ export interface TimelineRowSharedState {
   onWorktreeSetupWorkLocally: (() => void) | null;
   onOpenWorktreeSetupTerminal: ((terminalId: string) => void) | null;
   workGroupViewState: WorkGroupViewState;
-  /** Fork: this run's tool call rows start open (Settings → Chat → Open tool call groups). */
-  openToolCallsRunId: RunId | null;
   /** Fork: tool calls open only on a press and hold (Settings → Chat → Hold to open tool calls). */
   holdToOpenToolCalls: boolean;
 }
@@ -132,12 +130,7 @@ export const TimelineRowActivityCtx = createContext<TimelineRowActivityState>(nu
 
 export interface WorkGroupViewState {
   scrollPositions: Map<string, WorkGroupScrollAnchor>;
-  /** Entries open now, whether by a click or by default. */
   expandedEntries: Set<string>;
-  /** Fork: tool calls closed by a click while they open by default. */
-  collapsedEntries: Set<string>;
-  /** Fork: entries open only by default; they close once their run is no longer the newest. */
-  defaultOpenedEntries: Set<string>;
 }
 
 /** One image the group's agent viewed; `item` is null until its URL resolves. */
