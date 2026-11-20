@@ -94,6 +94,15 @@ export const ThreadPullRequestWatch = Schema.Struct({
   awaitingApproval: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
   /** The agent was told checks await approval on this head, so later ones stay quiet. */
   approvalAnnounced: Schema.optional(Schema.Boolean),
+  /**
+   * Required checks still pending when the agent was told the others finished. Cleared when another
+   * check runs again, so its next finish is news too.
+   */
+  waitingChecksAnnounced: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  /** Short hash of every check's name and status at the last read, to tell when one changed. */
+  checksStatusHash: Schema.optional(TrimmedNonEmptyString),
+  /** When a check last changed while some still pend; null once none pend or the agent was told. */
+  checksChangedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   remarksThrough: IsoDateTime,
   /** Reported remarks at remarksThrough, so late arrivals at that timestamp still count. */
   remarkIds: Schema.Array(TrimmedNonEmptyString),

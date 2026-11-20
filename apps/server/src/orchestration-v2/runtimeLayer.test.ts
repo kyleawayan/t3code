@@ -5510,6 +5510,114 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
     }),
   );
 
+  it.effect(
+    "tells a pending required check once per change across sweeps, restarts, and rewatches",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+        const threadId = ThreadId.make("runtime-pull-request-watch-required-wait");
+        const projectId = ProjectId.make("pr-watch-required-wait-project");
+        yield* seedProject({
+          projectId,
+          title: "Watch required wait",
+          workspaceRoot: "/workspace/watch-required-wait",
+          defaultModelSelection: null,
+          createdAt: "2026-10-01T00:00:00.000Z",
+        });
+        yield* orchestrator.dispatch({
+          type: "thread.create",
+          createdBy: "user",
+          creationSource: "web",
+          commandId: CommandId.make("pr-watch-required-wait-create"),
+          threadId,
+          projectId,
+          title: "Watch required wait",
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+        });
+        const watch = (on: boolean, id: string) =>
+          orchestrator.dispatch({
+            type: "thread.pull-request.watch",
+            commandId: CommandId.make(`pr-watch-required-wait-${id}`),
+            threadId,
+            host: "github.com",
+            repository: "pingdotgg/t3code",
+            number: 12,
+            watching: on,
+            link: { url: "https://github.com/pingdotgg/t3code/pull/12", source: "agent" },
+          });
+        yield* watch(true, "start");
+
+        const headSha = "ad70160aaa";
+        let planStatus: "pending" | "success" = "pending";
+        const host = Layer.mergeAll(
+          NodeServices.layer,
+          NodeCrypto.layer,
+          Layer.mock(PullRequestService.PullRequestService)({
+            detail: () =>
+              Effect.sync(() => ({
+                ...watchedPullRequestDetail({
+                  projectId,
+                  number: 12,
+                  at: "2026-10-02T12:00:00.000Z",
+                }),
+                headSha,
+                checks: [
+                  {
+                    name: "apply-gate",
+                    status: "pending" as const,
+                    description: "Run the bot to apply",
+                    url: null,
+                    required: true,
+                  },
+                  { name: "plan", status: planStatus, description: null, url: null },
+                ],
+              })),
+            activity: () =>
+              Effect.succeed({
+                comments: [],
+                commentCount: 0,
+                commentsTruncated: false,
+                reviewThreads: [],
+                commits: [],
+              }),
+          }),
+        );
+        const summaries = Effect.map(
+          orchestrator.getThreadRecords(threadId, ["messages"]),
+          ({ messages }) => messages.flatMap((message) => message.notification?.summary ?? []),
+        );
+        const sweep = (reactor: PullRequestWatchReactor.PullRequestWatchReactor["Service"]) =>
+          Effect.gen(function* () {
+            yield* TestClock.adjust("10 minutes");
+            yield* reactor.sweep;
+            yield* worker.drain();
+          });
+
+        const reactor = yield* PullRequestWatchReactor.make.pipe(Effect.provide(host));
+        yield* sweep(reactor);
+        assert.deepEqual(yield* summaries, []);
+        planStatus = "success";
+        yield* sweep(reactor);
+        assert.deepEqual(yield* summaries, ["#12: required checks pending"]);
+        yield* sweep(reactor);
+        const restarted = yield* PullRequestWatchReactor.make.pipe(Effect.provide(host));
+        yield* sweep(restarted);
+        yield* watch(false, "stop");
+        yield* watch(true, "again");
+        // The rewatch keeps both the told wait and its cleared stall clock.
+        yield* sweep(restarted);
+        yield* sweep(restarted);
+        yield* sweep(restarted);
+        assert.deepEqual(yield* summaries, ["#12: required checks pending"]);
+        yield* watch(false, "end");
+      }),
+  );
+
   it.effect.each([
     ["an idle", false],
     ["a busy", true],
@@ -6715,6 +6823,19 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         yield* TestClock.adjust("2 minutes");
         yield* sweep;
         assert.equal(reads, coversDetail ? 2 : 3);
+
+        // The same pending check for 15 minutes comes due for a read with no fingerprint change.
+        const stalls = Effect.map(
+          orchestrator.getThreadRecords(threadId, ["messages"]),
+          (records) =>
+            records.messages.filter(
+              (message) => message.notification?.summary === "#15: checks stalled",
+            ),
+        );
+        yield* TestClock.adjust("12 minutes");
+        yield* sweep;
+        assert.equal(reads, coversDetail ? 3 : 4);
+        assert.lengthOf(yield* stalls, 1);
 
         yield* orchestrator.dispatch({
           type: "thread.pull-request.watch",

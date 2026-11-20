@@ -11,6 +11,8 @@ import * as DateTime from "effect/DateTime";
 export const PULL_REQUEST_WATCH_WAKE_LIMIT = 10;
 /** How long a head may go without any check before the agent is told none reported. */
 export const PULL_REQUEST_WATCH_NO_CHECKS_MS = 15 * 60_000;
+/** How long pending checks may go unchanged before the agent is told they stalled. */
+export const PULL_REQUEST_WATCH_STALL_MS = 15 * 60_000;
 const LISTED_ITEMS = 10;
 const SNIPPET_LENGTH = 200;
 
@@ -22,6 +24,17 @@ export type PullRequestWatchChange =
       readonly kind: "checks-finished";
       readonly count: number;
       readonly failed: ReadonlyArray<PullRequestCheck>;
+    }
+  | {
+      readonly kind: "required-checks-waiting";
+      readonly finished: number;
+      readonly waiting: ReadonlyArray<PullRequestCheck>;
+      readonly failed: ReadonlyArray<PullRequestCheck>;
+    }
+  | {
+      readonly kind: "checks-stalled";
+      readonly minutes: number;
+      readonly pending: ReadonlyArray<PullRequestCheck>;
     }
   | { readonly kind: "remarks"; readonly remarks: ReadonlyArray<PullRequestComment> }
   | { readonly kind: "no-checks"; readonly minutes: number }
@@ -41,6 +54,18 @@ const isFailedCheck = (check: PullRequestCheck) =>
 // A GitHub Actions job's URL extends its workflow run's URL; their names need not match.
 const workflowRunOf = (url: string | null) => url?.match(/^.*\/actions\/runs\/\d+/)?.[0] ?? null;
 const approvalKey = (check: PullRequestCheck) => workflowRunOf(check.url) ?? check.name;
+
+// FNV-1a keeps the persisted fingerprint a few bytes, however many checks a head has.
+function statusHash(checks: ReadonlyArray<PullRequestCheck>): string {
+  let hash = 0x811c9dc5;
+  for (const char of checks
+    .map((check) => `${check.name}\u0000${check.status}`)
+    .toSorted()
+    .join("\n")) {
+    hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
 
 export function evaluatePullRequestWatch(
   watch: ThreadPullRequestWatch,
@@ -71,6 +96,10 @@ export function evaluatePullRequestWatch(
   let owedChecks = headMoved ? [] : (watch.owedChecks ?? []);
   let awaitingApproval = headMoved ? [] : (watch.awaitingApproval ?? []);
   let approvalAnnounced = headMoved ? false : (watch.approvalAnnounced ?? false);
+  let waitingChecksAnnounced = headMoved ? [] : (watch.waitingChecksAnnounced ?? []);
+  // A push restarts the stall clock, even when its first read has no checks yet.
+  let checksStatusHash = headMoved ? undefined : watch.checksStatusHash;
+  let checksChangedAt = headMoved ? null : watch.checksChangedAt;
   // A watch with no answer (saved before the field, or since a push) waits only while the clock
   // below runs.
   let checksPending = headMoved ? false : (watch.checksPending ?? watch.checksAwaitedSince != null);
@@ -189,8 +218,79 @@ export function evaluatePullRequestWatch(
       }
       owedChecks = running ? owing : [];
     }
+    // A required check can wait on a person, such as a status a bot keeps pending until someone
+    // asks it to apply. So the other checks finishing is news, and so is progress after that: one
+    // of them finishing again, or a required one finishing while another still waits.
+    const optional = checks.filter((check) => check.required !== true);
+    const waiting = required.filter((check) => check.status === "pending");
+    const waitingNames = waiting.map((check) => check.name);
+    const othersDone =
+      optional.length > 0 &&
+      awaitingApproval.length === 0 &&
+      optional.every((check) => check.status !== "pending" && check.status !== "action-required");
+    let waitPushed = false;
+    if (!unread && othersDone && waiting.length > 0) {
+      // A name that drops out of the read has not finished, so only a finished one is progress.
+      const progressed =
+        waitingChecksAnnounced.length === 0 ||
+        waitingChecksAnnounced.some((name) =>
+          checks.some((check) => check.name === name && check.status !== "pending"),
+        );
+      // A watch saved before this field records what is there, like a baseline.
+      const legacy =
+        watch.waitingChecksAnnounced === undefined && watch.awaitingBaseline === undefined;
+      if (progressed && !legacy && (!checksBaseline || watch.checksPending === true)) {
+        changes.push({
+          kind: "required-checks-waiting",
+          finished: checks.filter(
+            (check) => check.status !== "pending" && check.status !== "action-required",
+          ).length,
+          waiting,
+          failed: failed.filter((check) => !toldFailed.includes(check)),
+        });
+        waitPushed = true;
+      }
+      waitingChecksAnnounced = waitingNames;
+    } else if (!unread) {
+      waitingChecksAnnounced = [];
+    }
+
+    // A pending check with nothing else left to finish can wait on a person for good, so a long
+    // quiet spell is news once. A change to any check restarts the clock, and so does a new watch
+    // unless a past one already told it.
+    if (!unread) {
+      const pendingChecks = checks.filter((check) => check.status === "pending");
+      const hash = statusHash(checks);
+      if (hash !== checksStatusHash || (checksBaseline && checksChangedAt != null)) {
+        checksStatusHash = hash;
+        checksChangedAt =
+          pendingChecks.length > 0 ? DateTime.formatIso(DateTime.makeUnsafe(now)) : null;
+      } else if (
+        checksChangedAt != null &&
+        pendingChecks.length > 0 &&
+        now - Date.parse(checksChangedAt) >= PULL_REQUEST_WATCH_STALL_MS
+      ) {
+        changes.push({
+          kind: "checks-stalled",
+          minutes: Math.round((now - Date.parse(checksChangedAt)) / 60_000),
+          pending: pendingChecks,
+        });
+        checksChangedAt = null;
+      }
+      // A told wait, or a hold on a maintainer's approval, is not a stall.
+      if (waitPushed || awaitingApproval.length > 0) checksChangedAt = null;
+    }
     passed = passedNow;
     passedChecks = passedNow ? gateNames : [];
+  }
+  // A read that cannot show the checks leaves a due stall to a later one instead of forcing a
+  // reread every sweep.
+  if (
+    (unread || checks.length === 0) &&
+    checksChangedAt != null &&
+    now - Date.parse(checksChangedAt) >= PULL_REQUEST_WATCH_STALL_MS
+  ) {
+    checksChangedAt = DateTime.formatIso(DateTime.makeUnsafe(now));
   }
 
   // Only a head never read with checks waits for them; a legacy watch's clock starts at its next
@@ -277,6 +377,9 @@ export function evaluatePullRequestWatch(
       owedChecks,
       awaitingApproval,
       approvalAnnounced,
+      waitingChecksAnnounced,
+      ...(checksStatusHash !== undefined && { checksStatusHash }),
+      ...(checksChangedAt !== undefined && { checksChangedAt }),
       remarksThrough,
       remarkIds,
       conflicting,
@@ -389,6 +492,9 @@ function listed<T>(items: ReadonlyArray<T>, line: (item: T) => string): Array<st
 const failedCheckLine = (check: PullRequestCheck) =>
   `  - ${check.name}${check.status === "failure" ? "" : ` (${check.status})`}${check.url ? ` ${check.url}` : ""}`;
 
+const pendingCheckLine = (check: PullRequestCheck) =>
+  `  - ${check.name}${check.description ? `: ${snippet(check.description)}` : ""}${check.url ? ` ${check.url}` : ""}`;
+
 function changeLines(
   change: PullRequestWatchChange,
   context: { readonly baseBranch: string; readonly commit: string },
@@ -412,6 +518,19 @@ function changeLines(
             `- All ${change.count} checks finished${context.commit}. These still fail:`,
             ...listed(change.failed, failedCheckLine),
           ];
+    case "required-checks-waiting":
+      return [
+        `- The other ${change.finished} ${change.finished === 1 ? "check" : "checks"} finished${context.commit}. Still pending (required):`,
+        ...listed(change.waiting, pendingCheckLine),
+        ...(change.failed.length === 0
+          ? []
+          : ["- These still fail:", ...listed(change.failed, failedCheckLine)]),
+      ];
+    case "checks-stalled":
+      return [
+        `- No check has changed${context.commit} in ${change.minutes} minutes. Still pending, each either running or waiting on someone:`,
+        ...listed(change.pending, pendingCheckLine),
+      ];
     case "remarks":
       return [
         `- ${change.remarks.length} new ${change.remarks.length === 1 ? "comment" : "comments"}:`,
@@ -442,6 +561,8 @@ const SUMMARY: Record<PullRequestWatchChange["kind"], string> = {
   "checks-passed": "checks passed",
   "checks-awaiting-approval": "checks await approval",
   "checks-finished": "checks finished",
+  "required-checks-waiting": "required checks pending",
+  "checks-stalled": "checks stalled",
   remarks: "new comments",
   "no-checks": "no checks reported",
   conflicting: "merge conflict",
@@ -539,7 +660,8 @@ export function pullRequestWatchMessage(input: {
       change.kind === "conflicting" ||
       change.kind === "needs-rebase" ||
       change.kind === "merge-queue-removed" ||
-      (change.kind === "checks-finished" && change.failed.length > 0),
+      ((change.kind === "checks-finished" || change.kind === "required-checks-waiting") &&
+        change.failed.length > 0),
   );
   const summary = changes.map((change) => SUMMARY[change.kind]);
   if (exhausted) summary.push("stopped watching");

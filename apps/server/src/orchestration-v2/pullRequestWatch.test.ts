@@ -693,6 +693,103 @@ describe("evaluatePullRequestWatch", () => {
     assert.deepEqual(evaluatePullRequestWatch(told.next, settledRed, noRemarks).changes, []);
   });
 
+  // A required status a bot keeps pending until someone asks it to apply never finishes alone.
+  it("wakes when the other checks finish, and on progress, while a required one still pends", () => {
+    const gate = {
+      ...check("apply-gate", "pending"),
+      required: true,
+      description: "Waiting for someone to run the apply",
+    };
+    const fresh = watch({ waitingChecksAnnounced: [] });
+    const running = detail({ checks: [gate, check("plan", "pending"), check("test", "pending")] });
+    const first = evaluatePullRequestWatch(watch(), running, noRemarks);
+    assert.deepEqual(first.changes, []);
+    const halfway = detail({ checks: [gate, check("plan", "success"), check("test", "pending")] });
+    const waiting = evaluatePullRequestWatch(first.next, halfway, noRemarks);
+    assert.deepEqual(waiting.changes, []);
+    const planned = detail({ checks: [gate, check("plan", "success"), check("test", "success")] });
+    const told = evaluatePullRequestWatch(waiting.next, planned, noRemarks);
+    assert.deepEqual(told.changes, [
+      { kind: "required-checks-waiting", finished: 2, waiting: [gate], failed: [] },
+    ]);
+    assert.deepEqual(evaluatePullRequestWatch(told.next, planned, noRemarks).changes, []);
+
+    const applied = detail({
+      checks: [{ ...gate, status: "success" }, check("plan", "success"), check("test", "success")],
+    });
+    assert.deepEqual(evaluatePullRequestWatch(told.next, applied, noRemarks).changes, [
+      { kind: "checks-passed", count: 1, required: true },
+    ]);
+    const pushed = detail({ ...planned, headSha: "bbbbbbbbbb" });
+    assert.deepEqual(
+      evaluatePullRequestWatch(told.next, pushed, noRemarks).changes.map((change) => change.kind),
+      ["required-checks-waiting"],
+    );
+
+    // A failure told on the way still shows, since the agent waits on the gate either way.
+    const red = detail({ checks: [gate, check("plan", "failure"), check("test", "success")] });
+    const failed = evaluatePullRequestWatch(waiting.next, red, noRemarks);
+    assert.deepEqual(
+      failed.changes.map((change) => change.kind),
+      ["checks-failed", "required-checks-waiting"],
+    );
+    // The rerun passing is progress, though the gate still pends.
+    const rerunning = evaluatePullRequestWatch(
+      failed.next,
+      detail({ checks: [gate, check("plan", "pending"), check("test", "success")] }),
+      noRemarks,
+    );
+    assert.deepEqual(rerunning.changes, []);
+    assert.deepEqual(evaluatePullRequestWatch(rerunning.next, planned, noRemarks).changes, [
+      { kind: "required-checks-waiting", finished: 2, waiting: [gate], failed: [] },
+    ]);
+
+    // A required job finishing is progress while the gate still pends.
+    const build = { ...check("build-gate", "pending"), required: true };
+    const queued = detail({ checks: [gate, build, check("plan", "success")] });
+    const both = evaluatePullRequestWatch(fresh, queued, noRemarks);
+    assert.deepEqual(both.changes, [
+      { kind: "required-checks-waiting", finished: 1, waiting: [gate, build], failed: [] },
+    ]);
+    const built = detail({
+      checks: [gate, { ...build, status: "success" }, check("plan", "success")],
+    });
+    const progressed = evaluatePullRequestWatch(both.next, built, noRemarks);
+    assert.deepEqual(progressed.changes, [
+      { kind: "required-checks-waiting", finished: 2, waiting: [gate], failed: [] },
+    ]);
+    assert.deepEqual(evaluatePullRequestWatch(progressed.next, built, noRemarks).changes, []);
+    // A check that drops out of the read has not finished.
+    const dropped = detail({ checks: [gate, check("plan", "success")] });
+    assert.deepEqual(evaluatePullRequestWatch(both.next, dropped, noRemarks).changes, []);
+
+    // With no other check, nothing has finished to tell.
+    const gateOnly = detail({ checks: [gate] });
+    assert.deepEqual(evaluatePullRequestWatch(fresh, gateOnly, noRemarks).changes, []);
+    // A watch saved before this wake records the wait without telling it.
+    const legacy = watch({ headSha: "aaaaaaaaaa" });
+    assert.deepEqual(evaluatePullRequestWatch(legacy, planned, noRemarks).changes, []);
+
+    // The first read baselines it, unless CI was still running when the watch began. A baselined
+    // wait was not told, so the stall clock still runs for it.
+    const seen = evaluatePullRequestWatch(
+      watch({ awaitingBaseline: "checks" }),
+      planned,
+      noRemarks,
+    );
+    assert.deepEqual(seen.changes, []);
+    assert.deepEqual(evaluatePullRequestWatch(seen.next, planned, noRemarks).changes, []);
+    assert.deepEqual(
+      evaluate(seen.next, planned, noRemarks, 15 * 60_000).changes.map((change) => change.kind),
+      ["checks-stalled"],
+    );
+    const started = watch({ awaitingBaseline: "checks", checksPending: true });
+    assert.deepEqual(
+      evaluatePullRequestWatch(started, planned, noRemarks).changes.map((change) => change.kind),
+      ["required-checks-waiting"],
+    );
+  });
+
   it("reports an owed non-required failure once after the required notice", () => {
     const required = { ...check("test", "success"), required: true };
     const early = detail({ checks: [required, check("e2e", "pending")] });
@@ -1067,6 +1164,49 @@ describe("evaluatePullRequestWatch", () => {
       anHourLater(watch({ awaitingBaseline: "all" }), detail({ checks: [] })).flat(),
       ["no-checks"],
     );
+  });
+
+  it("wakes once when pending checks stop changing for 15 minutes, and again after a change", () => {
+    const at = (from: ThreadPullRequestWatch, read: Detail, minute: number) =>
+      evaluate(from, read, noRemarks, minute * 60_000);
+    const quiet = detail({ checks: [check("lint", "success"), check("test", "pending")] });
+    const early = at(at(watch(), quiet, 0).next, quiet, 14);
+    assert.deepEqual(early.changes, []);
+    const stalled = at(early.next, quiet, 15);
+    assert.deepEqual(stalled.changes, [
+      { kind: "checks-stalled", minutes: 15, pending: [check("test", "pending")] },
+    ]);
+    assert.deepEqual(at(stalled.next, quiet, 60).changes, []);
+    const moved = detail({ checks: [...quiet.checks, check("e2e", "pending")] });
+    const rearmed = at(stalled.next, moved, 61);
+    assert.deepEqual(rearmed.changes, []);
+    assert.deepEqual(
+      at(rearmed.next, moved, 76).changes.map((change) => change.kind),
+      ["checks-stalled"],
+    );
+    // A push restarts the clock, even when its first read has no checks yet.
+    const unlisted = at(early.next, detail({ headSha: "bbbbbbbbbb", checks: [] }), 14);
+    assert.isNull(unlisted.next.checksChangedAt);
+    const pushed = detail({ ...quiet, headSha: "bbbbbbbbbb" });
+    assert.deepEqual(at(at(unlisted.next, pushed, 16).next, pushed, 30).changes, []);
+
+    // Every check is required and one waits on a person, so only the stall tells.
+    const signoff = { ...check("qa-signoff", "pending"), required: true };
+    const gated = detail({ checks: [{ ...check("build", "success"), required: true }, signoff] });
+    assert.deepEqual(anHourLater(watch(), gated).flat(), ["checks-stalled"]);
+    // Once the required wait or an approval hold was told, a quiet gate is not a stall.
+    const gate = { ...check("apply-gate", "pending"), required: true };
+    const planned = detail({ checks: [gate, check("plan", "success")] });
+    assert.deepEqual(anHourLater(watch({ waitingChecksAnnounced: [] }), planned).flat(), [
+      "required-checks-waiting",
+    ]);
+    const held = detail({
+      checks: [
+        { ...check("approve", "action-required"), url: run(1) },
+        { ...check("build", "pending"), url: `${run(1)}/job/2` },
+      ],
+    });
+    assert.deepEqual(anHourLater(watch(), held).flat(), ["checks-awaiting-approval"]);
   });
 
   it("never reports missing checks on a host where an empty list says nothing", () => {

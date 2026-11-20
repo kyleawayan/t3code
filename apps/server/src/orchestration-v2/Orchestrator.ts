@@ -5331,6 +5331,15 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                       ...(existing.endedWatch?.approvalAnnounced !== undefined && {
                         approvalAnnounced: existing.endedWatch.approvalAnnounced,
                       }),
+                      ...(existing.endedWatch?.waitingChecksAnnounced !== undefined && {
+                        waitingChecksAnnounced: existing.endedWatch.waitingChecksAnnounced,
+                      }),
+                      ...(existing.endedWatch?.checksStatusHash !== undefined && {
+                        checksStatusHash: existing.endedWatch.checksStatusHash,
+                      }),
+                      ...(existing.endedWatch?.checksChangedAt !== undefined && {
+                        checksChangedAt: existing.endedWatch.checksChangedAt,
+                      }),
                       // CI pending with no failure yet at the start may fail before the first
                       // read. A caller's fresh read beats the link's last sync; a finished-checks
                       // answer kept from the last watch may be an older head's.

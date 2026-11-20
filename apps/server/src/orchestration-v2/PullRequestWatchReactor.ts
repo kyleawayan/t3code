@@ -50,6 +50,7 @@ import {
   combinePullRequestWatchWakes,
   evaluatePullRequestWatch,
   PULL_REQUEST_WATCH_NO_CHECKS_MS,
+  PULL_REQUEST_WATCH_STALL_MS,
   pullRequestWatchEndMessage,
   pullRequestWatchMessage,
 } from "./pullRequestWatch.ts";
@@ -177,13 +178,15 @@ function planRead(
   if (last === undefined || group.targets.some((target) => !last.watches.has(watchKey(target)))) {
     return { detail: true, activity: true };
   }
-  // Nothing on the host changes when the no-checks deadline passes, or when a push to another
-  // branch clears a watch's answer, so either alone prompts a read.
+  // Nothing on the host changes when the no-checks or stall deadline passes, or when a push to
+  // another branch clears a watch's answer, so each alone prompts a read.
   const checksDue = group.targets.some(
     ({ watch }) =>
       watch.checksPending === undefined ||
       (watch.checksAwaitedSince != null &&
-        now - Date.parse(watch.checksAwaitedSince) >= PULL_REQUEST_WATCH_NO_CHECKS_MS),
+        now - Date.parse(watch.checksAwaitedSince) >= PULL_REQUEST_WATCH_NO_CHECKS_MS) ||
+      (watch.checksChangedAt != null &&
+        now - Date.parse(watch.checksChangedAt) >= PULL_REQUEST_WATCH_STALL_MS),
   );
   if (fingerprint === null) {
     const read =
@@ -221,6 +224,10 @@ function watchesEqual(left: ThreadPullRequestWatch, right: ThreadPullRequestWatc
     (left.owedChecks ?? []).join("\n") === (right.owedChecks ?? []).join("\n") &&
     (left.awaitingApproval ?? []).join("\n") === (right.awaitingApproval ?? []).join("\n") &&
     (left.approvalAnnounced ?? false) === (right.approvalAnnounced ?? false) &&
+    (left.waitingChecksAnnounced ?? []).join("\n") ===
+      (right.waitingChecksAnnounced ?? []).join("\n") &&
+    left.checksStatusHash === right.checksStatusHash &&
+    left.checksChangedAt === right.checksChangedAt &&
     left.remarksThrough === right.remarksThrough &&
     left.remarkIds.join("\n") === right.remarkIds.join("\n") &&
     left.conflicting === right.conflicting &&
