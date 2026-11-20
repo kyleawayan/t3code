@@ -127,6 +127,17 @@ function cycleName(cycle: Pick<LinearCycle, "number" | "name">): string {
 }
 
 /** "Cycle 10 (2 days left)" while it runs, "(starts tomorrow)" before, plain once it ends. */
+/** Linear's API gives a cycle no URL, so this builds its page under the team, in the issue's workspace. */
+export function linearCycleUrl(
+  issueUrl: string,
+  teamKey: string,
+  cycleNumber: number,
+): string | null {
+  const workspace = /^https:\/\/linear\.app\/([^/?#]+)\//.exec(issueUrl)?.[1];
+  if (!workspace || !/^[A-Za-z0-9_]+$/.test(teamKey)) return null;
+  return `https://linear.app/${workspace}/team/${teamKey}/cycle/${cycleNumber}`;
+}
+
 export function cycleLabel(cycle: LinearCycle, now: Date): string {
   const name = cycleName(cycle);
   const startsAt = new Date(cycle.startsAt);

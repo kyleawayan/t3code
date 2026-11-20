@@ -19,6 +19,7 @@ const STATES = {
 } satisfies Record<string, LinearState>;
 
 const TEAM = {
+  key: "ENG",
   issueEstimationType: "fibonacci",
   states: {
     nodes: Object.values(STATES).map((state, position) => ({

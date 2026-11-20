@@ -33,12 +33,12 @@ query LinearIssue($id: String!) {
   issue(id: $id) {
     identifier title description url branchName priority priorityLabel estimate dueDate createdAt
     state { ...LinearState }
-    team { issueEstimationType states(first: 50) { nodes { name type position } } }
+    team { key issueEstimationType states(first: 50) { nodes { name type position } } }
     creator { displayName avatarUrl avatarBackgroundColor }
     assignee { displayName avatarUrl avatarBackgroundColor }
     labels(first: 25) { nodes { name color } }
     cycle { number name startsAt endsAt }
-    project { name color }
+    project { name color url }
     parent {
       ...LinearIssueRef
       parent {

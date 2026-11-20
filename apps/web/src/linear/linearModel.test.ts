@@ -14,6 +14,7 @@ import {
   estimateLabel,
   ancestorChain,
   cycleLabel,
+  linearCycleUrl,
   dueDateLabel,
   issueFingerprint,
   linearRelativeTime,
@@ -54,6 +55,20 @@ describe("cycleLabel", () => {
 
   it("prefers the cycle's own name", () => {
     expect(cycleLabel({ ...cycle, name: "Launch" }, local(2026, 12, 5))).toBe("Launch");
+  });
+});
+
+describe("linearCycleUrl", () => {
+  it.each([
+    [
+      "https://linear.app/acme/issue/ENG-1/title",
+      "ENG",
+      "https://linear.app/acme/team/ENG/cycle/10",
+    ],
+    ["https://example.com/acme/issue/ENG-1", "ENG", null],
+    ["https://linear.app/acme/issue/ENG-1", "EN/G", null],
+  ])("%s, team %s → %s", (issueUrl, teamKey, expected) => {
+    expect(linearCycleUrl(issueUrl, teamKey, 10)).toBe(expected);
   });
 });
 

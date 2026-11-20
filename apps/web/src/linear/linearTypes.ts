@@ -110,6 +110,7 @@ export interface LinearIssue extends LinearIssueRef {
   readonly dueDate: string | null;
   readonly createdAt: string;
   readonly team: {
+    readonly key: string;
     readonly issueEstimationType: string;
     readonly states: Nodes<{
       readonly name: string;
@@ -121,7 +122,7 @@ export interface LinearIssue extends LinearIssueRef {
   readonly assignee: LinearUser | null;
   readonly labels: Nodes<LinearLabel>;
   readonly cycle: LinearCycle | null;
-  readonly project: { readonly name: string; readonly color: string } | null;
+  readonly project: { readonly name: string; readonly color: string; readonly url: string } | null;
   readonly parent: (LinearAncestor & { readonly children: Nodes<LinearProgressNode> }) | null;
   readonly children: Nodes<LinearSubIssue>;
   readonly attachments: Nodes<LinearAttachment>;

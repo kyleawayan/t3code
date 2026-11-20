@@ -66,6 +66,7 @@ import {
   ancestorChain,
   commentAuthor,
   cycleLabel,
+  linearCycleUrl,
   dueDateLabel,
   estimateLabel,
   linearRelativeTime,
@@ -456,7 +457,7 @@ function LinearIssueView(props: {
             <ProgressPill progress={subIssueProgress(issue.parent.children.nodes)} />
           </div>
         ) : null}
-        <LinearProperties issue={issue} onOpen={props.onOpen} />
+        <LinearProperties issue={issue} threadRef={props.threadRef} onOpen={props.onOpen} />
         <LinearDescription
           open={view.isOpen("description")}
           onToggle={() => view.toggle("description")}
@@ -527,8 +528,32 @@ function Chip(props: {
   return <span className={cn(chip, props.className)}>{props.children}</span>;
 }
 
+/** A chip that opens its page in Linear, marked by the open icon at its end. */
+function LinkChip(props: {
+  readonly url: string | null;
+  readonly label: string;
+  readonly threadRef: ScopedThreadRef;
+  readonly children: ReactNode;
+}) {
+  const openLink = useOpenLink(props.threadRef);
+  const { url } = props;
+  if (!url) return <Chip>{props.children}</Chip>;
+  return (
+    <button
+      type="button"
+      aria-label={props.label}
+      className={cn(CHIP, "hover:bg-accent")}
+      onClick={(event) => void openLink(url, { event })}
+    >
+      {props.children}
+      <ExternalLink aria-hidden="true" className="size-3 shrink-0 text-muted-foreground" />
+    </button>
+  );
+}
+
 function LinearProperties(props: {
   readonly issue: LinearIssue;
+  readonly threadRef: ScopedThreadRef;
   readonly onOpen: (id: string) => void;
 }) {
   const { issue } = props;
@@ -560,10 +585,14 @@ function LinearProperties(props: {
         </Chip>
       ) : null}
       {issue.project ? (
-        <Chip>
+        <LinkChip
+          url={issue.project.url}
+          label={`Open project ${issue.project.name} in Linear`}
+          threadRef={props.threadRef}
+        >
           <Box className="size-3.5 shrink-0" style={{ color: issue.project.color }} />
           <span className="truncate">{issue.project.name}</span>
-        </Chip>
+        </LinkChip>
       ) : null}
       {issue.labels.nodes.map((label) => (
         <Chip key={label.name}>
@@ -572,10 +601,14 @@ function LinearProperties(props: {
         </Chip>
       ))}
       {issue.cycle ? (
-        <Chip>
+        <LinkChip
+          url={linearCycleUrl(issue.url, issue.team.key, issue.cycle.number)}
+          label={`Open ${cycleLabel(issue.cycle, now)} in Linear`}
+          threadRef={props.threadRef}
+        >
           <CirclePlay className="size-3.5 shrink-0 text-muted-foreground" />
           {cycleLabel(issue.cycle, now)}
-        </Chip>
+        </LinkChip>
       ) : null}
       {due ? (
         <Chip className={cn(due.overdue && "text-destructive")}>

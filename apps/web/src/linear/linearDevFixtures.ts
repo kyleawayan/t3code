@@ -29,6 +29,7 @@ const STATES = {
 } satisfies Record<string, LinearState>;
 
 const TEAM = {
+  key: "FIX",
   issueEstimationType: "fibonacci",
   states: {
     nodes: Object.values(STATES).map((state, position) => ({
@@ -364,7 +365,11 @@ const ROOT: LinearIssue = {
   assignee: USERS.alex,
   labels: { nodes: [LABELS.bug, LABELS.feature, LABELS.perf, LABELS.desktop, LABELS.long] },
   cycle: CYCLE,
-  project: { name: "Fixture project", color: "#bb87fc" },
+  project: {
+    name: "Fixture project",
+    color: "#bb87fc",
+    url: "https://linear.app/fixture/project/fixture-project-0123456789ab",
+  },
   parent: {
     ...ANCESTORS,
     children: { nodes: [{ state: { type: "started" } }, { state: { type: "completed" } }] },
