@@ -1,14 +1,16 @@
 // oxlint-disable t3code/no-untranslated-copy -- Fork-only English copy, kept out of upstream's translation catalogs.
-import { Link2 } from "lucide-react";
+import { Diamond, Link2 } from "lucide-react";
 
 import { LinearStatusIcon } from "./LinearIcons";
 import { useLinearIssueStore } from "./linearIssueStore";
 import { startedStateFractions } from "./linearModel";
-import { linearSurfaceIssue, type LinearSurface } from "./linearSurface";
+import { linearEntryMilestone, linearSurfaceIssue, type LinearSurface } from "./linearSurface";
 
 /** The tab strip's title: the issue on screen. */
 export function linearTabTitle(surface: LinearSurface): string {
-  return linearSurfaceIssue(surface) || "Linear search";
+  const entry = linearSurfaceIssue(surface);
+  if (linearEntryMilestone(entry) !== null) return "Milestone";
+  return entry || "Linear search";
 }
 
 /** The tab strip's icon: the status of the issue on screen, once loaded. */
@@ -16,6 +18,9 @@ export function LinearTabIcon(props: { readonly surface: LinearSurface }) {
   const issue = useLinearIssueStore(
     (state) => state.entries[linearSurfaceIssue(props.surface)]?.issue,
   );
+  if (linearEntryMilestone(linearSurfaceIssue(props.surface)) !== null) {
+    return <Diamond aria-hidden="true" className="size-3 shrink-0" />;
+  }
   return issue ? (
     <LinearStatusIcon
       state={issue.state}

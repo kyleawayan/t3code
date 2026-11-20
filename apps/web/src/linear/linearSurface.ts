@@ -1,6 +1,6 @@
 /**
  * A Linear tab. A thread can hold several, each with its own back/forward history of issue
- * identifiers, where `LINEAR_SEARCH_ENTRY` is the search page.
+ * identifiers, where `LINEAR_SEARCH_ENTRY` is the search page and `milestone:<id>` a milestone.
  */
 export interface LinearSurface {
   readonly id: `linear:${string}`;
@@ -10,8 +10,16 @@ export interface LinearSurface {
 }
 
 export const LINEAR_SEARCH_ENTRY = "";
+const MILESTONE_PREFIX = "milestone:";
 const MAX_HISTORY = 50;
-const ENTRY = /^(?:[A-Z][A-Z0-9_]*-\d+)?$/;
+const ENTRY = /^(?:[A-Z][A-Z0-9_]*-\d+|milestone:[A-Za-z0-9-]{1,64})?$/;
+
+export const linearMilestoneEntry = (id: string): string => `${MILESTONE_PREFIX}${id}`;
+
+/** The milestone id of a `milestone:` entry, or null for search and issue entries. */
+export function linearEntryMilestone(entry: string): string | null {
+  return entry.startsWith(MILESTONE_PREFIX) ? entry.slice(MILESTONE_PREFIX.length) : null;
+}
 
 export function linearSurfaceIssue(surface: LinearSurface): string {
   return surface.history[surface.index] ?? surface.history[0] ?? LINEAR_SEARCH_ENTRY;

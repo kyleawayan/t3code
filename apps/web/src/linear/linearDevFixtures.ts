@@ -5,6 +5,7 @@ import type {
   LinearHistoryEntry,
   LinearIssue,
   LinearLabel,
+  LinearMilestone,
   LinearRelatedIssue,
   LinearState,
   LinearSubIssue,
@@ -604,3 +605,20 @@ export const DEV_LINEAR_FIXTURE_LIST = [
   DEV_LINEAR_FIXTURES["FIX-2903"]!,
   DEV_LINEAR_FIXTURES["FIX-2905"]!,
 ];
+
+/** Dev-only milestones behind `fix-` ids; `fix-milestone` holds the fixture tree's top-level issues. */
+export const DEV_LINEAR_MILESTONES: Readonly<Record<string, LinearMilestone>> = {
+  "fix-milestone": {
+    id: "fix-milestone",
+    name: "Fixture release",
+    targetDate: dateOnly(12),
+    project: ROOT.project!,
+    issues: {
+      nodes: TREE.map((node, index) => ({
+        ...subIssue(node, index),
+        team: { issueEstimationType: TEAM.issueEstimationType },
+        children: { nodes: progress(node.children ?? []) },
+      })),
+    },
+  },
+};

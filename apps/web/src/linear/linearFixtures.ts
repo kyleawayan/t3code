@@ -1,5 +1,6 @@
 // oxlint-disable t3code/no-untranslated-copy -- Fork-only English copy, kept out of upstream's translation catalogs.
 import type {
+  LinearMilestone,
   LinearIssue,
   LinearRelatedIssue,
   LinearState,
@@ -361,4 +362,26 @@ export const LINEAR_FIXTURE_ISSUES: Readonly<Record<string, LinearIssue>> = {
   [LINEAR_FIXTURE_ROOT.identifier]: LINEAR_FIXTURE_ROOT,
   [LINEAR_FIXTURE_IN_REVIEW.identifier]: LINEAR_FIXTURE_IN_REVIEW,
   [LINEAR_FIXTURE_NESTED.identifier]: LINEAR_FIXTURE_NESTED,
+};
+
+/** A milestone holding the root issue's sub-issues, for the milestone view. */
+export const LINEAR_FIXTURE_MILESTONE: LinearMilestone = {
+  id: "milestone-1",
+  name: "Beta release",
+  targetDate: "2026-12-15",
+  project: {
+    name: "Linear tab",
+    color: "#bb87fc",
+    url: "https://linear.app/my-workspace/project/linear-tab-0123456789ab",
+  },
+  issues: {
+    // Like Linear's response: a milestone issue's children carry only their state, for progress.
+    nodes: LINEAR_FIXTURE_ROOT.children.nodes.map((issue) => ({
+      ...issue,
+      team: { issueEstimationType: TEAM.issueEstimationType },
+      children: {
+        nodes: issue.children.nodes.map((child) => ({ state: { type: child.state.type } })),
+      },
+    })),
+  },
 };

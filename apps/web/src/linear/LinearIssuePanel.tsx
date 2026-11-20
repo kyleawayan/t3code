@@ -13,6 +13,7 @@ import {
   CirclePlay,
   CircleUserRound,
   Copy,
+  Diamond,
   ExternalLink,
   GitBranch,
   Link2,
@@ -60,6 +61,12 @@ import {
   useLinearIssueStore,
   type LinearIssueEntry,
 } from "./linearIssueStore";
+import {
+  fetchLinearMilestone,
+  isLinearMilestoneStale,
+  useLinearMilestoneStore,
+  type LinearMilestoneEntry,
+} from "./linearMilestoneStore";
 import { LinearMarkdown } from "./LinearMarkdown";
 import {
   activityItems,
@@ -83,19 +90,34 @@ import {
 import { linearLinkIdentifier, openLinearIssueInSurface, stepLinearIssue } from "./linearOpen";
 import { LinearIssueSearch } from "./LinearIssueSearch";
 import { useLinearIssueView } from "./linearIssueView";
-import { LINEAR_SEARCH_ENTRY, linearSurfaceIssue, type LinearSurface } from "./linearSurface";
-import type { LinearComment, LinearIssue, LinearRelatedIssue } from "./linearTypes";
+import {
+  LINEAR_SEARCH_ENTRY,
+  linearEntryMilestone,
+  linearSurfaceIssue,
+  type LinearSurface,
+} from "./linearSurface";
+import type {
+  LinearComment,
+  LinearIssue,
+  LinearMilestone,
+  LinearRelatedIssue,
+  LinearSubIssue,
+} from "./linearTypes";
 
 const FOCUS_REFRESH_MS = 5_000;
 
-function useLinearIssue(identifier: string, active: boolean): LinearIssueEntry | undefined {
-  const entry = useLinearIssueStore((state) => state.entries[identifier]);
+function useLinearRefresh(
+  key: string,
+  active: boolean,
+  isStale: (key: string, maxAgeMs: number) => boolean,
+  fetch: (key: string) => Promise<void>,
+) {
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- polls Linear while the tab is on screen and the window is focused
   useEffect(() => {
-    if (!active || identifier === LINEAR_SEARCH_ENTRY) return;
+    if (!active) return;
     const refresh = (maxAgeMs: number) => {
       if (document.visibilityState !== "visible") return;
-      if (isLinearIssueStale(identifier, maxAgeMs)) void fetchLinearIssue(identifier);
+      if (isStale(key, maxAgeMs)) void fetch(key);
     };
     refresh(FOCUS_REFRESH_MS);
     const interval = window.setInterval(() => {
@@ -109,7 +131,19 @@ function useLinearIssue(identifier: string, active: boolean): LinearIssueEntry |
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
     };
-  }, [identifier, active]);
+  }, [key, active, isStale, fetch]);
+}
+
+function useLinearIssue(identifier: string, active: boolean): LinearIssueEntry | undefined {
+  const entry = useLinearIssueStore((state) => state.entries[identifier]);
+  const isIssue = identifier !== LINEAR_SEARCH_ENTRY && linearEntryMilestone(identifier) === null;
+  useLinearRefresh(identifier, active && isIssue, isLinearIssueStale, fetchLinearIssue);
+  return entry;
+}
+
+function useLinearMilestone(id: string | null, active: boolean): LinearMilestoneEntry | undefined {
+  const entry = useLinearMilestoneStore((state) => (id === null ? undefined : state.entries[id]));
+  useLinearRefresh(id ?? "", active && id !== null, isLinearMilestoneStale, fetchLinearMilestone);
   return entry;
 }
 
@@ -125,6 +159,8 @@ export function LinearIssuePanel(props: {
   const identifier = linearSurfaceIssue(surface);
   const entry = useLinearIssue(identifier, props.visible);
   const issue = entry?.issue;
+  const milestoneId = linearEntryMilestone(identifier);
+  const milestoneEntry = useLinearMilestone(milestoneId, props.visible);
   const panelRef = useRef<HTMLDivElement>(null);
   // Each issue keeps its scroll per thread, across tab switches and reloads.
   const scrollRef = usePersistedScrollAreaPosition(linearScrollKey(threadRef, identifier));
@@ -192,9 +228,11 @@ export function LinearIssuePanel(props: {
     >
       <LinearIssueHeader
         identifier={identifier}
-        issue={issue ?? null}
+        issue={milestoneId === null ? (issue ?? null) : null}
+        milestoneId={milestoneId}
+        milestone={milestoneEntry?.milestone ?? null}
         surface={surface}
-        loading={entry?.loading === true}
+        loading={(milestoneId === null ? entry : milestoneEntry)?.loading === true}
         threadRef={threadRef}
         onOpen={open}
         onStep={step}
@@ -205,6 +243,13 @@ export function LinearIssuePanel(props: {
           <div className="@container mx-auto w-full max-w-3xl px-5 pt-5 pb-10">
             {identifier === LINEAR_SEARCH_ENTRY ? (
               <LinearIssueSearch onOpen={open} />
+            ) : milestoneId !== null ? (
+              <LinearMilestoneBody
+                id={milestoneId}
+                entry={milestoneEntry}
+                threadRef={threadRef}
+                onOpen={open}
+              />
             ) : (
               <LinearIssueBody
                 identifier={identifier}
@@ -224,13 +269,16 @@ export function LinearIssuePanel(props: {
 function LinearIssueHeader(props: {
   readonly identifier: string;
   readonly issue: LinearIssue | null;
+  readonly milestoneId: string | null;
+  readonly milestone: LinearMilestone | null;
   readonly surface: LinearSurface;
   readonly loading: boolean;
   readonly threadRef: ScopedThreadRef;
   readonly onOpen: (identifier: string) => void;
   readonly onStep: (delta: -1 | 1) => void;
 }) {
-  const { issue, surface } = props;
+  const { issue, surface, milestoneId } = props;
+  const title = issue?.title ?? props.milestone?.name;
   const ancestors = issue ? ancestorChain(issue) : [];
   return (
     <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-1 border-b border-border px-2 py-1">
@@ -261,8 +309,10 @@ function LinearIssueHeader(props: {
             <ChevronRight aria-hidden="true" className="size-3 text-muted-foreground" />
           </span>
         ))}
-        <span className="shrink-0 px-1 font-medium">{props.identifier || "Search"}</span>
-        {issue ? <span className="min-w-0 truncate text-foreground/80">{issue.title}</span> : null}
+        <span className="shrink-0 px-1 font-medium">
+          {milestoneId !== null ? "Milestone" : props.identifier || "Search"}
+        </span>
+        {title ? <span className="min-w-0 truncate text-foreground/80">{title}</span> : null}
       </nav>
       {issue ? (
         <div className="ms-auto flex shrink-0 items-center">
@@ -277,7 +327,11 @@ function LinearIssueHeader(props: {
           <HeaderButton
             label="Refresh"
             disabled={props.loading}
-            onClick={() => void fetchLinearIssue(props.identifier)}
+            onClick={() =>
+              void (milestoneId !== null
+                ? fetchLinearMilestone(milestoneId)
+                : fetchLinearIssue(props.identifier))
+            }
           >
             <RotateCw />
           </HeaderButton>
@@ -406,6 +460,121 @@ function LinearIssueBody(props: {
       <Skeleton className="h-6 w-1/2" />
       <Skeleton className="h-24 w-full" />
     </div>
+  );
+}
+
+function LinearMilestoneBody(props: {
+  readonly id: string;
+  readonly entry: LinearMilestoneEntry | undefined;
+  readonly threadRef: ScopedThreadRef;
+  readonly onOpen: (identifier: string) => void;
+}) {
+  const { entry } = props;
+  const navigate = useNavigate();
+  if (entry?.milestone) {
+    return (
+      <LinearMilestoneView
+        milestone={entry.milestone}
+        threadRef={props.threadRef}
+        onOpen={props.onOpen}
+        error={entry.error?.message ?? null}
+      />
+    );
+  }
+  if (entry?.error) {
+    const needsKey = entry.error.kind === "no-key" || entry.error.kind === "unauthorized";
+    return (
+      <LinearNotice title={needsKey ? "Linear needs an API key" : "Couldn't load this milestone"}>
+        {needsKey
+          ? `${entry.error.message} Add a read-only key in Settings → Diffs → Linear.`
+          : entry.error.message}
+        <div className="flex gap-2">
+          {needsKey ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void navigate({ to: "/settings/diffs" })}
+            >
+              Open Settings
+            </Button>
+          ) : null}
+          <Button size="sm" variant="outline" onClick={() => void fetchLinearMilestone(props.id)}>
+            Try again
+          </Button>
+        </div>
+      </LinearNotice>
+    );
+  }
+  if (entry?.milestone === null) {
+    return (
+      <LinearNotice title="This milestone wasn't found">
+        The API key can't see it, or it was deleted.
+      </LinearNotice>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-3" aria-busy="true" aria-label="Loading milestone">
+      <Skeleton className="h-7 w-1/2" />
+      <Skeleton className="h-6 w-1/3" />
+      <Skeleton className="h-24 w-full" />
+    </div>
+  );
+}
+
+/** A milestone's issues as plain rows, like Linear's issue list filtered to the milestone. */
+function LinearMilestoneView(props: {
+  readonly milestone: LinearMilestone;
+  readonly threadRef: ScopedThreadRef;
+  readonly onOpen: (identifier: string) => void;
+  readonly error: string | null;
+}) {
+  const { milestone } = props;
+  const now = new Date(`${useNowMinute()}Z`);
+  const target = milestone.targetDate ? dueDateLabel(milestone.targetDate, now) : null;
+  const estimationTypes = new Map(
+    milestone.issues.nodes.map((issue) => [issue.identifier, issue.team.issueEstimationType]),
+  );
+  return (
+    <article className="flex flex-col">
+      {props.error ? (
+        <p className="mb-3 text-xs text-muted-foreground">Showing the last copy: {props.error}</p>
+      ) : null}
+      <h1 className="flex min-w-0 items-center gap-2 text-xl font-semibold text-balance select-text">
+        <Diamond aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+        {milestone.name}
+      </h1>
+      <div className="mt-3 flex flex-wrap gap-1" aria-label="Properties">
+        <LinkChip
+          url={milestone.project.url}
+          label={`Open project ${milestone.project.name} in Linear`}
+          threadRef={props.threadRef}
+        >
+          <Box className="size-3.5 shrink-0" style={{ color: milestone.project.color }} />
+          <span className="truncate">{milestone.project.name}</span>
+        </LinkChip>
+        {target ? (
+          <Chip className={cn(target.overdue && "text-destructive")}>
+            <Calendar className="size-3.5 shrink-0" />
+            {target.label}
+          </Chip>
+        ) : null}
+      </div>
+      <section className="mt-7 flex flex-col gap-1" aria-label="Issues">
+        <div className="flex items-center gap-1.5 px-1 py-0.5 text-sm text-muted-foreground">
+          Issues
+          <ProgressPill progress={subIssueProgress(milestone.issues.nodes)} bare />
+        </div>
+        {milestone.issues.nodes.length > 0 ? (
+          <SubIssueList
+            rows={subIssueRows(milestone.issues.nodes)}
+            estimationType={(issue) => estimationTypes.get(issue.identifier) ?? "notUsed"}
+            onOpen={props.onOpen}
+          />
+        ) : (
+          <p className="px-1 text-sm text-muted-foreground">No issues</p>
+        )}
+      </section>
+    </article>
   );
 }
 
@@ -800,77 +969,92 @@ function LinearSubIssues(props: {
   readonly open: boolean;
   readonly onToggle: () => void;
 }) {
-  const rows = subIssueRows(props.issue.children.nodes);
-  // The ID column fits the longest key here (up to w-14), so short keys sit close to their status.
-  const idWidth = `min(3.5rem, ${Math.max(0, ...rows.map((row) => row.issue.identifier.length))}ch)`;
   return (
     <section className="mt-7 flex flex-col gap-1" aria-label="Sub-issues">
       <SectionHeader title="Sub-issues" open={props.open} onToggle={props.onToggle}>
         <ProgressPill progress={subIssueProgress(props.issue.children.nodes)} bare />
       </SectionHeader>
       {props.open ? (
-        <ul className="flex flex-col">
-          {rows.map((row, index) => {
-            const rowEstimate = estimateLabel(
-              row.issue.estimate,
-              props.issue.team.issueEstimationType,
-              true,
-            );
-            return (
-              <li key={row.issue.identifier} className="relative">
-                <TreeGuides row={row} hasChildren={rows[index + 1]?.depth === row.depth + 1} />
-                <div className="flex h-8 min-w-0 items-center gap-1 rounded-md pe-1 text-sm hover:bg-accent">
-                  <button
-                    type="button"
-                    className="flex h-full min-w-0 flex-1 items-center gap-2 text-start"
-                    style={{ paddingInlineStart: `${ROW_INSET_REM + row.depth * INDENT_REM}rem` }}
-                    onClick={() => props.onOpen(row.issue.identifier)}
-                  >
-                    <SquishText
-                      className="hidden shrink-0 text-muted-foreground tabular-nums @sm:inline-grid"
-                      style={{ width: idWidth }}
-                    >
-                      {row.issue.identifier}
-                    </SquishText>
-                    <LinearStatusIcon state={row.issue.state} />
-                    <SquishText ellipsisScale={SQUISH_TEXT_MIN_SCALE} className="min-w-0 flex-1">
-                      {row.issue.title}
-                    </SquishText>
-                    <span className="flex min-w-0 shrink items-center gap-0.5">
-                      {row.progress ? (
-                        <ProgressPill progress={row.progress} row className={WIDE_ROW_ONLY} />
-                      ) : null}
-                      {row.issue.labels.nodes.map((label) => (
-                        <Chip key={label.name} row="label" className={WIDE_ROW_ONLY}>
-                          <LinearColorDot color={label.color} />
-                          <ChipText squish>{label.name}</ChipText>
-                        </Chip>
-                      ))}
-                      {row.issue.cycle ? (
-                        <Chip row="value" className={WIDE_ROW_ONLY}>
-                          <CirclePlay className="size-3.5 shrink-0 text-muted-foreground" />
-                          {String(row.issue.cycle.number)}
-                        </Chip>
-                      ) : null}
-                      {rowEstimate ? (
-                        <Chip row="value">
-                          <LinearEstimateIcon />
-                          {rowEstimate}
-                        </Chip>
-                      ) : null}
-                    </span>
-                  </button>
-                  {row.blocks.map((group) => (
-                    <RelationChip key={group.kind} group={group} onOpen={props.onOpen} compact />
-                  ))}
-                  <LinearAvatar user={row.issue.assignee} />
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        <SubIssueList
+          rows={subIssueRows(props.issue.children.nodes)}
+          estimationType={() => props.issue.team.issueEstimationType}
+          onOpen={props.onOpen}
+        />
       ) : null}
     </section>
+  );
+}
+
+/** Issue rows with their chips, for an issue's sub-issues and a milestone's issues. */
+function SubIssueList(props: {
+  readonly rows: readonly LinearSubIssueRow[];
+  readonly estimationType: (issue: LinearSubIssue) => string;
+  readonly onOpen: (id: string) => void;
+}) {
+  const { rows } = props;
+  // The ID column fits the longest key here (up to w-14), so short keys sit close to their status.
+  const idWidth = `min(3.5rem, ${Math.max(0, ...rows.map((row) => row.issue.identifier.length))}ch)`;
+  return (
+    <ul className="flex flex-col">
+      {rows.map((row, index) => {
+        const rowEstimate = estimateLabel(
+          row.issue.estimate,
+          props.estimationType(row.issue),
+          true,
+        );
+        return (
+          <li key={row.issue.identifier} className="relative">
+            <TreeGuides row={row} hasChildren={rows[index + 1]?.depth === row.depth + 1} />
+            <div className="flex h-8 min-w-0 items-center gap-1 rounded-md pe-1 text-sm hover:bg-accent">
+              <button
+                type="button"
+                className="flex h-full min-w-0 flex-1 items-center gap-2 text-start"
+                style={{ paddingInlineStart: `${ROW_INSET_REM + row.depth * INDENT_REM}rem` }}
+                onClick={() => props.onOpen(row.issue.identifier)}
+              >
+                <SquishText
+                  className="hidden shrink-0 text-muted-foreground tabular-nums @sm:inline-grid"
+                  style={{ width: idWidth }}
+                >
+                  {row.issue.identifier}
+                </SquishText>
+                <LinearStatusIcon state={row.issue.state} />
+                <SquishText ellipsisScale={SQUISH_TEXT_MIN_SCALE} className="min-w-0 flex-1">
+                  {row.issue.title}
+                </SquishText>
+                <span className="flex min-w-0 shrink items-center gap-0.5">
+                  {row.progress ? (
+                    <ProgressPill progress={row.progress} row className={WIDE_ROW_ONLY} />
+                  ) : null}
+                  {row.issue.labels.nodes.map((label) => (
+                    <Chip key={label.name} row="label" className={WIDE_ROW_ONLY}>
+                      <LinearColorDot color={label.color} />
+                      <ChipText squish>{label.name}</ChipText>
+                    </Chip>
+                  ))}
+                  {row.issue.cycle ? (
+                    <Chip row="value" className={WIDE_ROW_ONLY}>
+                      <CirclePlay className="size-3.5 shrink-0 text-muted-foreground" />
+                      {String(row.issue.cycle.number)}
+                    </Chip>
+                  ) : null}
+                  {rowEstimate ? (
+                    <Chip row="value">
+                      <LinearEstimateIcon />
+                      {rowEstimate}
+                    </Chip>
+                  ) : null}
+                </span>
+              </button>
+              {row.blocks.map((group) => (
+                <RelationChip key={group.kind} group={group} onOpen={props.onOpen} compact />
+              ))}
+              <LinearAvatar user={row.issue.assignee} />
+            </div>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

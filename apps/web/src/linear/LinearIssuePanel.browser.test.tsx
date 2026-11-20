@@ -19,7 +19,7 @@ vi.mock(import("~/browser/useOpenLink"), () => ({ useOpenLink: () => async () =>
 import { render } from "../../test/render";
 import { PULL_REQUESTS_PANEL_REF, useRightPanelStore } from "../rightPanelStore";
 import { useLinearKeyStore, type LinearBridge } from "./linearBridge";
-import { LINEAR_FIXTURE_ISSUES } from "./linearFixtures";
+import { LINEAR_FIXTURE_ISSUES, LINEAR_FIXTURE_MILESTONE } from "./linearFixtures";
 import { LinearIssuePanel } from "./LinearIssuePanel";
 import { tryOpenLinearLink } from "./linearOpen";
 import { LINEAR_SEARCH_ENTRY, newLinearSurface } from "./linearSurface";
@@ -51,9 +51,14 @@ function installBridge(request: LinearBridge["request"]): Disposable {
   };
 }
 
-const fixtureRequest: LinearBridge["request"] = async (_query, variables) => ({
+const fixtureRequest: LinearBridge["request"] = async (query, variables) => ({
   ok: true,
-  data: { issue: LINEAR_FIXTURE_ISSUES[String(variables.id)] ?? null },
+  data: query.includes("projectMilestone(")
+    ? {
+        projectMilestone:
+          variables.id === LINEAR_FIXTURE_MILESTONE.id ? LINEAR_FIXTURE_MILESTONE : null,
+      }
+    : { issue: LINEAR_FIXTURE_ISSUES[String(variables.id)] ?? null },
 });
 
 function LinearHarness(props: { visible?: boolean }) {
@@ -128,6 +133,31 @@ it("renders an issue page from Linear's data", async () => {
     expect.stringContaining("added related issue ENG-5"),
     expect.stringContaining("created the issue"),
   ]);
+});
+
+it("lists a milestone's issues and opens one in the same tab", async () => {
+  using _bridge = installBridge(fixtureRequest);
+  openTab("milestone:milestone-1");
+  await using screen = await render(<LinearHarness />);
+
+  await expect.element(screen.getByRole("heading", { name: "Beta release" })).toBeVisible();
+  await expect
+    .element(screen.getByRole("button", { name: "Open project Linear tab in Linear" }))
+    .toBeVisible();
+  const issues = screen.getByRole("region", { name: "Issues" });
+  expect(issues.getByRole("listitem").all()).toHaveLength(
+    LINEAR_FIXTURE_MILESTONE.issues.nodes.length,
+  );
+
+  // The row comes before the blocked row's chip that names it.
+  await userEvent.click(
+    issues.getByRole("button", { name: /Sub-issue waiting on review/ }).first(),
+  );
+  await expect
+    .element(screen.getByRole("heading", { name: "Sub-issue waiting on review" }))
+    .toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "Back" }));
+  await expect.element(screen.getByRole("heading", { name: "Beta release" })).toBeVisible();
 });
 
 it("navigates into sub-issues and relations, and back with the keyboard", async () => {

@@ -131,3 +131,16 @@ export interface LinearIssue extends LinearIssueRef {
   readonly comments: Nodes<LinearComment>;
   readonly history: Nodes<LinearHistoryEntry>;
 }
+
+/** A milestone's issues carry their team, since one milestone can hold several teams' issues. */
+export interface LinearMilestoneIssue extends LinearSubIssue {
+  readonly team: { readonly issueEstimationType: string };
+}
+/** The shape `LINEAR_MILESTONE_QUERY` returns. */
+export interface LinearMilestone {
+  readonly id: string;
+  readonly name: string;
+  readonly targetDate: string | null;
+  readonly project: { readonly name: string; readonly color: string; readonly url: string };
+  readonly issues: Nodes<LinearMilestoneIssue>;
+}

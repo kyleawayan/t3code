@@ -1,6 +1,6 @@
 // GraphQL can't recurse, so nesting is spelled out: six ancestors for the breadcrumb, four
 // levels of sub-issue rows, and one more level counted toward progress.
-export const LINEAR_ISSUE_QUERY = `
+const SUB_ISSUE_FRAGMENTS = `
 fragment LinearState on WorkflowState { name type color }
 fragment LinearIssueRef on Issue { identifier title state { ...LinearState } }
 fragment LinearRelatedIssue on Issue {
@@ -18,6 +18,10 @@ fragment LinearSubIssue on Issue {
   relations(first: 10) { nodes { type relatedIssue { ...LinearRelatedIssue } } }
   inverseRelations(first: 10) { nodes { type issue { ...LinearRelatedIssue } } }
 }
+`;
+
+export const LINEAR_ISSUE_QUERY = `
+${SUB_ISSUE_FRAGMENTS}
 fragment LinearProgress on Issue {
   state { type }
   children(first: 25) {
@@ -107,6 +111,23 @@ query LinearMyIssues {
       orderBy: updatedAt
       filter: { state: { type: { nin: ["completed", "canceled"] } } }
     ) { nodes { identifier title state { name type color } } }
+  }
+}
+`;
+
+export const LINEAR_MILESTONE_QUERY = `
+${SUB_ISSUE_FRAGMENTS}
+query LinearMilestone($id: String!) {
+  projectMilestone(id: $id) {
+    id name targetDate
+    project { name color url }
+    issues(first: 100) {
+      nodes {
+        ...LinearSubIssue
+        team { issueEstimationType }
+        children(first: 25) { nodes { state { type } } }
+      }
+    }
   }
 }
 `;

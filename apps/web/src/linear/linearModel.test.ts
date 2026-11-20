@@ -412,6 +412,13 @@ describe("linear surface history", () => {
     expect(
       sanitizeLinearSurface({ id: "linear:a1", kind: "linear", history: ["ENG-2"], index: 0 }),
     ).toMatchObject({ id: "linear:a1" });
+    expect(
+      sanitizeLinearSurface({
+        id: "linear:a1",
+        kind: "linear",
+        history: ["milestone:3f2a-9c", "milestone:", "milestone:a/b"],
+      }),
+    ).toMatchObject({ history: ["milestone:3f2a-9c"] });
     expect(sanitizeLinearSurface({ id: "linear:a1", kind: "linear", history: [] })).toBeNull();
     expect(sanitizeLinearSurface({ id: "diff", kind: "linear", history: ["ENG-1"] })).toBeNull();
     expect(sanitizeLinearSurface({ kind: "diff" })).toBeNull();
