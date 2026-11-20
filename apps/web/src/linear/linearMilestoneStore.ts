@@ -25,6 +25,8 @@ const EMPTY_ENTRY: LinearMilestoneEntry = {
 };
 const inFlight = new Map<string, Promise<void>>();
 const fetchedAt = new Map<string, number>();
+// Background refreshes of a long milestone wait longer, so one tab can't spend the key's hourly budget.
+const pageCounts = new Map<string, number>();
 
 const patchEntry = (id: string, patch: Partial<LinearMilestoneEntry>) =>
   useLinearMilestoneStore.setState((state) => ({
@@ -44,6 +46,15 @@ const failed = (id: string, cause: unknown) =>
     loading: false,
     error: { kind: "failed", message: cause instanceof Error ? cause.message : String(cause) },
   });
+
+interface LinearMilestonePage extends Omit<LinearMilestone, "issues"> {
+  readonly issues: LinearMilestone["issues"] & {
+    readonly pageInfo?: { readonly hasNextPage: boolean; readonly endCursor: string | null };
+  };
+}
+
+// Past this many pages the list stops rather than loading without end.
+const MAX_PAGES = 10;
 
 /** Dev builds read `fix-` milestones from the local fixture, like `FIX-` issues. */
 const DEV_FIXTURE_ID = /^fix-/;
@@ -76,15 +87,28 @@ async function requestFromLinear(id: string): Promise<void> {
     });
     return;
   }
-  const result = await bridge.request(LINEAR_MILESTONE_QUERY, { id });
-  if (!result.ok) {
-    fetchedAt.set(id, Date.now());
-    patchEntry(id, { loading: false, error: { kind: result.error, message: result.message } });
-    return;
+  const pages: LinearMilestonePage[] = [];
+  let after: string | null = null;
+  while (pages.length < MAX_PAGES) {
+    const result = await bridge.request(LINEAR_MILESTONE_QUERY, { id, after });
+    if (!result.ok) {
+      fetchedAt.set(id, Date.now());
+      patchEntry(id, { loading: false, error: { kind: result.error, message: result.message } });
+      return;
+    }
+    const page = (result.data as { projectMilestone?: LinearMilestonePage | null })
+      .projectMilestone;
+    if (!page) break;
+    pages.push(page);
+    const { pageInfo } = page.issues;
+    if (!pageInfo?.hasNextPage || !pageInfo.endCursor) break;
+    after = pageInfo.endCursor;
   }
+  const [first] = pages;
+  pageCounts.set(id, Math.max(1, pages.length));
   settle(
     id,
-    (result.data as { projectMilestone?: LinearMilestone | null }).projectMilestone ?? null,
+    first ? { ...first, issues: { nodes: pages.flatMap((page) => page.issues.nodes) } } : null,
   );
 }
 
@@ -92,9 +116,10 @@ async function requestFromLinear(id: string): Promise<void> {
 useLinearKeyStore.subscribe((next, previous) => {
   if (!previous.status || next.status?.workspaceUrlKey === previous.status.workspaceUrlKey) return;
   fetchedAt.clear();
+  pageCounts.clear();
   useLinearMilestoneStore.setState({ entries: {} });
 });
 
 export function isLinearMilestoneStale(id: string, maxAgeMs: number): boolean {
-  return Date.now() - (fetchedAt.get(id) ?? 0) >= maxAgeMs;
+  return Date.now() - (fetchedAt.get(id) ?? 0) >= maxAgeMs * (pageCounts.get(id) ?? 1);
 }

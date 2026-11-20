@@ -4,9 +4,10 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { randomUUID } from "../lib/utils";
 import { PULL_REQUESTS_PANEL_REF, rightPanelHostRef, useRightPanelStore } from "../rightPanelStore";
 import { linearBridge, useLinearKeyStore } from "./linearBridge";
-import { parseLinearIssueUrl } from "./linearLinks";
+import { parseLinearIssueUrl, parseLinearMilestoneUrl } from "./linearLinks";
 import {
   LINEAR_SEARCH_ENTRY,
+  linearMilestoneEntry,
   linearSurfaceIssue,
   newLinearSurface,
   pushLinearIssue,
@@ -61,19 +62,21 @@ export function stepLinearIssue(ref: ScopedThreadRef, surfaceId: string, delta: 
   return true;
 }
 
-/** An issue link to the key's workspace, or null for any other link. */
+/** The tab entry for an issue or milestone link to the key's workspace, or null for any other link. */
 export function linearLinkIdentifier(url: string): string | null {
   if (!linearBridge()) return null;
   const status = useLinearKeyStore.getState().status;
-  const target = parseLinearIssueUrl(url);
-  if (!target || !status?.hasKey || status.workspaceUrlKey?.toLowerCase() !== target.workspace) {
+  const issue = parseLinearIssueUrl(url);
+  const milestone = issue ? null : parseLinearMilestoneUrl(url);
+  const workspace = issue?.workspace ?? milestone?.workspace;
+  if (!workspace || !status?.hasKey || status.workspaceUrlKey?.toLowerCase() !== workspace) {
     return null;
   }
-  return target.identifier;
+  return issue ? issue.identifier : linearMilestoneEntry(milestone!.id);
 }
 
 /**
- * Fork: Linear tab. Opens a Linear issue link in a Linear tab when the desktop app has a key for
+ * Fork: Linear tab. Opens a Linear issue or milestone link in a Linear tab when the desktop app has a key for
  * that link's workspace. Otherwise the caller opens it like any other link.
  */
 export function tryOpenLinearLink(url: string, ref: ScopedThreadRef | undefined): boolean {

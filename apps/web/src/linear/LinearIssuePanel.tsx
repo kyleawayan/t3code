@@ -13,7 +13,6 @@ import {
   CirclePlay,
   CircleUserRound,
   Copy,
-  Diamond,
   ExternalLink,
   GitBranch,
   Link2,
@@ -49,6 +48,7 @@ import {
   LinearColorDot,
   LinearEstimateIcon,
   LinearLogo,
+  LinearMilestoneIcon,
   LinearPriorityIcon,
   LinearProgressRing,
   LinearStateFractionsContext,
@@ -68,6 +68,7 @@ import {
   type LinearMilestoneEntry,
 } from "./linearMilestoneStore";
 import { LinearMarkdown } from "./LinearMarkdown";
+import { linearMilestoneUrl } from "./linearLinks";
 import {
   activityItems,
   ancestorChain,
@@ -322,6 +323,18 @@ function LinearIssueHeader(props: {
           <CopyButton label="Copy issue ID" value={issue.identifier} icon={<Copy />} />
           <CopyButton label="Copy git branch name" value={issue.branchName} icon={<GitBranch />} />
         </div>
+      ) : props.milestone ? (
+        <div className="ms-auto flex shrink-0 items-center">
+          <OpenInLinearButton
+            url={linearMilestoneUrl(props.milestone.project.url, props.milestone.id)}
+            threadRef={props.threadRef}
+          />
+          <CopyButton
+            label="Copy milestone link"
+            value={linearMilestoneUrl(props.milestone.project.url, props.milestone.id)}
+            icon={<Link2 />}
+          />
+        </div>
       ) : null}
       {props.identifier === LINEAR_SEARCH_ENTRY ? null : (
         <>
@@ -540,10 +553,18 @@ function LinearMilestoneView(props: {
       {props.error ? (
         <p className="mb-3 text-xs text-muted-foreground">Showing the last copy: {props.error}</p>
       ) : null}
-      <h1 className="flex min-w-0 items-center gap-2 text-xl font-semibold text-balance select-text">
-        <Diamond aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-        {milestone.name}
-      </h1>
+      <div className="flex items-start gap-1">
+        <h1 className="flex min-w-0 items-center gap-2 text-xl font-semibold text-balance select-text">
+          <LinearMilestoneIcon className="size-4" />
+          {milestone.name}
+        </h1>
+        <span className="mt-0.5 shrink-0">
+          <OpenInLinearButton
+            url={linearMilestoneUrl(milestone.project.url, milestone.id)}
+            threadRef={props.threadRef}
+          />
+        </span>
+      </div>
       <div className="mt-3 flex flex-wrap gap-1" aria-label="Properties">
         <LinkChip
           url={milestone.project.url}
@@ -563,7 +584,13 @@ function LinearMilestoneView(props: {
       <section className="mt-7 flex flex-col gap-1" aria-label="Issues">
         <div className="flex items-center gap-1.5 px-1 py-0.5 text-sm text-muted-foreground">
           Issues
-          <ProgressPill progress={subIssueProgress(milestone.issues.nodes)} bare />
+          {/* Sub-issues share their parent's milestone, so only the milestone's own issues count. */}
+          <ProgressPill
+            progress={subIssueProgress(
+              milestone.issues.nodes.map((issue) => ({ state: issue.state })),
+            )}
+            bare
+          />
         </div>
         {milestone.issues.nodes.length > 0 ? (
           <SubIssueList
@@ -772,7 +799,7 @@ function LinearProperties(props: {
           className={cn(CHIP, "hover:bg-accent")}
           onClick={() => props.onOpen(linearMilestoneEntry(issue.projectMilestone!.id))}
         >
-          <Diamond aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+          <LinearMilestoneIcon />
           <span className="truncate">{issue.projectMilestone.name}</span>
         </button>
       ) : null}
@@ -1050,10 +1077,7 @@ function SubIssueList(props: {
                   {row.issue.projectMilestone &&
                   row.issue.projectMilestone.id !== props.milestoneId ? (
                     <Chip row="label" className={WIDE_ROW_ONLY}>
-                      <Diamond
-                        aria-hidden="true"
-                        className="size-3.5 shrink-0 text-muted-foreground"
-                      />
+                      <LinearMilestoneIcon />
                       <ChipText squish>{row.issue.projectMilestone.name}</ChipText>
                     </Chip>
                   ) : null}

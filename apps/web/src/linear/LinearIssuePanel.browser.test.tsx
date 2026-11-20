@@ -25,6 +25,7 @@ import { tryOpenLinearLink } from "./linearOpen";
 import { LINEAR_SEARCH_ENTRY, newLinearSurface } from "./linearSurface";
 
 const environmentId = EnvironmentId.make("environment");
+const LINEAR_FIXTURE_MILESTONE_LINK_ID = "00000000-0000-4000-8000-000000000001";
 const threadRef = scopeThreadRef(environmentId, ThreadId.make("thread"));
 const KEY_STATUS = {
   hasKey: true,
@@ -51,12 +52,24 @@ function installBridge(request: LinearBridge["request"]): Disposable {
   };
 }
 
+// The milestone answers in pages of two rows, so the list must follow `endCursor` to the end.
+function milestonePage(after: unknown) {
+  const start = typeof after === "string" ? Number(after) : 0;
+  const nodes = LINEAR_FIXTURE_MILESTONE.issues.nodes.slice(start, start + 2);
+  const next = start + 2;
+  const hasNextPage = next < LINEAR_FIXTURE_MILESTONE.issues.nodes.length;
+  return {
+    ...LINEAR_FIXTURE_MILESTONE,
+    issues: { nodes, pageInfo: { hasNextPage, endCursor: hasNextPage ? String(next) : null } },
+  };
+}
+
 const fixtureRequest: LinearBridge["request"] = async (query, variables) => ({
   ok: true,
   data: query.includes("projectMilestone(")
     ? {
         projectMilestone:
-          variables.id === LINEAR_FIXTURE_MILESTONE.id ? LINEAR_FIXTURE_MILESTONE : null,
+          variables.id === LINEAR_FIXTURE_MILESTONE.id ? milestonePage(variables.after) : null,
       }
     : { issue: LINEAR_FIXTURE_ISSUES[String(variables.id)] ?? null },
 });
@@ -249,6 +262,14 @@ it("opens only links to the key's workspace in the tab", () => {
     panel()?.surfaces.map((surface) => (surface.kind === "linear" ? surface.history : null)),
   ).toEqual([["ENG-2"], ["ENG-5"]]);
   expect(panel()?.activeSurfaceId).toBe(firstTab);
+
+  // A milestone link opens the milestone page in a tab of its own.
+  const milestoneLink = `https://linear.app/my-workspace/project/linear-tab-0123456789ab/overview#milestone-${LINEAR_FIXTURE_MILESTONE_LINK_ID}`;
+  expect(tryOpenLinearLink(milestoneLink, threadRef)).toBe(true);
+  expect(panel()?.surfaces.at(-1)).toMatchObject({
+    kind: "linear",
+    history: [`milestone:${LINEAR_FIXTURE_MILESTONE_LINK_ID}`],
+  });
 
   useLinearKeyStore.setState({ status: { ...KEY_STATUS, hasKey: false } });
   expect(tryOpenLinearLink("https://linear.app/my-workspace/issue/ENG-3", threadRef)).toBe(false);

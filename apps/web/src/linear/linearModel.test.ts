@@ -7,7 +7,7 @@ import {
 } from "./linearFixtures";
 import { directLinearTarget } from "./LinearIssueSearch";
 import { rememberIssueView } from "./linearIssueView";
-import { parseLinearIssueUrl } from "./linearLinks";
+import { linearMilestoneUrl, parseLinearIssueUrl, parseLinearMilestoneUrl } from "./linearLinks";
 import {
   activityItems,
   brightenForDark,
@@ -360,6 +360,33 @@ describe("upload links", () => {
     expect(issueFingerprint(issue("one"))).not.toBe(
       issueFingerprint({ ...issue("one"), title: "Renamed" }),
     );
+  });
+});
+
+describe("parseLinearMilestoneUrl", () => {
+  const id = "00000000-0000-4000-8000-000000000001";
+  it.each([
+    [
+      `https://linear.app/My-Team/project/launch-0123456789ab/overview#milestone-${id}`,
+      { workspace: "my-team", id },
+    ],
+    [
+      `https://linear.app/my-team/project/launch-0123456789ab#milestone-${id.toUpperCase()}`,
+      { workspace: "my-team", id },
+    ],
+    ["https://linear.app/my-team/project/launch-0123456789ab/overview", null],
+    [`https://linear.app/my-team/issue/ENG-1#milestone-${id}`, null],
+    [`https://linear.app.evil.com/my-team/project/launch/overview#milestone-${id}`, null],
+  ])("%s → %o", (url, expected) => {
+    expect(parseLinearMilestoneUrl(url)).toEqual(expected);
+  });
+
+  it("round-trips the link it builds from the project URL", () => {
+    const url = linearMilestoneUrl("https://linear.app/my-team/project/launch-0123456789ab/", id);
+    expect(url).toBe(
+      `https://linear.app/my-team/project/launch-0123456789ab/overview#milestone-${id}`,
+    );
+    expect(parseLinearMilestoneUrl(url)).toEqual({ workspace: "my-team", id });
   });
 });
 

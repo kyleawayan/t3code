@@ -1,7 +1,7 @@
 // oxlint-disable t3code/no-untranslated-copy -- Fork-only English copy, kept out of upstream's translation catalogs.
-import { Diamond, Link2 } from "lucide-react";
+import { Link2 } from "lucide-react";
 
-import { LinearStatusIcon } from "./LinearIcons";
+import { LinearMilestoneIcon, LinearStatusIcon } from "./LinearIcons";
 import { useLinearIssueStore } from "./linearIssueStore";
 import { startedStateFractions } from "./linearModel";
 import { linearEntryMilestone, linearSurfaceIssue, type LinearSurface } from "./linearSurface";
@@ -19,7 +19,7 @@ export function LinearTabIcon(props: { readonly surface: LinearSurface }) {
     (state) => state.entries[linearSurfaceIssue(props.surface)]?.issue,
   );
   if (linearEntryMilestone(linearSurfaceIssue(props.surface)) !== null) {
-    return <Diamond aria-hidden="true" className="size-3 shrink-0" />;
+    return <LinearMilestoneIcon className="size-3 text-current" />;
   }
   return issue ? (
     <LinearStatusIcon

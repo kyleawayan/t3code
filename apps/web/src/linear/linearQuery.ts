@@ -117,16 +117,33 @@ query LinearMyIssues {
 }
 `;
 
+// Linear refuses a query scoring over 10,000 complexity points, and each list multiplies its
+// children by its `first`. Pages of 40 rows keep the sub-issue rows' list sizes about half that.
+const LINEAR_MILESTONE_PAGE_SIZE = 40;
+
 export const LINEAR_MILESTONE_QUERY = `
-${SUB_ISSUE_FRAGMENTS}
-query LinearMilestone($id: String!) {
+fragment LinearState on WorkflowState { name type color }
+fragment LinearMilestoneRelated on Issue {
+  identifier title priority
+  state { ...LinearState }
+  assignee { displayName avatarUrl avatarBackgroundColor }
+}
+query LinearMilestone($id: String!, $after: String) {
   projectMilestone(id: $id) {
     id name targetDate
     project { name color url }
-    issues(first: 100) {
+    issues(first: ${LINEAR_MILESTONE_PAGE_SIZE}, after: $after) {
+      pageInfo { hasNextPage endCursor }
       nodes {
-        ...LinearSubIssue
+        identifier title subIssueSortOrder estimate
+        state { ...LinearState }
+        assignee { displayName avatarUrl avatarBackgroundColor }
+        labels(first: 10) { nodes { name color } }
+        cycle { number }
+        projectMilestone { id name }
         team { issueEstimationType }
+        relations(first: 10) { nodes { type relatedIssue { ...LinearMilestoneRelated } } }
+        inverseRelations(first: 10) { nodes { type issue { ...LinearMilestoneRelated } } }
         children(first: 25) { nodes { state { type } } }
       }
     }
