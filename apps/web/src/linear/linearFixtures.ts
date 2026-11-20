@@ -104,6 +104,7 @@ const EMPTY = {
 } as const;
 
 export const LINEAR_FIXTURE_ROOT: LinearIssue = {
+  projectMilestone: { id: "milestone-1", name: "Beta release" },
   ...ROOT_REF,
   description: [
     "This issue shows every part of a Linear issue page.",
@@ -379,6 +380,7 @@ export const LINEAR_FIXTURE_MILESTONE: LinearMilestone = {
     nodes: LINEAR_FIXTURE_ROOT.children.nodes.map((issue) => ({
       ...issue,
       team: { issueEstimationType: TEAM.issueEstimationType },
+      projectMilestone: { id: "milestone-1", name: "Beta release" },
       children: {
         nodes: issue.children.nodes.map((child) => ({ state: { type: child.state.type } })),
       },

@@ -135,11 +135,12 @@ it("renders an issue page from Linear's data", async () => {
   ]);
 });
 
-it("lists a milestone's issues and opens one in the same tab", async () => {
+it("opens an issue's milestone, lists its issues, and opens one in the same tab", async () => {
   using _bridge = installBridge(fixtureRequest);
-  openTab("milestone:milestone-1");
+  openTab("ENG-1");
   await using screen = await render(<LinearHarness />);
 
+  await userEvent.click(screen.getByRole("button", { name: "Show milestone Beta release" }));
   await expect.element(screen.getByRole("heading", { name: "Beta release" })).toBeVisible();
   await expect
     .element(screen.getByRole("button", { name: "Open project Linear tab in Linear" }))
@@ -148,6 +149,8 @@ it("lists a milestone's issues and opens one in the same tab", async () => {
   expect(issues.getByRole("listitem").all()).toHaveLength(
     LINEAR_FIXTURE_MILESTONE.issues.nodes.length,
   );
+  // Rows don't repeat the milestone the page is about.
+  expect(issues.getByText("Beta release").all()).toHaveLength(0);
 
   // The row comes before the blocked row's chip that names it.
   await userEvent.click(

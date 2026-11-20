@@ -93,6 +93,7 @@ import { useLinearIssueView } from "./linearIssueView";
 import {
   LINEAR_SEARCH_ENTRY,
   linearEntryMilestone,
+  linearMilestoneEntry,
   linearSurfaceIssue,
   type LinearSurface,
 } from "./linearSurface";
@@ -569,6 +570,7 @@ function LinearMilestoneView(props: {
             rows={subIssueRows(milestone.issues.nodes)}
             estimationType={(issue) => estimationTypes.get(issue.identifier) ?? "notUsed"}
             onOpen={props.onOpen}
+            milestoneId={milestone.id}
           />
         ) : (
           <p className="px-1 text-sm text-muted-foreground">No issues</p>
@@ -762,6 +764,17 @@ function LinearProperties(props: {
           <Box className="size-3.5 shrink-0" style={{ color: issue.project.color }} />
           <span className="truncate">{issue.project.name}</span>
         </LinkChip>
+      ) : null}
+      {issue.projectMilestone ? (
+        <button
+          type="button"
+          aria-label={`Show milestone ${issue.projectMilestone.name}`}
+          className={cn(CHIP, "hover:bg-accent")}
+          onClick={() => props.onOpen(linearMilestoneEntry(issue.projectMilestone!.id))}
+        >
+          <Diamond aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate">{issue.projectMilestone.name}</span>
+        </button>
       ) : null}
       {issue.labels.nodes.map((label) => (
         <Chip key={label.name}>
@@ -990,6 +1003,8 @@ function SubIssueList(props: {
   readonly rows: readonly LinearSubIssueRow[];
   readonly estimationType: (issue: LinearSubIssue) => string;
   readonly onOpen: (id: string) => void;
+  /** The milestone page's own milestone, which its rows don't repeat as a chip. */
+  readonly milestoneId?: string;
 }) {
   const { rows } = props;
   // The ID column fits the longest key here (up to w-14), so short keys sit close to their status.
@@ -1032,6 +1047,16 @@ function SubIssueList(props: {
                       <ChipText squish>{label.name}</ChipText>
                     </Chip>
                   ))}
+                  {row.issue.projectMilestone &&
+                  row.issue.projectMilestone.id !== props.milestoneId ? (
+                    <Chip row="label" className={WIDE_ROW_ONLY}>
+                      <Diamond
+                        aria-hidden="true"
+                        className="size-3.5 shrink-0 text-muted-foreground"
+                      />
+                      <ChipText squish>{row.issue.projectMilestone.name}</ChipText>
+                    </Chip>
+                  ) : null}
                   {row.issue.cycle ? (
                     <Chip row="value" className={WIDE_ROW_ONLY}>
                       <CirclePlay className="size-3.5 shrink-0 text-muted-foreground" />

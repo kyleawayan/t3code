@@ -15,6 +15,7 @@ fragment LinearSubIssue on Issue {
   assignee { displayName avatarUrl avatarBackgroundColor }
   labels(first: 10) { nodes { name color } }
   cycle { number }
+  projectMilestone { id name }
   relations(first: 10) { nodes { type relatedIssue { ...LinearRelatedIssue } } }
   inverseRelations(first: 10) { nodes { type issue { ...LinearRelatedIssue } } }
 }
@@ -43,6 +44,7 @@ query LinearIssue($id: String!) {
     labels(first: 25) { nodes { name color } }
     cycle { number name startsAt endsAt }
     project { name color url }
+    projectMilestone { id name }
     parent {
       ...LinearIssueRef
       parent {

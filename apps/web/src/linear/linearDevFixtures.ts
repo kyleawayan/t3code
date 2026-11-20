@@ -349,6 +349,7 @@ const ANCESTORS: LinearAncestor = {
 };
 
 const ROOT: LinearIssue = {
+  projectMilestone: { id: "fix-milestone", name: "Fixture release" },
   identifier: "FIX-2901",
   title:
     "Complex sample: everything the Linear tab draws at once, with a title long enough to wrap",
@@ -617,6 +618,7 @@ export const DEV_LINEAR_MILESTONES: Readonly<Record<string, LinearMilestone>> = 
       nodes: TREE.map((node, index) => ({
         ...subIssue(node, index),
         team: { issueEstimationType: TEAM.issueEstimationType },
+        projectMilestone: { id: "fix-milestone", name: "Fixture release" },
         children: { nodes: progress(node.children ?? []) },
       })),
     },

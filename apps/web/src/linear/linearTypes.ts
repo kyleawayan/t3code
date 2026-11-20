@@ -48,11 +48,16 @@ export interface LinearSubIssue extends LinearIssueRef {
   readonly assignee: LinearUser | null;
   readonly labels: Nodes<LinearLabel>;
   readonly cycle: { readonly number: number } | null;
+  readonly projectMilestone?: LinearMilestoneRef | null;
   readonly relations: Nodes<{ readonly type: string; readonly relatedIssue: LinearRelatedIssue }>;
   readonly inverseRelations: Nodes<{ readonly type: string; readonly issue: LinearRelatedIssue }>;
   readonly children: Nodes<LinearSubIssue | LinearProgressNode>;
 }
 
+export interface LinearMilestoneRef {
+  readonly id: string;
+  readonly name: string;
+}
 export interface LinearCycle {
   readonly number: number;
   readonly name: string | null;
@@ -123,6 +128,7 @@ export interface LinearIssue extends LinearIssueRef {
   readonly labels: Nodes<LinearLabel>;
   readonly cycle: LinearCycle | null;
   readonly project: { readonly name: string; readonly color: string; readonly url: string } | null;
+  readonly projectMilestone?: LinearMilestoneRef | null;
   readonly parent: (LinearAncestor & { readonly children: Nodes<LinearProgressNode> }) | null;
   readonly children: Nodes<LinearSubIssue>;
   readonly attachments: Nodes<LinearAttachment>;
