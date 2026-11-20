@@ -1972,10 +1972,39 @@ html[data-theme-id="t3-chat"] [data-app-sidebar] {
     --sidebar-content-inset: 0.25rem;
     --sidebar-control-gap: 0.375rem;
   }
+}
 
-  /* Four 2rem footer controls overflow a 10rem sidebar with gaps between them. */
+@container app-sidebar (width < 12.25rem) {
+  /* Five 2rem footer controls with their gaps (the desktop always shows the update control) need
+     12.25rem, so a narrower sidebar shares the row edge to edge as equal squares. The chrono's
+     edges follow the outer icons, which are 1rem and centered in their buttons. */
+  [data-slot="sidebar-footer"] {
+    --sidebar-footer-button: min(2rem, (100cqi - 2 * var(--sidebar-content-inset)) / 5);
+  }
+
+  [data-slot="sidebar-footer"] > :has(> [data-slot="sidebar-menu"]) {
+    padding-inline: 0;
+  }
+
   [data-slot="sidebar-footer"] [data-slot="sidebar-menu"] {
     column-gap: 0;
+    justify-content: space-between;
+  }
+
+  [data-slot="sidebar-footer"] [data-slot="sidebar-menu"] > [data-slot="sidebar-menu-item"] {
+    margin-inline-start: 0;
+  }
+
+  [data-slot="sidebar-footer"]
+    [data-slot="sidebar-menu"]
+    > [data-slot="sidebar-menu-item"]
+    > button:not(:has(> span)) {
+    width: var(--sidebar-footer-button);
+    height: var(--sidebar-footer-button);
+  }
+
+  [data-slot="sidebar-footer"] .sidebar-chrono {
+    padding-inline: calc(var(--sidebar-content-inset) + (var(--sidebar-footer-button) - 1rem) / 2);
   }
 }
 
