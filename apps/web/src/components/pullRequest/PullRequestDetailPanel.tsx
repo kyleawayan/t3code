@@ -96,6 +96,7 @@ import { PullRequestDetailGhost, PullRequestTimelineGhost } from "./PullRequestG
 import { PullRequestCopyableCode } from "./PullRequestCopyableCode";
 import { pullRequestRefKey, usePullRequestDetail } from "./usePullRequestDetail";
 import { PullRequestActionsMenu } from "./PullRequestActionsMenu";
+import { PullRequestCopyLinkButton } from "./PullRequestCopyLinkButton"; // Fork: copy PR link button
 import {
   PullRequestApproveWorkflowsButton,
   PullRequestCheckoutMenu,
@@ -1625,6 +1626,7 @@ export function PullRequestDetailPanel({
                 resolveConflicts={resolveConflictsControl}
               />
               {checkoutControl}
+              <PullRequestCopyLinkButton url={detail.url} /> {/* Fork: copy PR link button */}
               <PullRequestActionsMenu
                 environmentId={environmentId}
                 reference={reference}
