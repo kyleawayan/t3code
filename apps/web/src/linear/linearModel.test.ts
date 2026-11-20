@@ -4,6 +4,7 @@ import {
   LINEAR_FIXTURE_IN_REVIEW,
   LINEAR_FIXTURE_NESTED,
   LINEAR_FIXTURE_ROOT,
+  LINEAR_FIXTURE_MILESTONE,
 } from "./linearFixtures";
 import { directLinearTarget } from "./LinearIssueSearch";
 import { rememberIssueView } from "./linearIssueView";
@@ -15,6 +16,7 @@ import {
   ancestorChain,
   cycleLabel,
   linearCycleUrl,
+  milestoneTreeRows,
   dueDateLabel,
   issueFingerprint,
   linearRelativeTime,
@@ -360,6 +362,46 @@ describe("upload links", () => {
     expect(issueFingerprint(issue("one"))).not.toBe(
       issueFingerprint({ ...issue("one"), title: "Renamed" }),
     );
+  });
+});
+
+describe("milestoneTreeRows", () => {
+  const shape = (rows: ReturnType<typeof milestoneTreeRows>) =>
+    rows.map((row) => [row.issue.identifier, row.depth, row.context === true]);
+
+  it("nests milestone issues under their parents, outside parents dimmed as context", () => {
+    expect(shape(milestoneTreeRows(LINEAR_FIXTURE_MILESTONE.issues.nodes))).toEqual([
+      ["ENG-1", 0, true],
+      ["ENG-2", 1, false],
+      ["ENG-3", 1, false],
+      ["ENG-7", 2, false],
+      ["ENG-4", 1, false],
+      ["ENG-5", 1, false],
+      ["ENG-6", 1, false],
+    ]);
+  });
+
+  it("drops a parent link that would close a cycle", () => {
+    const [x, y] = LINEAR_FIXTURE_MILESTONE.issues.nodes;
+    const ancestor = (issue: typeof x) => ({ ...issue!, team: issue!.team, parent: null });
+    // Two pages loaded either side of a move: X reports parent Y, then Y reports parent X.
+    const rows = milestoneTreeRows([
+      { ...x!, parent: ancestor(y) },
+      { ...y!, parent: ancestor(x) },
+    ]);
+    expect(shape(rows)).toEqual([
+      [y!.identifier, 0, false],
+      [x!.identifier, 1, false],
+    ]);
+  });
+
+  it("puts each top-level row where its first milestone issue appears", () => {
+    const [first, ...rest] = LINEAR_FIXTURE_MILESTONE.issues.nodes;
+    const orphan = { ...first!, identifier: "ENG-9", parent: null };
+    expect(shape(milestoneTreeRows([orphan, ...rest, first!])).slice(0, 2)).toEqual([
+      ["ENG-9", 0, false],
+      ["ENG-1", 0, true],
+    ]);
   });
 });
 

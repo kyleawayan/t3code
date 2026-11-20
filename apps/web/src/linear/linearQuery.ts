@@ -118,11 +118,19 @@ query LinearMyIssues {
 `;
 
 // Linear refuses a query scoring over 10,000 complexity points, and each list multiplies its
-// children by its `first`. Pages of 40 rows keep the sub-issue rows' list sizes about half that.
+// children by its `first`. A page of 40 rows with three ancestor levels measured 5,808 (2026-11-20).
 const LINEAR_MILESTONE_PAGE_SIZE = 40;
 
 export const LINEAR_MILESTONE_QUERY = `
 fragment LinearState on WorkflowState { name type color }
+fragment LinearMilestoneAncestor on Issue {
+  identifier title subIssueSortOrder estimate
+  state { ...LinearState }
+  assignee { displayName avatarUrl avatarBackgroundColor }
+  labels(first: 10) { nodes { name color } }
+  team { issueEstimationType }
+  children(first: 25) { nodes { state { type } } }
+}
 fragment LinearMilestoneRelated on Issue {
   identifier title priority
   state { ...LinearState }
@@ -145,6 +153,10 @@ query LinearMilestone($id: String!, $after: String) {
         relations(first: 10) { nodes { type relatedIssue { ...LinearMilestoneRelated } } }
         inverseRelations(first: 10) { nodes { type issue { ...LinearMilestoneRelated } } }
         children(first: 25) { nodes { state { type } } }
+        parent {
+          ...LinearMilestoneAncestor
+          parent { ...LinearMilestoneAncestor parent { ...LinearMilestoneAncestor } }
+        }
       }
     }
   }

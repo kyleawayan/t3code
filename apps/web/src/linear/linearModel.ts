@@ -6,6 +6,8 @@ import type {
   LinearHistoryEntry,
   LinearIssue,
   LinearIssueRef,
+  LinearMilestoneAncestor,
+  LinearMilestoneIssue,
   LinearRelatedIssue,
   LinearState,
   LinearSubIssue,
@@ -308,6 +310,8 @@ const bySortOrder = (left: LinearSubIssue, right: LinearSubIssue) =>
 export interface LinearSubIssueRow {
   readonly issue: LinearSubIssue;
   readonly depth: number;
+  /** A milestone page's ancestor row: outside the milestone, shown for where its issues sit. */
+  readonly context?: boolean;
   /** The last of its parent's sub-issues, where the parent's guide line ends. */
   readonly isLast: boolean;
   /** For each ancestor guide column (depth 1 up to this row's), whether it runs past this row. */
@@ -611,4 +615,106 @@ export function segmentMarkdown(markdown: string): LinearMarkdownSegment[] {
 /** Compares two fetches while ignoring the per-request upload signatures. */
 export function issueFingerprint(issue: LinearIssue | null): string {
   return JSON.stringify(issue).replace(/([?&])signature=[^"&)\s\\]+/g, "$1signature=");
+}
+
+interface MilestoneTreeNode {
+  readonly issue: LinearSubIssue;
+  readonly context: boolean;
+  readonly children: MilestoneTreeNode[];
+}
+
+const ancestorAsSubIssue = (ancestor: LinearMilestoneAncestor): LinearSubIssue => ({
+  identifier: ancestor.identifier,
+  title: ancestor.title,
+  state: ancestor.state,
+  subIssueSortOrder: ancestor.subIssueSortOrder,
+  estimate: ancestor.estimate,
+  assignee: ancestor.assignee,
+  labels: ancestor.labels,
+  cycle: null,
+  relations: { nodes: [] },
+  inverseRelations: { nodes: [] },
+  children: ancestor.children,
+});
+
+/**
+ * A milestone's issues nested under their parents, like Linear's project view. Parents outside the
+ * milestone come back as `context` rows; roots keep the milestone's order, siblings their sub-issue order.
+ */
+export function milestoneTreeRows(issues: readonly LinearMilestoneIssue[]): LinearSubIssueRow[] {
+  const nodes = new Map<string, MilestoneTreeNode>();
+  const parentOf = new Map<string, string>();
+  const add = (issue: LinearSubIssue, context: boolean) => {
+    if (!nodes.has(issue.identifier)) nodes.set(issue.identifier, { issue, context, children: [] });
+  };
+  // Pages load one after another, so an issue moved mid-load can report a parent that is already
+  // its descendant; that link is dropped so the tree stays a tree.
+  const isAncestorOf = (candidate: string, id: string) => {
+    for (let at: string | undefined = candidate; at; at = parentOf.get(at))
+      if (at === id) return true;
+    return false;
+  };
+  for (const issue of issues) add(issue, false);
+  for (const issue of issues) {
+    let child = issue.identifier;
+    for (let ancestor = issue.parent; ancestor; ancestor = ancestor.parent) {
+      add(ancestorAsSubIssue(ancestor), true);
+      if (!parentOf.has(child) && !isAncestorOf(ancestor.identifier, child)) {
+        parentOf.set(child, ancestor.identifier);
+      }
+      child = ancestor.identifier;
+    }
+  }
+  for (const [id, node] of nodes) {
+    const parent = parentOf.get(id);
+    if (parent) nodes.get(parent)?.children.push(node);
+  }
+  const flatten = (
+    list: readonly MilestoneTreeNode[],
+    depth: number,
+    guides: readonly boolean[],
+  ): LinearSubIssueRow[] => {
+    const sorted =
+      depth === 0 ? list : list.toSorted((left, right) => bySortOrder(left.issue, right.issue));
+    return sorted.flatMap((node, index) => {
+      const isLast = index === sorted.length - 1;
+      const progressNodes = node.issue.children.nodes;
+      return [
+        {
+          issue: node.issue,
+          depth,
+          isLast,
+          guides,
+          context: node.context,
+          progress: progressNodes.length > 0 ? subIssueProgress(progressNodes) : null,
+          blocks: relationGroups(node.issue).filter(
+            (group) => group.kind === "blocked-by" || group.kind === "blocking",
+          ),
+        },
+        ...flatten(node.children, depth + 1, depth === 0 ? [] : [...guides, !isLast]),
+      ];
+    });
+  };
+  const roots = new Set<MilestoneTreeNode>();
+  for (const issue of issues) {
+    let id = issue.identifier;
+    for (let parent = parentOf.get(id); parent && nodes.has(parent); parent = parentOf.get(id))
+      id = parent;
+    roots.add(nodes.get(id)!);
+  }
+  return flatten([...roots], 0, []);
+}
+
+/** Each row's estimation type: milestone issues and their ancestors can come from different teams. */
+export function milestoneEstimationTypes(
+  issues: readonly LinearMilestoneIssue[],
+): Map<string, string> {
+  const types = new Map<string, string>();
+  for (const issue of issues) {
+    types.set(issue.identifier, issue.team.issueEstimationType);
+    for (let ancestor = issue.parent; ancestor; ancestor = ancestor.parent) {
+      types.set(ancestor.identifier, ancestor.team.issueEstimationType);
+    }
+  }
+  return types;
 }

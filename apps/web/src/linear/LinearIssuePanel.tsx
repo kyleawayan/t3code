@@ -81,6 +81,8 @@ import {
   relationGroups,
   subIssueProgress,
   startedStateFractions,
+  milestoneEstimationTypes,
+  milestoneTreeRows,
   subIssueRows,
   type LinearActivityIcon,
   type LinearActivityItem,
@@ -545,9 +547,7 @@ function LinearMilestoneView(props: {
   const { milestone } = props;
   const now = new Date(`${useNowMinute()}Z`);
   const target = milestone.targetDate ? dueDateLabel(milestone.targetDate, now) : null;
-  const estimationTypes = new Map(
-    milestone.issues.nodes.map((issue) => [issue.identifier, issue.team.issueEstimationType]),
-  );
+  const estimationTypes = milestoneEstimationTypes(milestone.issues.nodes);
   return (
     <article className="flex flex-col">
       {props.error ? (
@@ -594,7 +594,7 @@ function LinearMilestoneView(props: {
         </div>
         {milestone.issues.nodes.length > 0 ? (
           <SubIssueList
-            rows={subIssueRows(milestone.issues.nodes)}
+            rows={milestoneTreeRows(milestone.issues.nodes)}
             estimationType={(issue) => estimationTypes.get(issue.identifier) ?? "notUsed"}
             onOpen={props.onOpen}
             milestoneId={milestone.id}
@@ -1045,9 +1045,18 @@ function SubIssueList(props: {
           true,
         );
         return (
-          <li key={row.issue.identifier} className="relative">
+          <li
+            key={row.issue.identifier}
+            className="relative"
+            data-linear-context={row.context ? "" : undefined}
+          >
             <TreeGuides row={row} hasChildren={rows[index + 1]?.depth === row.depth + 1} />
-            <div className="flex h-8 min-w-0 items-center gap-1 rounded-md pe-1 text-sm hover:bg-accent">
+            <div
+              className={cn(
+                "flex h-8 min-w-0 items-center gap-1 rounded-md pe-1 text-sm hover:bg-accent",
+                row.context && "opacity-25",
+              )}
+            >
               <button
                 type="button"
                 className="flex h-full min-w-0 flex-1 items-center gap-2 text-start"

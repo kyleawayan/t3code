@@ -1,6 +1,8 @@
 // oxlint-disable t3code/no-untranslated-copy -- Fork-only English copy, kept out of upstream's translation catalogs.
 import type {
   LinearMilestone,
+  LinearMilestoneAncestor,
+  LinearMilestoneIssue,
   LinearIssue,
   LinearRelatedIssue,
   LinearState,
@@ -365,7 +367,53 @@ export const LINEAR_FIXTURE_ISSUES: Readonly<Record<string, LinearIssue>> = {
   [LINEAR_FIXTURE_NESTED.identifier]: LINEAR_FIXTURE_NESTED,
 };
 
-/** A milestone holding the root issue's sub-issues, for the milestone view. */
+const progressOnly = (issue: LinearSubIssue) => ({
+  nodes: issue.children.nodes.map((child) => ({ state: { type: child.state.type } })),
+});
+
+const asAncestor = (
+  issue: LinearSubIssue,
+  parent: LinearMilestoneAncestor | null,
+): LinearMilestoneAncestor => ({
+  identifier: issue.identifier,
+  title: issue.title,
+  state: issue.state,
+  subIssueSortOrder: issue.subIssueSortOrder,
+  estimate: issue.estimate,
+  assignee: issue.assignee,
+  labels: issue.labels,
+  team: { issueEstimationType: TEAM.issueEstimationType },
+  children: progressOnly(issue),
+  parent,
+});
+
+const ROOT_ANCESTOR: LinearMilestoneAncestor = {
+  ...ROOT_REF,
+  subIssueSortOrder: null,
+  estimate: LINEAR_FIXTURE_ROOT.estimate,
+  assignee: LINEAR_FIXTURE_ROOT.assignee,
+  labels: LINEAR_FIXTURE_ROOT.labels,
+  team: { issueEstimationType: TEAM.issueEstimationType },
+  children: progressOnly({ ...LINEAR_FIXTURE_ROOT, subIssueSortOrder: null, cycle: null }),
+  parent: null,
+};
+
+// Like Linear's response: a milestone issue's children carry only their state, for progress.
+const milestoneIssue = (
+  issue: LinearSubIssue,
+  parent: LinearMilestoneAncestor,
+): LinearMilestoneIssue => ({
+  ...issue,
+  team: { issueEstimationType: TEAM.issueEstimationType },
+  projectMilestone: { id: "milestone-1", name: "Beta release" },
+  children: progressOnly(issue),
+  parent,
+});
+
+/**
+ * A milestone holding the root issue's sub-issues and ENG-7 (ENG-3's sub-issue), so its tree shows
+ * the root as an outside ancestor and ENG-7 nested under ENG-3.
+ */
 export const LINEAR_FIXTURE_MILESTONE: LinearMilestone = {
   id: "milestone-1",
   name: "Beta release",
@@ -376,14 +424,9 @@ export const LINEAR_FIXTURE_MILESTONE: LinearMilestone = {
     url: "https://linear.app/my-workspace/project/linear-tab-0123456789ab",
   },
   issues: {
-    // Like Linear's response: a milestone issue's children carry only their state, for progress.
-    nodes: LINEAR_FIXTURE_ROOT.children.nodes.map((issue) => ({
-      ...issue,
-      team: { issueEstimationType: TEAM.issueEstimationType },
-      projectMilestone: { id: "milestone-1", name: "Beta release" },
-      children: {
-        nodes: issue.children.nodes.map((child) => ({ state: { type: child.state.type } })),
-      },
-    })),
+    nodes: [
+      ...LINEAR_FIXTURE_ROOT.children.nodes.map((issue) => milestoneIssue(issue, ROOT_ANCESTOR)),
+      milestoneIssue(NESTED, asAncestor(IN_REVIEW, ROOT_ANCESTOR)),
+    ],
   },
 };

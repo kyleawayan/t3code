@@ -141,6 +141,17 @@ export interface LinearIssue extends LinearIssueRef {
 /** A milestone's issues carry their team, since one milestone can hold several teams' issues. */
 export interface LinearMilestoneIssue extends LinearSubIssue {
   readonly team: { readonly issueEstimationType: string };
+  readonly parent?: LinearMilestoneAncestor | null;
+}
+/** A parent of a milestone issue, shown above it for context even when outside the milestone. */
+export interface LinearMilestoneAncestor extends LinearIssueRef {
+  readonly subIssueSortOrder: number | null;
+  readonly estimate: number | null;
+  readonly assignee: LinearUser | null;
+  readonly labels: Nodes<LinearLabel>;
+  readonly team: { readonly issueEstimationType: string };
+  readonly children: Nodes<LinearProgressNode>;
+  readonly parent?: LinearMilestoneAncestor | null;
 }
 /** The shape `LINEAR_MILESTONE_QUERY` returns. */
 export interface LinearMilestone {

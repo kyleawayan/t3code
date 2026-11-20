@@ -159,9 +159,14 @@ it("opens an issue's milestone, lists its issues, and opens one in the same tab"
     .element(screen.getByRole("button", { name: "Open project Linear tab in Linear" }))
     .toBeVisible();
   const issues = screen.getByRole("region", { name: "Issues" });
-  expect(issues.getByRole("listitem").all()).toHaveLength(
-    LINEAR_FIXTURE_MILESTONE.issues.nodes.length,
-  );
+  // The root issue sits outside the milestone, so it adds one dimmed row above its sub-issues.
+  const rows = issues.getByRole("listitem").all();
+  expect(rows).toHaveLength(LINEAR_FIXTURE_MILESTONE.issues.nodes.length + 1);
+  expect(
+    rows
+      .filter((row) => row.element().hasAttribute("data-linear-context"))
+      .map((row) => row.element().textContent),
+  ).toEqual([expect.stringContaining("ENG-1")]);
   // Rows don't repeat the milestone the page is about.
   expect(issues.getByText("Beta release").all()).toHaveLength(0);
 

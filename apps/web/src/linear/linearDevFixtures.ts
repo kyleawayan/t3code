@@ -6,6 +6,7 @@ import type {
   LinearIssue,
   LinearLabel,
   LinearMilestone,
+  LinearMilestoneAncestor,
   LinearRelatedIssue,
   LinearState,
   LinearSubIssue,
@@ -585,10 +586,66 @@ const stubPage = (issue: Pick<LinearIssue, "identifier" | "title" | "state">): L
   history: { nodes: [] },
 });
 
+// A second root outside the milestone, so its page shows two groups: FIX-2953 sits right under
+// FIX-2950, and FIX-2952 two levels down under FIX-2951.
+const SECOND_ROOT: LinearMilestoneAncestor = {
+  identifier: "FIX-2950",
+  title: "Second root: launch checklist",
+  state: STATES.inProgress,
+  subIssueSortOrder: null,
+  estimate: 8,
+  assignee: USERS.sam,
+  labels: { nodes: [LABELS.desktop] },
+  team: { issueEstimationType: TEAM.issueEstimationType },
+  children: {
+    nodes: [
+      { state: { type: "completed" } },
+      { state: { type: "unstarted" } },
+      { state: { type: "unstarted" } },
+    ],
+  },
+  parent: null,
+};
+const SECOND_ROOT_GROUP: LinearMilestoneAncestor = {
+  identifier: "FIX-2951",
+  title: "Group of launch tasks outside the milestone",
+  state: STATES.todo,
+  subIssueSortOrder: 1,
+  estimate: null,
+  assignee: null,
+  labels: { nodes: [] },
+  team: { issueEstimationType: TEAM.issueEstimationType },
+  children: { nodes: [{ state: { type: "unstarted" } }] },
+  parent: SECOND_ROOT,
+};
+const SECOND_ROOT_ISSUES = [
+  {
+    node: {
+      id: "FIX-2952",
+      title: "Milestone issue two levels under the second root",
+      state: STATES.todo,
+      extra: { estimate: 2, assignee: USERS.alex },
+    },
+    parent: SECOND_ROOT_GROUP,
+  },
+  {
+    node: {
+      id: "FIX-2953",
+      title: "Milestone issue right under the second root",
+      state: STATES.inProgress,
+      extra: { estimate: 3, assignee: USERS.jo, labels: { nodes: [LABELS.feature] } },
+    },
+    parent: SECOND_ROOT,
+  },
+];
+
 const pages = [ROOT, ...TREE.flatMap((node, index) => pageFor(node, ROOT_AS_PARENT, TREE, index))];
 const linked = [
   ANCESTORS,
   ANCESTORS.parent!,
+  SECOND_ROOT,
+  SECOND_ROOT_GROUP,
+  ...SECOND_ROOT_ISSUES.map(({ node }) => ref(node.id, node.title, node.state)),
   ...pages.flatMap((page) => [
     ...page.relations.nodes.map((relation) => relation.relatedIssue),
     ...page.inverseRelations.nodes.map((relation) => relation.issue),
@@ -607,6 +664,20 @@ export const DEV_LINEAR_FIXTURE_LIST = [
   DEV_LINEAR_FIXTURES["FIX-2905"]!,
 ];
 
+// FIX-2901 sits outside the milestone, so its page shows it as a dimmed ancestor row.
+const DEV_MILESTONE_ROOT: LinearMilestoneAncestor = {
+  identifier: ROOT.identifier,
+  title: ROOT.title,
+  state: ROOT.state,
+  subIssueSortOrder: null,
+  estimate: ROOT.estimate,
+  assignee: ROOT.assignee,
+  labels: ROOT.labels,
+  team: { issueEstimationType: TEAM.issueEstimationType },
+  children: { nodes: progress(TREE) },
+  parent: null,
+};
+
 /** Dev-only milestones behind `fix-` ids; `fix-milestone` holds the fixture tree's top-level issues. */
 export const DEV_LINEAR_MILESTONES: Readonly<Record<string, LinearMilestone>> = {
   "fix-milestone": {
@@ -620,7 +691,16 @@ export const DEV_LINEAR_MILESTONES: Readonly<Record<string, LinearMilestone>> = 
         team: { issueEstimationType: TEAM.issueEstimationType },
         projectMilestone: { id: "fix-milestone", name: "Fixture release" },
         children: { nodes: progress(node.children ?? []) },
-      })),
+        parent: DEV_MILESTONE_ROOT,
+      })).concat(
+        SECOND_ROOT_ISSUES.map(({ node, parent }, index) => ({
+          ...subIssue(node, index + 2),
+          team: { issueEstimationType: TEAM.issueEstimationType },
+          projectMilestone: { id: "fix-milestone", name: "Fixture release" },
+          children: { nodes: [] },
+          parent,
+        })),
+      ),
     },
   },
 };
